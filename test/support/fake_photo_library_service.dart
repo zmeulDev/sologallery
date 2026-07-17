@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' show Rect;
 
 import 'package:sologallery/features/library/domain/month_summary.dart';
 import 'package:sologallery/features/library/domain/year_month.dart';
@@ -17,7 +18,11 @@ class FakePhotoLibraryService extends PhotoLibraryService {
     this.grantResult,
     List<AssetRef>? assets,
     this.thumbnailBytes,
-  }) : assets = List.of(assets ?? const []) {
+    this.previewBytes,
+    Map<String, AssetDetail>? details,
+    this.deleteResultOverride,
+  })  : assets = List.of(assets ?? const []),
+        details = details ?? const {} {
     // Keep the newest-first ordering the real service guarantees.
     this.assets.sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
@@ -29,10 +34,20 @@ class FakePhotoLibraryService extends PhotoLibraryService {
 
   final List<AssetRef> assets;
   final Uint8List? thumbnailBytes;
+  final Uint8List? previewBytes;
+
+  /// Per-id metadata returned by [assetDetail].
+  final Map<String, AssetDetail> details;
+
+  /// When set, [deleteAssets] returns this instead of the requested ids (used
+  /// to simulate the user cancelling the OS trash dialog with an empty result).
+  final List<String>? deleteResultOverride;
 
   int requestCount = 0;
   int openSettingsCount = 0;
   int presentLimitedCount = 0;
+  final List<List<String>> deleteCalls = [];
+  final List<List<String>> shareCalls = [];
 
   @override
   Future<PhotoAccess> currentAccess() async => access;
@@ -87,4 +102,24 @@ class FakePhotoLibraryService extends PhotoLibraryService {
   @override
   Future<Uint8List?> thumbnail(String assetId, int width, int height) async =>
       thumbnailBytes;
+
+  @override
+  Future<Uint8List?> previewImage(String assetId, int maxEdge) async =>
+      previewBytes ?? thumbnailBytes;
+
+  @override
+  Future<AssetDetail?> assetDetail(String assetId) async => details[assetId];
+
+  @override
+  Future<List<String>> deleteAssets(List<String> ids) async {
+    deleteCalls.add(ids);
+    final deleted = deleteResultOverride ?? ids;
+    assets.removeWhere((a) => deleted.contains(a.id));
+    return deleted;
+  }
+
+  @override
+  Future<void> shareAssets(List<String> ids, {Rect? sharePositionOrigin}) async {
+    shareCalls.add(ids);
+  }
 }

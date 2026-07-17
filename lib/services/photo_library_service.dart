@@ -1,7 +1,10 @@
+import 'dart:io' show Platform;
 import 'dart:typed_data';
+import 'dart:ui' show Rect;
 
 import 'package:logging/logging.dart';
 import 'package:photo_manager/photo_manager.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../features/library/domain/month_summary.dart';
 import '../features/library/domain/year_month.dart';
@@ -35,6 +38,44 @@ class AssetRef {
 
   final String id;
   final DateTime createdAt;
+}
+
+/// A pure, plugin-free projection of a single asset's metadata, shown in the
+/// detail viewer's EXIF sheet. Only fields `photo_manager` exposes natively —
+/// no camera make/model/ISO (that would need to parse the original file). Any
+/// field may be null when the platform doesn't provide it.
+class AssetDetail {
+  const AssetDetail({
+    required this.id,
+    required this.width,
+    required this.height,
+    required this.createdAt,
+    required this.orientationDegrees,
+    required this.isVideo,
+    this.sizeBytes,
+    this.mimeType,
+    this.latitude,
+    this.longitude,
+    this.title,
+  });
+
+  final String id;
+  final int width;
+  final int height;
+  final DateTime createdAt;
+
+  /// EXIF orientation as reported by the platform (degrees).
+  final int orientationDegrees;
+  final bool isVideo;
+
+  /// Original file size in bytes, best-effort (null if the file can't be read).
+  final int? sizeBytes;
+  final String? mimeType;
+  final double? latitude;
+  final double? longitude;
+  final String? title;
+
+  bool get hasGps => latitude != null && longitude != null;
 }
 
 /// The single wrapper around `photo_manager`. All permission handling, asset
@@ -184,21 +225,127 @@ class PhotoLibraryService {
 
   // --- Thumbnails ----------------------------------------------------------
 
-  /// Cache of resolved [AssetEntity]s so repeated thumbnail requests for the
-  /// same id skip the `AssetEntity.fromId` round-trip. `photo_manager` caches
-  /// the thumbnail bytes themselves natively.
+  /// Cache of resolved [AssetEntity]s so repeated requests for the same id skip
+  /// the `AssetEntity.fromId` round-trip. `photo_manager` caches the thumbnail
+  /// bytes themselves natively.
   final Map<String, AssetEntity> _entityCache = {};
+
+  /// Resolves (and caches) the [AssetEntity] for [assetId], or null if it can't
+  /// be resolved (e.g. deleted).
+  Future<AssetEntity?> _entity(String assetId) async {
+    final cached = _entityCache[assetId];
+    if (cached != null) return cached;
+    final entity = await AssetEntity.fromId(assetId);
+    if (entity != null) _entityCache[assetId] = entity;
+    return entity;
+  }
 
   /// A `width`×`height` thumbnail for [assetId], or null if the asset can't be
   /// resolved (e.g. deleted). Never decodes the original at full size
-  /// (Absolute rules).
+  /// (Absolute rules) — the detail viewer requests a screen-capped size, the
+  /// grid a cell-sized one.
   Future<Uint8List?> thumbnail(String assetId, int width, int height) async {
-    var entity = _entityCache[assetId];
-    if (entity == null) {
-      entity = await AssetEntity.fromId(assetId);
-      if (entity == null) return null;
-      _entityCache[assetId] = entity;
-    }
+    final entity = await _entity(assetId);
+    if (entity == null) return null;
     return entity.thumbnailDataWithSize(ThumbnailSize(width, height));
+  }
+
+  /// A high-quality, screen-sized preview for the detail viewer — the whole
+  /// image, uncropped, capped at [maxEdge] px on its longest side. Uses `fit`
+  /// resize on iOS (the plain [thumbnailDataWithSize] hardcodes `fill`, which
+  /// would crop); Android's scaler already fits within the box. The cap keeps a
+  /// 48MP HEIC from decoding at full size (the OOM gotcha) while staying far
+  /// sharper than a grid thumbnail. Never the full original (Absolute rules).
+  Future<Uint8List?> previewImage(String assetId, int maxEdge) async {
+    final entity = await _entity(assetId);
+    if (entity == null) return null;
+    final size = ThumbnailSize.square(maxEdge);
+    final option = (Platform.isIOS || Platform.isMacOS)
+        ? ThumbnailOption.ios(
+            size: size,
+            quality: 95,
+            resizeContentMode: ResizeContentMode.fit,
+          )
+        : ThumbnailOption(size: size, quality: 95);
+    return entity.thumbnailDataWithOption(option);
+  }
+
+  // --- Detail metadata, delete, share -------------------------------------
+
+  /// The `photo_manager`-native metadata for [assetId] shown in the EXIF sheet,
+  /// or null if the asset can't be resolved. GPS is read via [latlngAsync]
+  /// (the sync getters are always null on Android 10+); file size is read
+  /// best-effort from the original file (a metadata read, never a decode).
+  Future<AssetDetail?> assetDetail(String assetId) async {
+    final entity = await _entity(assetId);
+    if (entity == null) return null;
+
+    final mimeType = await entity.mimeTypeAsync;
+    final latLng = await entity.latlngAsync();
+    var lat = latLng?.latitude;
+    var lng = latLng?.longitude;
+    // photo_manager reports 0,0 for "no location"; treat that as absent.
+    if (lat == 0 && lng == 0) {
+      lat = null;
+      lng = null;
+    }
+
+    int? sizeBytes;
+    try {
+      final file = await entity.file;
+      sizeBytes = await file?.length();
+    } catch (e, st) {
+      _log.fine('Could not read file size for $assetId', e, st);
+    }
+
+    return AssetDetail(
+      id: entity.id,
+      width: entity.width,
+      height: entity.height,
+      createdAt: entity.createDateTime,
+      orientationDegrees: entity.orientation,
+      isVideo: entity.type == AssetType.video,
+      sizeBytes: sizeBytes,
+      mimeType: mimeType,
+      latitude: lat,
+      longitude: lng,
+      title: entity.title,
+    );
+  }
+
+  /// Deletes [ids] from the device photo library via the OS (a native trash
+  /// dialog is shown by the platform). Returns the ids actually deleted — empty
+  /// if the user cancels. Evicts deleted entities from the cache.
+  Future<List<String>> deleteAssets(List<String> ids) async {
+    final deleted = await PhotoManager.editor.deleteWithIds(ids);
+    for (final id in deleted) {
+      _entityCache.remove(id);
+    }
+    _log.info('Deleted ${deleted.length}/${ids.length} asset(s) from library');
+    return deleted;
+  }
+
+  /// Opens the OS share sheet for [ids], exporting each asset's original file.
+  /// No library duplication — the shared file is the original the OS hands off.
+  /// [sharePositionOrigin] anchors the sheet on iPad.
+  Future<void> shareAssets(
+    List<String> ids, {
+    Rect? sharePositionOrigin,
+  }) async {
+    final files = <XFile>[];
+    for (final id in ids) {
+      final entity = await _entity(id);
+      final file = await entity?.file;
+      if (file != null) {
+        files.add(XFile(file.path, mimeType: await entity?.mimeTypeAsync));
+      }
+    }
+    if (files.isEmpty) {
+      _log.warning('Nothing to share — no files resolved for $ids');
+      return;
+    }
+    await SharePlus.instance.share(
+      ShareParams(files: files, sharePositionOrigin: sharePositionOrigin),
+    );
   }
 }

@@ -381,6 +381,20 @@ Short form; full postmortems in `docs/postmortems/`.
 - **Debug builds inject the `INTERNET` permission** (Dart VM service /
   hot reload) — expected. Verify the **release** merged manifest instead
   (Definition of Done #5): no `INTERNET`/`READ_PHONE_STATE`/`c2dm`.
+- **Drift + widget tests (`FakeAsync`) — three traps.** (1) `await`ing a
+  Drift **stream** `.first` (e.g. `dao.watchAll().first`) inside a
+  `testWidgets` body **deadlocks** — the stream needs the fake clock pumped
+  but nothing pumps while you await. Assert via a one-shot `.get()`
+  (`db.select(db.table).get()`) instead. One-shot Futures are fine;
+  `ProviderContainer` tests (real async, no FakeAsync) are also fine. (2)
+  Disposing a `ProviderScope` that holds a Drift `.watch()` schedules a
+  zero-duration Timer (`StreamQueryStore.markAsClosed`) that trips the
+  "A Timer is still pending" teardown invariant for the *fastest* test —
+  end such tests by disposing the tree and elapsing time:
+  `await tester.pumpWidget(const SizedBox()); await tester.pump(const
+  Duration(seconds: 1));`. (3) Any sheet/screen containing a focused
+  `TextField` never settles (cursor-blink is periodic) — use **bounded
+  pumps**, never `pumpAndSettle`, once a `TextField` is on screen.
 
 ---
 

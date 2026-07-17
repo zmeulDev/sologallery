@@ -9,6 +9,7 @@ import '../../services/photo_library_service.dart';
 import '../../widgets/asset_thumbnail.dart';
 import '../../widgets/limited_access_banner.dart';
 import '../../widgets/month_section_header.dart';
+import '../detail/photo_viewer_args.dart';
 import 'domain/month_summary.dart';
 import 'library_providers.dart';
 
@@ -128,8 +129,8 @@ class _MonthSection extends StatelessWidget {
   }
 }
 
-/// Up to six previews in a three-column grid. Cells are inert until the Phase 3
-/// detail viewer; tapping "View all" opens the full month.
+/// Up to six previews in a three-column grid. Tapping a cell opens the detail
+/// viewer, swiping across this month's previews; "View all" opens the full month.
 class _PreviewGrid extends StatelessWidget {
   const _PreviewGrid({required this.assetIds});
 
@@ -144,10 +145,16 @@ class _PreviewGrid extends StatelessWidget {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       children: [
-        for (final id in assetIds)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: AssetThumbnail(assetId: id, size: 300),
+        for (final (index, id) in assetIds.indexed)
+          GestureDetector(
+            onTap: () => context.push(
+              '/photo/$id',
+              extra: PhotoViewerArgs(assetIds, index),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: AssetThumbnail(assetId: id, size: 300),
+            ),
           ),
       ],
     );

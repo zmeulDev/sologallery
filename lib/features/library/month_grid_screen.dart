@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../services/photo_library_service.dart';
 import '../../widgets/asset_thumbnail.dart';
+import '../detail/photo_viewer_args.dart';
 import 'domain/year_month.dart';
 import 'month_assets_provider.dart';
 
@@ -63,7 +65,13 @@ class _Grid extends ConsumerWidget {
         itemCount: items.length + (hasMore ? 3 : 0),
         itemBuilder: (context, i) {
           if (i >= items.length) return const _CellPlaceholder();
-          return AssetThumbnail(assetId: items[i].id, size: 400);
+          return GestureDetector(
+            onTap: () => context.push(
+              '/photo/${items[i].id}',
+              extra: PhotoViewerArgs([for (final a in items) a.id], i),
+            ),
+            child: AssetThumbnail(assetId: items[i].id, size: 400),
+          );
         },
       ),
     );

@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/albums/albums_screen.dart';
+import '../../features/detail/detail_screen.dart';
+import '../../features/detail/photo_viewer_args.dart';
 import '../../features/library/library_screen.dart';
 import '../../features/library/month_grid_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
@@ -48,6 +50,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) =>
             MonthGridScreen(monthKey: state.pathParameters['key']!),
+      ),
+      GoRoute(
+        path: '/photo/:id',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => PhotoDetailScreen(
+          // `extra` carries the swipe sequence; a deep link / restore (no extra)
+          // falls back to a single-asset viewer built from the path id.
+          args: state.extra as PhotoViewerArgs? ??
+              PhotoViewerArgs([state.pathParameters['id']!], 0),
+        ),
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>

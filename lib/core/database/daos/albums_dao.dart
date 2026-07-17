@@ -62,4 +62,10 @@ class AlbumsDao extends DatabaseAccessor<AppDatabase> with _$AlbumsDaoMixin {
           ..where((e) => e.albumId.equals(albumId) & e.assetId.equals(assetId)))
         .go();
   }
+
+  /// Removes [assetId] from every album — used when the asset is deleted from
+  /// the device library so no membership dangles. Returns rows deleted.
+  Future<int> removeAssetEverywhere(String assetId) {
+    return (delete(albumEntries)..where((e) => e.assetId.equals(assetId))).go();
+  }
 }

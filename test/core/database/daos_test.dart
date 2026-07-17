@@ -80,6 +80,23 @@ void main() {
       expect(entries.map((e) => e.assetId), ['asset-2']);
     });
 
+    test('removeAssetEverywhere clears the asset from every album', () async {
+      final trip = await db.albumsDao.createAlbum('Trip');
+      final faves = await db.albumsDao.createAlbum('Faves');
+      await db.albumsDao.addEntry(trip, 'asset-1');
+      await db.albumsDao.addEntry(faves, 'asset-1');
+      await db.albumsDao.addEntry(trip, 'asset-2');
+
+      final removed = await db.albumsDao.removeAssetEverywhere('asset-1');
+      expect(removed, 2);
+
+      // asset-1 gone from both albums; asset-2 untouched.
+      expect(await db.albumsDao.watchEntries(trip).first, hasLength(1));
+      expect(await db.albumsDao.watchEntries(faves).first, isEmpty);
+      final survivors = await db.select(db.albumEntries).get();
+      expect(survivors.map((e) => e.assetId), ['asset-2']);
+    });
+
     test('deleting an album cascades to its entries (FK pragma is on)',
         () async {
       final album = await db.albumsDao.createAlbum('Trip');
