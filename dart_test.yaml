@@ -1,0 +1,4 @@
+# Declares the `golden` tag Alchemist applies to golden tests, so they can be
+# run or excluded explicitly (e.g. `flutter test --exclude-tags golden`).
+tags:
+  golden:
