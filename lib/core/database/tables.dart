@@ -65,3 +65,105 @@ class EditInstructions extends Table {
   @override
   Set<Column> get primaryKey => {assetId};
 }
+
+/// One row per asset that the background indexer has processed — the indexing
+/// cursor and a small cached-metadata table (docs/spec.md#data-model, ML phase).
+/// A row's presence means "already indexed"; the orchestrator subtracts these
+/// ids from the library to find remaining work. Kept lean: only the fields
+/// indexing and label search consume today (GPS/modified/duration deferred until
+/// a consumer needs them). Keyed by `photo_manager` asset id.
+class PhotoAssets extends Table {
+  /// `photo_manager` asset id.
+  TextColumn get assetId => text()();
+
+  /// Capture date (the axis the grid orders/groups by); mirrors
+  /// `AssetRef.createdAt`.
+  DateTimeColumn get createdAt => dateTime()();
+
+  BoolColumn get isVideo => boolean()();
+
+  IntColumn get width => integer()();
+
+  IntColumn get height => integer()();
+
+  /// When indexing last completed for this asset.
+  DateTimeColumn get indexedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {assetId};
+}
+
+/// On-device ML Kit image labels, one row per (asset, label). Deleting the
+/// [PhotoAssets] row cascades to its labels (re-index replaces cleanly). Indexed
+/// on `assetId` (grouping) and `label` (search `LIKE`).
+@TableIndex(name: 'photo_label_asset', columns: {#assetId})
+@TableIndex(name: 'photo_label_label', columns: {#label})
+class PhotoLabels extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  /// `photo_manager` asset id; cascades from [PhotoAssets].
+  TextColumn get assetId =>
+      text().references(PhotoAssets, #assetId, onDelete: KeyAction.cascade)();
+
+  /// The ML Kit label text (e.g. "Dog"), stored as returned.
+  TextColumn get label => text()();
+
+  /// Model confidence in `[0, 1]`.
+  RealColumn get confidence => real()();
+}
+
+/// On-device OCR text for an asset — one row per asset holding the concatenated
+/// recognized text (ML Kit text recognition, bundled Latin model). Empty when
+/// no text was found. Cascades from [PhotoAssets]; matched by `LIKE` in Search.
+class PhotoTexts extends Table {
+  /// `photo_manager` asset id; cascades from [PhotoAssets].
+  TextColumn get assetId =>
+      text().references(PhotoAssets, #assetId, onDelete: KeyAction.cascade)();
+
+  /// The recognized text, newlines collapsed to spaces. Named `content` (not
+  /// `text`) — a drift column can't reuse the `text()` builder name.
+  TextColumn get content => text()();
+
+  @override
+  Set<Column> get primaryKey => {assetId};
+}
+
+/// A clustered person — a group of face embeddings the on-device clustering
+/// decided are the same individual. [displayName] is user-set (null = unnamed);
+/// [coverAssetId] is a representative photo for the avatar.
+class Persons extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  TextColumn get displayName => text().nullable()();
+
+  /// A `photo_manager` asset id used for the person's cover/avatar.
+  TextColumn get coverAssetId => text().nullable()();
+
+  DateTimeColumn get createdAt => dateTime()();
+}
+
+/// One detected face: its on-device embedding vector plus the bounding box (in
+/// the 512px indexing-thumbnail coordinate space, so avatars crop the cached
+/// thumbnail). [personId] is the cluster it was assigned to (null until
+/// clustered). Cascades from [PhotoAssets]; a deleted [Persons] row nulls the
+/// link (faces survive re-clustering).
+@TableIndex(name: 'face_asset', columns: {#assetId})
+@TableIndex(name: 'face_person', columns: {#personId})
+class FaceEmbeddings extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  /// `photo_manager` asset id; cascades from [PhotoAssets].
+  TextColumn get assetId =>
+      text().references(PhotoAssets, #assetId, onDelete: KeyAction.cascade)();
+
+  IntColumn get personId =>
+      integer().nullable().references(Persons, #id, onDelete: KeyAction.setNull)();
+
+  /// The face-embedding vector, `Float32List` bytes (little-endian).
+  BlobColumn get embedding => blob()();
+
+  IntColumn get left => integer()();
+  IntColumn get top => integer()();
+  IntColumn get right => integer()();
+  IntColumn get bottom => integer()();
+}

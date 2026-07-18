@@ -17,22 +17,26 @@ in `docs/plans/` before writing code._
   bucket) ✅ — `docs/plans/library-month-grouping-fix.md`
 - **Phase 4 — Search** (metadata: date / media type / album name / favorites)
   ✅ — `docs/plans/search-metadata.md`
+- **Phase 4 — ML/indexing slice 1** (image labels + content search) ✅ —
+  `docs/plans/ml-indexing-labels.md`
 
-Tree is green: `tool/check.sh` passes (analyze clean, codegen ok, **145 host
-tests** incl. alchemist goldens). Search adds a pushed `/search` screen off the
-Library app bar; its real-path native filters (RequestType partition +
-capture-date window) verified on the Pixel 9 Pro XL via
-`integration_test/search_test.dart` (3/3 green). Earlier month-grouping and
-Phase-4 video patrol suites still green. Release manifest still network-free (no
-new deps in Search). Not committed — user handles git.
+Tree is green: `tool/check.sh` passes (analyze clean, codegen ok, **164 host
+tests** incl. alchemist goldens). Schema is now **v2** (`photo_asset`,
+`photo_label`; migration test + committed dump). A background-isolate indexer
+(`IndexingService` + `MlWorkerController` running ML Kit's **bundled** image
+labeler) populates labels, lifecycle-gated (pause on background); Search now does
+**content** search over labels ("dog" → photos). Verified on the Pixel 9 Pro XL
+via `integration_test/ml_indexing_test.dart` (real isolate + model + DB). Release
+manifest re-verified network-free after stripping ML Kit's injected c2dm push
+permission + receiver (new gotcha). `google_mlkit_image_labeling` added; the
+`android/build.gradle.kts` Kotlin-target rule now matches each module's own Java
+target (ML Kit modules pin 11/1.8). Not committed — user handles git.
 
 ## Next up — Phase 4 (remaining)
 
-**ML/indexing** (google_mlkit_*, tflite_flutter — still deferred) + the ML schema
-tables (`photo_asset`, `photo_label`). Once labels exist, extend Search from
-metadata to **content** search (the Search screen + `searchAssetsProvider` are
-built to take an added label source; see `docs/plans/search-metadata.md` notes).
-See Known follow-ups below.
+**ML/indexing slice 2+**: OCR (text recognition) and/or faces/people
+(`face_embedding` + tflite + clustering + People screen). Optional: move the
+gallery grid onto the `photo_asset` cache. See Known follow-ups below.
 
 ## What 3b delivered (for reference)
 

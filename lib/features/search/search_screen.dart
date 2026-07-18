@@ -9,6 +9,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../widgets/asset_grid.dart';
 import '../../widgets/asset_thumbnail.dart';
+import '../../services/indexing_service.dart';
 import '../../widgets/filter_pill.dart';
 import '../../widgets/month_section_header.dart';
 import '../library/month_grid_screen.dart' show CenteredNote;
@@ -91,6 +92,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       body: Column(
         children: [
           _FilterBar(type: type, favoritesOnly: favoritesOnly),
+          if (ref.watch(indexingStatusProvider).value?.isIndexing ?? false)
+            const _IndexingNote(),
           Expanded(
             child: idle
                 ? const _IdleHint()
@@ -266,6 +269,25 @@ class _AlbumRow extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// A quiet line shown while the background indexer is still labeling photos —
+/// content-search results improve as it progresses.
+class _IndexingNote extends StatelessWidget {
+  const _IndexingNote();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppColors>()!;
+    final styles = Theme.of(context).extension<AppTextStyles>()!;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Text(
+        'Still indexing your library — results will keep improving.',
+        style: styles.caption.copyWith(color: colors.textSecondary),
       ),
     );
   }

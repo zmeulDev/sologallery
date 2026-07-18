@@ -1,13 +1,16 @@
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:sologallery/core/database/app_database.dart' show Favorite;
+import 'package:sologallery/core/database/app_database.dart' show AppDatabase, Favorite;
 import 'package:sologallery/core/database/daos/albums_dao.dart' show AlbumSummary;
+import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/albums/albums_providers.dart';
 import 'package:sologallery/features/saved/saved_providers.dart';
 import 'package:sologallery/features/search/search_screen.dart';
+import 'package:sologallery/services/indexing_service.dart';
 import 'package:sologallery/services/permission_provider.dart';
 import 'package:sologallery/services/photo_library_service.dart';
 import 'package:sologallery/widgets/asset_thumbnail.dart';
@@ -23,6 +26,9 @@ void main() {
     List<Favorite> favorites = const [],
   }) async {
     final fake = FakePhotoLibraryService(assets: assets);
+    // Content search reads the DB; give it an empty in-memory one.
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
     final router = GoRouter(
       initialLocation: '/search',
       routes: [
@@ -37,8 +43,12 @@ void main() {
       ProviderScope(
         overrides: [
           photoLibraryServiceProvider.overrideWithValue(fake),
+          databaseProvider.overrideWithValue(db),
           albumSummariesProvider.overrideWith((ref) => Stream.value(albums)),
           savedFavoritesProvider.overrideWith((ref) => Stream.value(favorites)),
+          indexingStatusProvider.overrideWith(
+            (ref) => Stream.value(const IndexingStatus.idle()),
+          ),
         ],
         child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
       ),

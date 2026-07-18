@@ -1,7 +1,9 @@
+import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sologallery/core/database/app_database.dart' show Favorite;
+import 'package:sologallery/core/database/app_database.dart' show AppDatabase, Favorite;
 import 'package:sologallery/core/database/daos/albums_dao.dart' show AlbumSummary;
+import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/features/albums/albums_providers.dart';
 import 'package:sologallery/features/saved/saved_providers.dart';
 import 'package:sologallery/features/search/domain/search_date.dart';
@@ -151,6 +153,80 @@ void main() {
       container.read(searchQueryProvider.notifier).set('zzz');
       await flush();
       expect(container.read(searchAlbumsProvider), isEmpty);
+    });
+  });
+
+  group('searchAssetsProvider content search (labels)', () {
+    late AppDatabase db;
+
+    setUp(() => db = AppDatabase(NativeDatabase.memory()));
+    tearDown(() => db.close());
+
+    Future<ProviderContainer> seededContainer() async {
+      await db.indexDao.upsertIndexed(
+        assetId: 'p1',
+        createdAt: DateTime(2026, 8, 10),
+        isVideo: false,
+        width: 1,
+        height: 1,
+        labels: const [('Dog', 0.9)],
+        text: 'Birthday party invitation',
+      );
+      await db.indexDao.upsertIndexed(
+        assetId: 'v1',
+        createdAt: DateTime(2026, 7, 10),
+        isVideo: true,
+        width: 1,
+        height: 1,
+        labels: const [('Dog', 0.8)],
+        text: '',
+      );
+      final container = ProviderContainer(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          photoLibraryServiceProvider
+              .overrideWithValue(FakePhotoLibraryService()),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.listen(searchAssetsProvider, (_, _) {});
+      return container;
+    }
+
+    test('a free-text query matches ML labels', () async {
+      final container = await seededContainer();
+      container.read(searchQueryProvider.notifier).set('dog');
+      final ids = [
+        for (final a in await container.read(searchAssetsProvider.future)) a.id,
+      ];
+      expect(ids, ['p1', 'v1']); // newest first
+    });
+
+    test('content search still honors the media-type facet', () async {
+      final container = await seededContainer();
+      container.read(searchQueryProvider.notifier).set('dog');
+      container.read(searchTypeProvider.notifier).set(MediaTypeFilter.videos);
+      final ids = [
+        for (final a in await container.read(searchAssetsProvider.future)) a.id,
+      ];
+      expect(ids, ['v1']);
+    });
+
+    test('content search honors favorites via the DB join', () async {
+      final container = await seededContainer();
+      await db.favoritesDao.add('v1');
+      container.read(searchQueryProvider.notifier).set('dog');
+      container.read(searchFavoritesOnlyProvider.notifier).toggle();
+      final ids = [
+        for (final a in await container.read(searchAssetsProvider.future)) a.id,
+      ];
+      expect(ids, ['v1']);
+    });
+
+    test('unmatched text yields no photo results', () async {
+      final container = await seededContainer();
+      container.read(searchQueryProvider.notifier).set('spaceship');
+      expect(await container.read(searchAssetsProvider.future), isEmpty);
     });
   });
 }

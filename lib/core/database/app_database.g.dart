@@ -1171,6 +1171,1782 @@ class EditInstructionsCompanion extends UpdateCompanion<EditInstruction> {
   }
 }
 
+class $PhotoAssetsTable extends PhotoAssets
+    with TableInfo<$PhotoAssetsTable, PhotoAsset> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PhotoAssetsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _assetIdMeta = const VerificationMeta(
+    'assetId',
+  );
+  @override
+  late final GeneratedColumn<String> assetId = GeneratedColumn<String>(
+    'asset_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isVideoMeta = const VerificationMeta(
+    'isVideo',
+  );
+  @override
+  late final GeneratedColumn<bool> isVideo = GeneratedColumn<bool>(
+    'is_video',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_video" IN (0, 1))',
+    ),
+  );
+  static const VerificationMeta _widthMeta = const VerificationMeta('width');
+  @override
+  late final GeneratedColumn<int> width = GeneratedColumn<int>(
+    'width',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _heightMeta = const VerificationMeta('height');
+  @override
+  late final GeneratedColumn<int> height = GeneratedColumn<int>(
+    'height',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _indexedAtMeta = const VerificationMeta(
+    'indexedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> indexedAt = GeneratedColumn<DateTime>(
+    'indexed_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    assetId,
+    createdAt,
+    isVideo,
+    width,
+    height,
+    indexedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'photo_assets';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PhotoAsset> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('asset_id')) {
+      context.handle(
+        _assetIdMeta,
+        assetId.isAcceptableOrUnknown(data['asset_id']!, _assetIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_assetIdMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('is_video')) {
+      context.handle(
+        _isVideoMeta,
+        isVideo.isAcceptableOrUnknown(data['is_video']!, _isVideoMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_isVideoMeta);
+    }
+    if (data.containsKey('width')) {
+      context.handle(
+        _widthMeta,
+        width.isAcceptableOrUnknown(data['width']!, _widthMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_widthMeta);
+    }
+    if (data.containsKey('height')) {
+      context.handle(
+        _heightMeta,
+        height.isAcceptableOrUnknown(data['height']!, _heightMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_heightMeta);
+    }
+    if (data.containsKey('indexed_at')) {
+      context.handle(
+        _indexedAtMeta,
+        indexedAt.isAcceptableOrUnknown(data['indexed_at']!, _indexedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_indexedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {assetId};
+  @override
+  PhotoAsset map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PhotoAsset(
+      assetId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}asset_id'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      isVideo: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_video'],
+      )!,
+      width: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}width'],
+      )!,
+      height: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}height'],
+      )!,
+      indexedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}indexed_at'],
+      )!,
+    );
+  }
+
+  @override
+  $PhotoAssetsTable createAlias(String alias) {
+    return $PhotoAssetsTable(attachedDatabase, alias);
+  }
+}
+
+class PhotoAsset extends DataClass implements Insertable<PhotoAsset> {
+  /// `photo_manager` asset id.
+  final String assetId;
+
+  /// Capture date (the axis the grid orders/groups by); mirrors
+  /// `AssetRef.createdAt`.
+  final DateTime createdAt;
+  final bool isVideo;
+  final int width;
+  final int height;
+
+  /// When indexing last completed for this asset.
+  final DateTime indexedAt;
+  const PhotoAsset({
+    required this.assetId,
+    required this.createdAt,
+    required this.isVideo,
+    required this.width,
+    required this.height,
+    required this.indexedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['asset_id'] = Variable<String>(assetId);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['is_video'] = Variable<bool>(isVideo);
+    map['width'] = Variable<int>(width);
+    map['height'] = Variable<int>(height);
+    map['indexed_at'] = Variable<DateTime>(indexedAt);
+    return map;
+  }
+
+  PhotoAssetsCompanion toCompanion(bool nullToAbsent) {
+    return PhotoAssetsCompanion(
+      assetId: Value(assetId),
+      createdAt: Value(createdAt),
+      isVideo: Value(isVideo),
+      width: Value(width),
+      height: Value(height),
+      indexedAt: Value(indexedAt),
+    );
+  }
+
+  factory PhotoAsset.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PhotoAsset(
+      assetId: serializer.fromJson<String>(json['assetId']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      isVideo: serializer.fromJson<bool>(json['isVideo']),
+      width: serializer.fromJson<int>(json['width']),
+      height: serializer.fromJson<int>(json['height']),
+      indexedAt: serializer.fromJson<DateTime>(json['indexedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'assetId': serializer.toJson<String>(assetId),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'isVideo': serializer.toJson<bool>(isVideo),
+      'width': serializer.toJson<int>(width),
+      'height': serializer.toJson<int>(height),
+      'indexedAt': serializer.toJson<DateTime>(indexedAt),
+    };
+  }
+
+  PhotoAsset copyWith({
+    String? assetId,
+    DateTime? createdAt,
+    bool? isVideo,
+    int? width,
+    int? height,
+    DateTime? indexedAt,
+  }) => PhotoAsset(
+    assetId: assetId ?? this.assetId,
+    createdAt: createdAt ?? this.createdAt,
+    isVideo: isVideo ?? this.isVideo,
+    width: width ?? this.width,
+    height: height ?? this.height,
+    indexedAt: indexedAt ?? this.indexedAt,
+  );
+  PhotoAsset copyWithCompanion(PhotoAssetsCompanion data) {
+    return PhotoAsset(
+      assetId: data.assetId.present ? data.assetId.value : this.assetId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      isVideo: data.isVideo.present ? data.isVideo.value : this.isVideo,
+      width: data.width.present ? data.width.value : this.width,
+      height: data.height.present ? data.height.value : this.height,
+      indexedAt: data.indexedAt.present ? data.indexedAt.value : this.indexedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PhotoAsset(')
+          ..write('assetId: $assetId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('isVideo: $isVideo, ')
+          ..write('width: $width, ')
+          ..write('height: $height, ')
+          ..write('indexedAt: $indexedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(assetId, createdAt, isVideo, width, height, indexedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PhotoAsset &&
+          other.assetId == this.assetId &&
+          other.createdAt == this.createdAt &&
+          other.isVideo == this.isVideo &&
+          other.width == this.width &&
+          other.height == this.height &&
+          other.indexedAt == this.indexedAt);
+}
+
+class PhotoAssetsCompanion extends UpdateCompanion<PhotoAsset> {
+  final Value<String> assetId;
+  final Value<DateTime> createdAt;
+  final Value<bool> isVideo;
+  final Value<int> width;
+  final Value<int> height;
+  final Value<DateTime> indexedAt;
+  final Value<int> rowid;
+  const PhotoAssetsCompanion({
+    this.assetId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.isVideo = const Value.absent(),
+    this.width = const Value.absent(),
+    this.height = const Value.absent(),
+    this.indexedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PhotoAssetsCompanion.insert({
+    required String assetId,
+    required DateTime createdAt,
+    required bool isVideo,
+    required int width,
+    required int height,
+    required DateTime indexedAt,
+    this.rowid = const Value.absent(),
+  }) : assetId = Value(assetId),
+       createdAt = Value(createdAt),
+       isVideo = Value(isVideo),
+       width = Value(width),
+       height = Value(height),
+       indexedAt = Value(indexedAt);
+  static Insertable<PhotoAsset> custom({
+    Expression<String>? assetId,
+    Expression<DateTime>? createdAt,
+    Expression<bool>? isVideo,
+    Expression<int>? width,
+    Expression<int>? height,
+    Expression<DateTime>? indexedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (assetId != null) 'asset_id': assetId,
+      if (createdAt != null) 'created_at': createdAt,
+      if (isVideo != null) 'is_video': isVideo,
+      if (width != null) 'width': width,
+      if (height != null) 'height': height,
+      if (indexedAt != null) 'indexed_at': indexedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PhotoAssetsCompanion copyWith({
+    Value<String>? assetId,
+    Value<DateTime>? createdAt,
+    Value<bool>? isVideo,
+    Value<int>? width,
+    Value<int>? height,
+    Value<DateTime>? indexedAt,
+    Value<int>? rowid,
+  }) {
+    return PhotoAssetsCompanion(
+      assetId: assetId ?? this.assetId,
+      createdAt: createdAt ?? this.createdAt,
+      isVideo: isVideo ?? this.isVideo,
+      width: width ?? this.width,
+      height: height ?? this.height,
+      indexedAt: indexedAt ?? this.indexedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (assetId.present) {
+      map['asset_id'] = Variable<String>(assetId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (isVideo.present) {
+      map['is_video'] = Variable<bool>(isVideo.value);
+    }
+    if (width.present) {
+      map['width'] = Variable<int>(width.value);
+    }
+    if (height.present) {
+      map['height'] = Variable<int>(height.value);
+    }
+    if (indexedAt.present) {
+      map['indexed_at'] = Variable<DateTime>(indexedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PhotoAssetsCompanion(')
+          ..write('assetId: $assetId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('isVideo: $isVideo, ')
+          ..write('width: $width, ')
+          ..write('height: $height, ')
+          ..write('indexedAt: $indexedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PhotoLabelsTable extends PhotoLabels
+    with TableInfo<$PhotoLabelsTable, PhotoLabel> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PhotoLabelsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _assetIdMeta = const VerificationMeta(
+    'assetId',
+  );
+  @override
+  late final GeneratedColumn<String> assetId = GeneratedColumn<String>(
+    'asset_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES photo_assets (asset_id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _labelMeta = const VerificationMeta('label');
+  @override
+  late final GeneratedColumn<String> label = GeneratedColumn<String>(
+    'label',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _confidenceMeta = const VerificationMeta(
+    'confidence',
+  );
+  @override
+  late final GeneratedColumn<double> confidence = GeneratedColumn<double>(
+    'confidence',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, assetId, label, confidence];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'photo_labels';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PhotoLabel> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('asset_id')) {
+      context.handle(
+        _assetIdMeta,
+        assetId.isAcceptableOrUnknown(data['asset_id']!, _assetIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_assetIdMeta);
+    }
+    if (data.containsKey('label')) {
+      context.handle(
+        _labelMeta,
+        label.isAcceptableOrUnknown(data['label']!, _labelMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_labelMeta);
+    }
+    if (data.containsKey('confidence')) {
+      context.handle(
+        _confidenceMeta,
+        confidence.isAcceptableOrUnknown(data['confidence']!, _confidenceMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_confidenceMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PhotoLabel map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PhotoLabel(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      assetId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}asset_id'],
+      )!,
+      label: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}label'],
+      )!,
+      confidence: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}confidence'],
+      )!,
+    );
+  }
+
+  @override
+  $PhotoLabelsTable createAlias(String alias) {
+    return $PhotoLabelsTable(attachedDatabase, alias);
+  }
+}
+
+class PhotoLabel extends DataClass implements Insertable<PhotoLabel> {
+  final int id;
+
+  /// `photo_manager` asset id; cascades from [PhotoAssets].
+  final String assetId;
+
+  /// The ML Kit label text (e.g. "Dog"), stored as returned.
+  final String label;
+
+  /// Model confidence in `[0, 1]`.
+  final double confidence;
+  const PhotoLabel({
+    required this.id,
+    required this.assetId,
+    required this.label,
+    required this.confidence,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['asset_id'] = Variable<String>(assetId);
+    map['label'] = Variable<String>(label);
+    map['confidence'] = Variable<double>(confidence);
+    return map;
+  }
+
+  PhotoLabelsCompanion toCompanion(bool nullToAbsent) {
+    return PhotoLabelsCompanion(
+      id: Value(id),
+      assetId: Value(assetId),
+      label: Value(label),
+      confidence: Value(confidence),
+    );
+  }
+
+  factory PhotoLabel.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PhotoLabel(
+      id: serializer.fromJson<int>(json['id']),
+      assetId: serializer.fromJson<String>(json['assetId']),
+      label: serializer.fromJson<String>(json['label']),
+      confidence: serializer.fromJson<double>(json['confidence']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'assetId': serializer.toJson<String>(assetId),
+      'label': serializer.toJson<String>(label),
+      'confidence': serializer.toJson<double>(confidence),
+    };
+  }
+
+  PhotoLabel copyWith({
+    int? id,
+    String? assetId,
+    String? label,
+    double? confidence,
+  }) => PhotoLabel(
+    id: id ?? this.id,
+    assetId: assetId ?? this.assetId,
+    label: label ?? this.label,
+    confidence: confidence ?? this.confidence,
+  );
+  PhotoLabel copyWithCompanion(PhotoLabelsCompanion data) {
+    return PhotoLabel(
+      id: data.id.present ? data.id.value : this.id,
+      assetId: data.assetId.present ? data.assetId.value : this.assetId,
+      label: data.label.present ? data.label.value : this.label,
+      confidence: data.confidence.present
+          ? data.confidence.value
+          : this.confidence,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PhotoLabel(')
+          ..write('id: $id, ')
+          ..write('assetId: $assetId, ')
+          ..write('label: $label, ')
+          ..write('confidence: $confidence')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, assetId, label, confidence);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PhotoLabel &&
+          other.id == this.id &&
+          other.assetId == this.assetId &&
+          other.label == this.label &&
+          other.confidence == this.confidence);
+}
+
+class PhotoLabelsCompanion extends UpdateCompanion<PhotoLabel> {
+  final Value<int> id;
+  final Value<String> assetId;
+  final Value<String> label;
+  final Value<double> confidence;
+  const PhotoLabelsCompanion({
+    this.id = const Value.absent(),
+    this.assetId = const Value.absent(),
+    this.label = const Value.absent(),
+    this.confidence = const Value.absent(),
+  });
+  PhotoLabelsCompanion.insert({
+    this.id = const Value.absent(),
+    required String assetId,
+    required String label,
+    required double confidence,
+  }) : assetId = Value(assetId),
+       label = Value(label),
+       confidence = Value(confidence);
+  static Insertable<PhotoLabel> custom({
+    Expression<int>? id,
+    Expression<String>? assetId,
+    Expression<String>? label,
+    Expression<double>? confidence,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (assetId != null) 'asset_id': assetId,
+      if (label != null) 'label': label,
+      if (confidence != null) 'confidence': confidence,
+    });
+  }
+
+  PhotoLabelsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? assetId,
+    Value<String>? label,
+    Value<double>? confidence,
+  }) {
+    return PhotoLabelsCompanion(
+      id: id ?? this.id,
+      assetId: assetId ?? this.assetId,
+      label: label ?? this.label,
+      confidence: confidence ?? this.confidence,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (assetId.present) {
+      map['asset_id'] = Variable<String>(assetId.value);
+    }
+    if (label.present) {
+      map['label'] = Variable<String>(label.value);
+    }
+    if (confidence.present) {
+      map['confidence'] = Variable<double>(confidence.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PhotoLabelsCompanion(')
+          ..write('id: $id, ')
+          ..write('assetId: $assetId, ')
+          ..write('label: $label, ')
+          ..write('confidence: $confidence')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PhotoTextsTable extends PhotoTexts
+    with TableInfo<$PhotoTextsTable, PhotoText> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PhotoTextsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _assetIdMeta = const VerificationMeta(
+    'assetId',
+  );
+  @override
+  late final GeneratedColumn<String> assetId = GeneratedColumn<String>(
+    'asset_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES photo_assets (asset_id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _contentMeta = const VerificationMeta(
+    'content',
+  );
+  @override
+  late final GeneratedColumn<String> content = GeneratedColumn<String>(
+    'content',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [assetId, content];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'photo_texts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PhotoText> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('asset_id')) {
+      context.handle(
+        _assetIdMeta,
+        assetId.isAcceptableOrUnknown(data['asset_id']!, _assetIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_assetIdMeta);
+    }
+    if (data.containsKey('content')) {
+      context.handle(
+        _contentMeta,
+        content.isAcceptableOrUnknown(data['content']!, _contentMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_contentMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {assetId};
+  @override
+  PhotoText map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PhotoText(
+      assetId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}asset_id'],
+      )!,
+      content: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content'],
+      )!,
+    );
+  }
+
+  @override
+  $PhotoTextsTable createAlias(String alias) {
+    return $PhotoTextsTable(attachedDatabase, alias);
+  }
+}
+
+class PhotoText extends DataClass implements Insertable<PhotoText> {
+  /// `photo_manager` asset id; cascades from [PhotoAssets].
+  final String assetId;
+
+  /// The recognized text, newlines collapsed to spaces. Named `content` (not
+  /// `text`) — a drift column can't reuse the `text()` builder name.
+  final String content;
+  const PhotoText({required this.assetId, required this.content});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['asset_id'] = Variable<String>(assetId);
+    map['content'] = Variable<String>(content);
+    return map;
+  }
+
+  PhotoTextsCompanion toCompanion(bool nullToAbsent) {
+    return PhotoTextsCompanion(
+      assetId: Value(assetId),
+      content: Value(content),
+    );
+  }
+
+  factory PhotoText.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PhotoText(
+      assetId: serializer.fromJson<String>(json['assetId']),
+      content: serializer.fromJson<String>(json['content']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'assetId': serializer.toJson<String>(assetId),
+      'content': serializer.toJson<String>(content),
+    };
+  }
+
+  PhotoText copyWith({String? assetId, String? content}) => PhotoText(
+    assetId: assetId ?? this.assetId,
+    content: content ?? this.content,
+  );
+  PhotoText copyWithCompanion(PhotoTextsCompanion data) {
+    return PhotoText(
+      assetId: data.assetId.present ? data.assetId.value : this.assetId,
+      content: data.content.present ? data.content.value : this.content,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PhotoText(')
+          ..write('assetId: $assetId, ')
+          ..write('content: $content')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(assetId, content);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PhotoText &&
+          other.assetId == this.assetId &&
+          other.content == this.content);
+}
+
+class PhotoTextsCompanion extends UpdateCompanion<PhotoText> {
+  final Value<String> assetId;
+  final Value<String> content;
+  final Value<int> rowid;
+  const PhotoTextsCompanion({
+    this.assetId = const Value.absent(),
+    this.content = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PhotoTextsCompanion.insert({
+    required String assetId,
+    required String content,
+    this.rowid = const Value.absent(),
+  }) : assetId = Value(assetId),
+       content = Value(content);
+  static Insertable<PhotoText> custom({
+    Expression<String>? assetId,
+    Expression<String>? content,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (assetId != null) 'asset_id': assetId,
+      if (content != null) 'content': content,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PhotoTextsCompanion copyWith({
+    Value<String>? assetId,
+    Value<String>? content,
+    Value<int>? rowid,
+  }) {
+    return PhotoTextsCompanion(
+      assetId: assetId ?? this.assetId,
+      content: content ?? this.content,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (assetId.present) {
+      map['asset_id'] = Variable<String>(assetId.value);
+    }
+    if (content.present) {
+      map['content'] = Variable<String>(content.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PhotoTextsCompanion(')
+          ..write('assetId: $assetId, ')
+          ..write('content: $content, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PersonsTable extends Persons with TableInfo<$PersonsTable, Person> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PersonsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _displayNameMeta = const VerificationMeta(
+    'displayName',
+  );
+  @override
+  late final GeneratedColumn<String> displayName = GeneratedColumn<String>(
+    'display_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _coverAssetIdMeta = const VerificationMeta(
+    'coverAssetId',
+  );
+  @override
+  late final GeneratedColumn<String> coverAssetId = GeneratedColumn<String>(
+    'cover_asset_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    displayName,
+    coverAssetId,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'persons';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Person> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('display_name')) {
+      context.handle(
+        _displayNameMeta,
+        displayName.isAcceptableOrUnknown(
+          data['display_name']!,
+          _displayNameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('cover_asset_id')) {
+      context.handle(
+        _coverAssetIdMeta,
+        coverAssetId.isAcceptableOrUnknown(
+          data['cover_asset_id']!,
+          _coverAssetIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Person map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Person(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      displayName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}display_name'],
+      ),
+      coverAssetId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}cover_asset_id'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $PersonsTable createAlias(String alias) {
+    return $PersonsTable(attachedDatabase, alias);
+  }
+}
+
+class Person extends DataClass implements Insertable<Person> {
+  final int id;
+  final String? displayName;
+
+  /// A `photo_manager` asset id used for the person's cover/avatar.
+  final String? coverAssetId;
+  final DateTime createdAt;
+  const Person({
+    required this.id,
+    this.displayName,
+    this.coverAssetId,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    if (!nullToAbsent || displayName != null) {
+      map['display_name'] = Variable<String>(displayName);
+    }
+    if (!nullToAbsent || coverAssetId != null) {
+      map['cover_asset_id'] = Variable<String>(coverAssetId);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  PersonsCompanion toCompanion(bool nullToAbsent) {
+    return PersonsCompanion(
+      id: Value(id),
+      displayName: displayName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(displayName),
+      coverAssetId: coverAssetId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(coverAssetId),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory Person.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Person(
+      id: serializer.fromJson<int>(json['id']),
+      displayName: serializer.fromJson<String?>(json['displayName']),
+      coverAssetId: serializer.fromJson<String?>(json['coverAssetId']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'displayName': serializer.toJson<String?>(displayName),
+      'coverAssetId': serializer.toJson<String?>(coverAssetId),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  Person copyWith({
+    int? id,
+    Value<String?> displayName = const Value.absent(),
+    Value<String?> coverAssetId = const Value.absent(),
+    DateTime? createdAt,
+  }) => Person(
+    id: id ?? this.id,
+    displayName: displayName.present ? displayName.value : this.displayName,
+    coverAssetId: coverAssetId.present ? coverAssetId.value : this.coverAssetId,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  Person copyWithCompanion(PersonsCompanion data) {
+    return Person(
+      id: data.id.present ? data.id.value : this.id,
+      displayName: data.displayName.present
+          ? data.displayName.value
+          : this.displayName,
+      coverAssetId: data.coverAssetId.present
+          ? data.coverAssetId.value
+          : this.coverAssetId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Person(')
+          ..write('id: $id, ')
+          ..write('displayName: $displayName, ')
+          ..write('coverAssetId: $coverAssetId, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, displayName, coverAssetId, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Person &&
+          other.id == this.id &&
+          other.displayName == this.displayName &&
+          other.coverAssetId == this.coverAssetId &&
+          other.createdAt == this.createdAt);
+}
+
+class PersonsCompanion extends UpdateCompanion<Person> {
+  final Value<int> id;
+  final Value<String?> displayName;
+  final Value<String?> coverAssetId;
+  final Value<DateTime> createdAt;
+  const PersonsCompanion({
+    this.id = const Value.absent(),
+    this.displayName = const Value.absent(),
+    this.coverAssetId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  PersonsCompanion.insert({
+    this.id = const Value.absent(),
+    this.displayName = const Value.absent(),
+    this.coverAssetId = const Value.absent(),
+    required DateTime createdAt,
+  }) : createdAt = Value(createdAt);
+  static Insertable<Person> custom({
+    Expression<int>? id,
+    Expression<String>? displayName,
+    Expression<String>? coverAssetId,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (displayName != null) 'display_name': displayName,
+      if (coverAssetId != null) 'cover_asset_id': coverAssetId,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  PersonsCompanion copyWith({
+    Value<int>? id,
+    Value<String?>? displayName,
+    Value<String?>? coverAssetId,
+    Value<DateTime>? createdAt,
+  }) {
+    return PersonsCompanion(
+      id: id ?? this.id,
+      displayName: displayName ?? this.displayName,
+      coverAssetId: coverAssetId ?? this.coverAssetId,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (displayName.present) {
+      map['display_name'] = Variable<String>(displayName.value);
+    }
+    if (coverAssetId.present) {
+      map['cover_asset_id'] = Variable<String>(coverAssetId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PersonsCompanion(')
+          ..write('id: $id, ')
+          ..write('displayName: $displayName, ')
+          ..write('coverAssetId: $coverAssetId, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $FaceEmbeddingsTable extends FaceEmbeddings
+    with TableInfo<$FaceEmbeddingsTable, FaceEmbedding> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $FaceEmbeddingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _assetIdMeta = const VerificationMeta(
+    'assetId',
+  );
+  @override
+  late final GeneratedColumn<String> assetId = GeneratedColumn<String>(
+    'asset_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES photo_assets (asset_id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _personIdMeta = const VerificationMeta(
+    'personId',
+  );
+  @override
+  late final GeneratedColumn<int> personId = GeneratedColumn<int>(
+    'person_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES persons (id) ON DELETE SET NULL',
+    ),
+  );
+  static const VerificationMeta _embeddingMeta = const VerificationMeta(
+    'embedding',
+  );
+  @override
+  late final GeneratedColumn<Uint8List> embedding = GeneratedColumn<Uint8List>(
+    'embedding',
+    aliasedName,
+    false,
+    type: DriftSqlType.blob,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _leftMeta = const VerificationMeta('left');
+  @override
+  late final GeneratedColumn<int> left = GeneratedColumn<int>(
+    'left',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _topMeta = const VerificationMeta('top');
+  @override
+  late final GeneratedColumn<int> top = GeneratedColumn<int>(
+    'top',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _rightMeta = const VerificationMeta('right');
+  @override
+  late final GeneratedColumn<int> right = GeneratedColumn<int>(
+    'right',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _bottomMeta = const VerificationMeta('bottom');
+  @override
+  late final GeneratedColumn<int> bottom = GeneratedColumn<int>(
+    'bottom',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    assetId,
+    personId,
+    embedding,
+    left,
+    top,
+    right,
+    bottom,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'face_embeddings';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<FaceEmbedding> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('asset_id')) {
+      context.handle(
+        _assetIdMeta,
+        assetId.isAcceptableOrUnknown(data['asset_id']!, _assetIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_assetIdMeta);
+    }
+    if (data.containsKey('person_id')) {
+      context.handle(
+        _personIdMeta,
+        personId.isAcceptableOrUnknown(data['person_id']!, _personIdMeta),
+      );
+    }
+    if (data.containsKey('embedding')) {
+      context.handle(
+        _embeddingMeta,
+        embedding.isAcceptableOrUnknown(data['embedding']!, _embeddingMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_embeddingMeta);
+    }
+    if (data.containsKey('left')) {
+      context.handle(
+        _leftMeta,
+        left.isAcceptableOrUnknown(data['left']!, _leftMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_leftMeta);
+    }
+    if (data.containsKey('top')) {
+      context.handle(
+        _topMeta,
+        top.isAcceptableOrUnknown(data['top']!, _topMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_topMeta);
+    }
+    if (data.containsKey('right')) {
+      context.handle(
+        _rightMeta,
+        right.isAcceptableOrUnknown(data['right']!, _rightMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_rightMeta);
+    }
+    if (data.containsKey('bottom')) {
+      context.handle(
+        _bottomMeta,
+        bottom.isAcceptableOrUnknown(data['bottom']!, _bottomMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_bottomMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  FaceEmbedding map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return FaceEmbedding(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      assetId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}asset_id'],
+      )!,
+      personId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}person_id'],
+      ),
+      embedding: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}embedding'],
+      )!,
+      left: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}left'],
+      )!,
+      top: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}top'],
+      )!,
+      right: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}right'],
+      )!,
+      bottom: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}bottom'],
+      )!,
+    );
+  }
+
+  @override
+  $FaceEmbeddingsTable createAlias(String alias) {
+    return $FaceEmbeddingsTable(attachedDatabase, alias);
+  }
+}
+
+class FaceEmbedding extends DataClass implements Insertable<FaceEmbedding> {
+  final int id;
+
+  /// `photo_manager` asset id; cascades from [PhotoAssets].
+  final String assetId;
+  final int? personId;
+
+  /// The face-embedding vector, `Float32List` bytes (little-endian).
+  final Uint8List embedding;
+  final int left;
+  final int top;
+  final int right;
+  final int bottom;
+  const FaceEmbedding({
+    required this.id,
+    required this.assetId,
+    this.personId,
+    required this.embedding,
+    required this.left,
+    required this.top,
+    required this.right,
+    required this.bottom,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['asset_id'] = Variable<String>(assetId);
+    if (!nullToAbsent || personId != null) {
+      map['person_id'] = Variable<int>(personId);
+    }
+    map['embedding'] = Variable<Uint8List>(embedding);
+    map['left'] = Variable<int>(left);
+    map['top'] = Variable<int>(top);
+    map['right'] = Variable<int>(right);
+    map['bottom'] = Variable<int>(bottom);
+    return map;
+  }
+
+  FaceEmbeddingsCompanion toCompanion(bool nullToAbsent) {
+    return FaceEmbeddingsCompanion(
+      id: Value(id),
+      assetId: Value(assetId),
+      personId: personId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(personId),
+      embedding: Value(embedding),
+      left: Value(left),
+      top: Value(top),
+      right: Value(right),
+      bottom: Value(bottom),
+    );
+  }
+
+  factory FaceEmbedding.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return FaceEmbedding(
+      id: serializer.fromJson<int>(json['id']),
+      assetId: serializer.fromJson<String>(json['assetId']),
+      personId: serializer.fromJson<int?>(json['personId']),
+      embedding: serializer.fromJson<Uint8List>(json['embedding']),
+      left: serializer.fromJson<int>(json['left']),
+      top: serializer.fromJson<int>(json['top']),
+      right: serializer.fromJson<int>(json['right']),
+      bottom: serializer.fromJson<int>(json['bottom']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'assetId': serializer.toJson<String>(assetId),
+      'personId': serializer.toJson<int?>(personId),
+      'embedding': serializer.toJson<Uint8List>(embedding),
+      'left': serializer.toJson<int>(left),
+      'top': serializer.toJson<int>(top),
+      'right': serializer.toJson<int>(right),
+      'bottom': serializer.toJson<int>(bottom),
+    };
+  }
+
+  FaceEmbedding copyWith({
+    int? id,
+    String? assetId,
+    Value<int?> personId = const Value.absent(),
+    Uint8List? embedding,
+    int? left,
+    int? top,
+    int? right,
+    int? bottom,
+  }) => FaceEmbedding(
+    id: id ?? this.id,
+    assetId: assetId ?? this.assetId,
+    personId: personId.present ? personId.value : this.personId,
+    embedding: embedding ?? this.embedding,
+    left: left ?? this.left,
+    top: top ?? this.top,
+    right: right ?? this.right,
+    bottom: bottom ?? this.bottom,
+  );
+  FaceEmbedding copyWithCompanion(FaceEmbeddingsCompanion data) {
+    return FaceEmbedding(
+      id: data.id.present ? data.id.value : this.id,
+      assetId: data.assetId.present ? data.assetId.value : this.assetId,
+      personId: data.personId.present ? data.personId.value : this.personId,
+      embedding: data.embedding.present ? data.embedding.value : this.embedding,
+      left: data.left.present ? data.left.value : this.left,
+      top: data.top.present ? data.top.value : this.top,
+      right: data.right.present ? data.right.value : this.right,
+      bottom: data.bottom.present ? data.bottom.value : this.bottom,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FaceEmbedding(')
+          ..write('id: $id, ')
+          ..write('assetId: $assetId, ')
+          ..write('personId: $personId, ')
+          ..write('embedding: $embedding, ')
+          ..write('left: $left, ')
+          ..write('top: $top, ')
+          ..write('right: $right, ')
+          ..write('bottom: $bottom')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    assetId,
+    personId,
+    $driftBlobEquality.hash(embedding),
+    left,
+    top,
+    right,
+    bottom,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is FaceEmbedding &&
+          other.id == this.id &&
+          other.assetId == this.assetId &&
+          other.personId == this.personId &&
+          $driftBlobEquality.equals(other.embedding, this.embedding) &&
+          other.left == this.left &&
+          other.top == this.top &&
+          other.right == this.right &&
+          other.bottom == this.bottom);
+}
+
+class FaceEmbeddingsCompanion extends UpdateCompanion<FaceEmbedding> {
+  final Value<int> id;
+  final Value<String> assetId;
+  final Value<int?> personId;
+  final Value<Uint8List> embedding;
+  final Value<int> left;
+  final Value<int> top;
+  final Value<int> right;
+  final Value<int> bottom;
+  const FaceEmbeddingsCompanion({
+    this.id = const Value.absent(),
+    this.assetId = const Value.absent(),
+    this.personId = const Value.absent(),
+    this.embedding = const Value.absent(),
+    this.left = const Value.absent(),
+    this.top = const Value.absent(),
+    this.right = const Value.absent(),
+    this.bottom = const Value.absent(),
+  });
+  FaceEmbeddingsCompanion.insert({
+    this.id = const Value.absent(),
+    required String assetId,
+    this.personId = const Value.absent(),
+    required Uint8List embedding,
+    required int left,
+    required int top,
+    required int right,
+    required int bottom,
+  }) : assetId = Value(assetId),
+       embedding = Value(embedding),
+       left = Value(left),
+       top = Value(top),
+       right = Value(right),
+       bottom = Value(bottom);
+  static Insertable<FaceEmbedding> custom({
+    Expression<int>? id,
+    Expression<String>? assetId,
+    Expression<int>? personId,
+    Expression<Uint8List>? embedding,
+    Expression<int>? left,
+    Expression<int>? top,
+    Expression<int>? right,
+    Expression<int>? bottom,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (assetId != null) 'asset_id': assetId,
+      if (personId != null) 'person_id': personId,
+      if (embedding != null) 'embedding': embedding,
+      if (left != null) 'left': left,
+      if (top != null) 'top': top,
+      if (right != null) 'right': right,
+      if (bottom != null) 'bottom': bottom,
+    });
+  }
+
+  FaceEmbeddingsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? assetId,
+    Value<int?>? personId,
+    Value<Uint8List>? embedding,
+    Value<int>? left,
+    Value<int>? top,
+    Value<int>? right,
+    Value<int>? bottom,
+  }) {
+    return FaceEmbeddingsCompanion(
+      id: id ?? this.id,
+      assetId: assetId ?? this.assetId,
+      personId: personId ?? this.personId,
+      embedding: embedding ?? this.embedding,
+      left: left ?? this.left,
+      top: top ?? this.top,
+      right: right ?? this.right,
+      bottom: bottom ?? this.bottom,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (assetId.present) {
+      map['asset_id'] = Variable<String>(assetId.value);
+    }
+    if (personId.present) {
+      map['person_id'] = Variable<int>(personId.value);
+    }
+    if (embedding.present) {
+      map['embedding'] = Variable<Uint8List>(embedding.value);
+    }
+    if (left.present) {
+      map['left'] = Variable<int>(left.value);
+    }
+    if (top.present) {
+      map['top'] = Variable<int>(top.value);
+    }
+    if (right.present) {
+      map['right'] = Variable<int>(right.value);
+    }
+    if (bottom.present) {
+      map['bottom'] = Variable<int>(bottom.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FaceEmbeddingsCompanion(')
+          ..write('id: $id, ')
+          ..write('assetId: $assetId, ')
+          ..write('personId: $personId, ')
+          ..write('embedding: $embedding, ')
+          ..write('left: $left, ')
+          ..write('top: $top, ')
+          ..write('right: $right, ')
+          ..write('bottom: $bottom')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -1180,11 +2956,34 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $EditInstructionsTable editInstructions = $EditInstructionsTable(
     this,
   );
+  late final $PhotoAssetsTable photoAssets = $PhotoAssetsTable(this);
+  late final $PhotoLabelsTable photoLabels = $PhotoLabelsTable(this);
+  late final $PhotoTextsTable photoTexts = $PhotoTextsTable(this);
+  late final $PersonsTable persons = $PersonsTable(this);
+  late final $FaceEmbeddingsTable faceEmbeddings = $FaceEmbeddingsTable(this);
+  late final Index photoLabelAsset = Index(
+    'photo_label_asset',
+    'CREATE INDEX photo_label_asset ON photo_labels (asset_id)',
+  );
+  late final Index photoLabelLabel = Index(
+    'photo_label_label',
+    'CREATE INDEX photo_label_label ON photo_labels (label)',
+  );
+  late final Index faceAsset = Index(
+    'face_asset',
+    'CREATE INDEX face_asset ON face_embeddings (asset_id)',
+  );
+  late final Index facePerson = Index(
+    'face_person',
+    'CREATE INDEX face_person ON face_embeddings (person_id)',
+  );
   late final FavoritesDao favoritesDao = FavoritesDao(this as AppDatabase);
   late final AlbumsDao albumsDao = AlbumsDao(this as AppDatabase);
   late final EditInstructionsDao editInstructionsDao = EditInstructionsDao(
     this as AppDatabase,
   );
+  late final IndexDao indexDao = IndexDao(this as AppDatabase);
+  late final FacesDao facesDao = FacesDao(this as AppDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1194,6 +2993,15 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     albums,
     albumEntries,
     editInstructions,
+    photoAssets,
+    photoLabels,
+    photoTexts,
+    persons,
+    faceEmbeddings,
+    photoLabelAsset,
+    photoLabelLabel,
+    faceAsset,
+    facePerson,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -1203,6 +3011,34 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('album_entries', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'photo_assets',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('photo_labels', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'photo_assets',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('photo_texts', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'photo_assets',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('face_embeddings', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'persons',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('face_embeddings', kind: UpdateKind.update)],
     ),
   ]);
 }
@@ -2098,6 +3934,1819 @@ typedef $$EditInstructionsTableProcessedTableManager =
       EditInstruction,
       PrefetchHooks Function()
     >;
+typedef $$PhotoAssetsTableCreateCompanionBuilder =
+    PhotoAssetsCompanion Function({
+      required String assetId,
+      required DateTime createdAt,
+      required bool isVideo,
+      required int width,
+      required int height,
+      required DateTime indexedAt,
+      Value<int> rowid,
+    });
+typedef $$PhotoAssetsTableUpdateCompanionBuilder =
+    PhotoAssetsCompanion Function({
+      Value<String> assetId,
+      Value<DateTime> createdAt,
+      Value<bool> isVideo,
+      Value<int> width,
+      Value<int> height,
+      Value<DateTime> indexedAt,
+      Value<int> rowid,
+    });
+
+final class $$PhotoAssetsTableReferences
+    extends BaseReferences<_$AppDatabase, $PhotoAssetsTable, PhotoAsset> {
+  $$PhotoAssetsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$PhotoLabelsTable, List<PhotoLabel>>
+  _photoLabelsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.photoLabels,
+    aliasName: 'photo_assets__asset_id__photo_labels__asset_id',
+  );
+
+  $$PhotoLabelsTableProcessedTableManager get photoLabelsRefs {
+    final manager = $$PhotoLabelsTableTableManager($_db, $_db.photoLabels)
+        .filter(
+          (f) => f.assetId.assetId.sqlEquals($_itemColumn<String>('asset_id')!),
+        );
+
+    final cache = $_typedResult.readTableOrNull(_photoLabelsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$PhotoTextsTable, List<PhotoText>>
+  _photoTextsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.photoTexts,
+    aliasName: 'photo_assets__asset_id__photo_texts__asset_id',
+  );
+
+  $$PhotoTextsTableProcessedTableManager get photoTextsRefs {
+    final manager = $$PhotoTextsTableTableManager($_db, $_db.photoTexts).filter(
+      (f) => f.assetId.assetId.sqlEquals($_itemColumn<String>('asset_id')!),
+    );
+
+    final cache = $_typedResult.readTableOrNull(_photoTextsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$FaceEmbeddingsTable, List<FaceEmbedding>>
+  _faceEmbeddingsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.faceEmbeddings,
+    aliasName: 'photo_assets__asset_id__face_embeddings__asset_id',
+  );
+
+  $$FaceEmbeddingsTableProcessedTableManager get faceEmbeddingsRefs {
+    final manager = $$FaceEmbeddingsTableTableManager($_db, $_db.faceEmbeddings)
+        .filter(
+          (f) => f.assetId.assetId.sqlEquals($_itemColumn<String>('asset_id')!),
+        );
+
+    final cache = $_typedResult.readTableOrNull(_faceEmbeddingsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$PhotoAssetsTableFilterComposer
+    extends Composer<_$AppDatabase, $PhotoAssetsTable> {
+  $$PhotoAssetsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get assetId => $composableBuilder(
+    column: $table.assetId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isVideo => $composableBuilder(
+    column: $table.isVideo,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get width => $composableBuilder(
+    column: $table.width,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get height => $composableBuilder(
+    column: $table.height,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get indexedAt => $composableBuilder(
+    column: $table.indexedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> photoLabelsRefs(
+    Expression<bool> Function($$PhotoLabelsTableFilterComposer f) f,
+  ) {
+    final $$PhotoLabelsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.photoLabels,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PhotoLabelsTableFilterComposer(
+            $db: $db,
+            $table: $db.photoLabels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> photoTextsRefs(
+    Expression<bool> Function($$PhotoTextsTableFilterComposer f) f,
+  ) {
+    final $$PhotoTextsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.photoTexts,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PhotoTextsTableFilterComposer(
+            $db: $db,
+            $table: $db.photoTexts,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> faceEmbeddingsRefs(
+    Expression<bool> Function($$FaceEmbeddingsTableFilterComposer f) f,
+  ) {
+    final $$FaceEmbeddingsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.faceEmbeddings,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FaceEmbeddingsTableFilterComposer(
+            $db: $db,
+            $table: $db.faceEmbeddings,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$PhotoAssetsTableOrderingComposer
+    extends Composer<_$AppDatabase, $PhotoAssetsTable> {
+  $$PhotoAssetsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get assetId => $composableBuilder(
+    column: $table.assetId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isVideo => $composableBuilder(
+    column: $table.isVideo,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get width => $composableBuilder(
+    column: $table.width,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get height => $composableBuilder(
+    column: $table.height,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get indexedAt => $composableBuilder(
+    column: $table.indexedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PhotoAssetsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PhotoAssetsTable> {
+  $$PhotoAssetsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get assetId =>
+      $composableBuilder(column: $table.assetId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isVideo =>
+      $composableBuilder(column: $table.isVideo, builder: (column) => column);
+
+  GeneratedColumn<int> get width =>
+      $composableBuilder(column: $table.width, builder: (column) => column);
+
+  GeneratedColumn<int> get height =>
+      $composableBuilder(column: $table.height, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get indexedAt =>
+      $composableBuilder(column: $table.indexedAt, builder: (column) => column);
+
+  Expression<T> photoLabelsRefs<T extends Object>(
+    Expression<T> Function($$PhotoLabelsTableAnnotationComposer a) f,
+  ) {
+    final $$PhotoLabelsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.photoLabels,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PhotoLabelsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.photoLabels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> photoTextsRefs<T extends Object>(
+    Expression<T> Function($$PhotoTextsTableAnnotationComposer a) f,
+  ) {
+    final $$PhotoTextsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.photoTexts,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PhotoTextsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.photoTexts,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> faceEmbeddingsRefs<T extends Object>(
+    Expression<T> Function($$FaceEmbeddingsTableAnnotationComposer a) f,
+  ) {
+    final $$FaceEmbeddingsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.faceEmbeddings,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FaceEmbeddingsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.faceEmbeddings,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$PhotoAssetsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PhotoAssetsTable,
+          PhotoAsset,
+          $$PhotoAssetsTableFilterComposer,
+          $$PhotoAssetsTableOrderingComposer,
+          $$PhotoAssetsTableAnnotationComposer,
+          $$PhotoAssetsTableCreateCompanionBuilder,
+          $$PhotoAssetsTableUpdateCompanionBuilder,
+          (PhotoAsset, $$PhotoAssetsTableReferences),
+          PhotoAsset,
+          PrefetchHooks Function({
+            bool photoLabelsRefs,
+            bool photoTextsRefs,
+            bool faceEmbeddingsRefs,
+          })
+        > {
+  $$PhotoAssetsTableTableManager(_$AppDatabase db, $PhotoAssetsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PhotoAssetsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PhotoAssetsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PhotoAssetsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> assetId = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<bool> isVideo = const Value.absent(),
+                Value<int> width = const Value.absent(),
+                Value<int> height = const Value.absent(),
+                Value<DateTime> indexedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PhotoAssetsCompanion(
+                assetId: assetId,
+                createdAt: createdAt,
+                isVideo: isVideo,
+                width: width,
+                height: height,
+                indexedAt: indexedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String assetId,
+                required DateTime createdAt,
+                required bool isVideo,
+                required int width,
+                required int height,
+                required DateTime indexedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => PhotoAssetsCompanion.insert(
+                assetId: assetId,
+                createdAt: createdAt,
+                isVideo: isVideo,
+                width: width,
+                height: height,
+                indexedAt: indexedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$PhotoAssetsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({
+                photoLabelsRefs = false,
+                photoTextsRefs = false,
+                faceEmbeddingsRefs = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (photoLabelsRefs) db.photoLabels,
+                    if (photoTextsRefs) db.photoTexts,
+                    if (faceEmbeddingsRefs) db.faceEmbeddings,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (photoLabelsRefs)
+                        await $_getPrefetchedData<
+                          PhotoAsset,
+                          $PhotoAssetsTable,
+                          PhotoLabel
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PhotoAssetsTableReferences
+                              ._photoLabelsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PhotoAssetsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).photoLabelsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.assetId == item.assetId,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (photoTextsRefs)
+                        await $_getPrefetchedData<
+                          PhotoAsset,
+                          $PhotoAssetsTable,
+                          PhotoText
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PhotoAssetsTableReferences
+                              ._photoTextsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PhotoAssetsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).photoTextsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.assetId == item.assetId,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (faceEmbeddingsRefs)
+                        await $_getPrefetchedData<
+                          PhotoAsset,
+                          $PhotoAssetsTable,
+                          FaceEmbedding
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PhotoAssetsTableReferences
+                              ._faceEmbeddingsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PhotoAssetsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).faceEmbeddingsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.assetId == item.assetId,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$PhotoAssetsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PhotoAssetsTable,
+      PhotoAsset,
+      $$PhotoAssetsTableFilterComposer,
+      $$PhotoAssetsTableOrderingComposer,
+      $$PhotoAssetsTableAnnotationComposer,
+      $$PhotoAssetsTableCreateCompanionBuilder,
+      $$PhotoAssetsTableUpdateCompanionBuilder,
+      (PhotoAsset, $$PhotoAssetsTableReferences),
+      PhotoAsset,
+      PrefetchHooks Function({
+        bool photoLabelsRefs,
+        bool photoTextsRefs,
+        bool faceEmbeddingsRefs,
+      })
+    >;
+typedef $$PhotoLabelsTableCreateCompanionBuilder =
+    PhotoLabelsCompanion Function({
+      Value<int> id,
+      required String assetId,
+      required String label,
+      required double confidence,
+    });
+typedef $$PhotoLabelsTableUpdateCompanionBuilder =
+    PhotoLabelsCompanion Function({
+      Value<int> id,
+      Value<String> assetId,
+      Value<String> label,
+      Value<double> confidence,
+    });
+
+final class $$PhotoLabelsTableReferences
+    extends BaseReferences<_$AppDatabase, $PhotoLabelsTable, PhotoLabel> {
+  $$PhotoLabelsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $PhotoAssetsTable _assetIdTable(_$AppDatabase db) => db.photoAssets
+      .createAlias('photo_labels__asset_id__photo_assets__asset_id');
+
+  $$PhotoAssetsTableProcessedTableManager get assetId {
+    final $_column = $_itemColumn<String>('asset_id')!;
+
+    final manager = $$PhotoAssetsTableTableManager(
+      $_db,
+      $_db.photoAssets,
+    ).filter((f) => f.assetId.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_assetIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$PhotoLabelsTableFilterComposer
+    extends Composer<_$AppDatabase, $PhotoLabelsTable> {
+  $$PhotoLabelsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get confidence => $composableBuilder(
+    column: $table.confidence,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$PhotoAssetsTableFilterComposer get assetId {
+    final $$PhotoAssetsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.photoAssets,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PhotoAssetsTableFilterComposer(
+            $db: $db,
+            $table: $db.photoAssets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PhotoLabelsTableOrderingComposer
+    extends Composer<_$AppDatabase, $PhotoLabelsTable> {
+  $$PhotoLabelsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get confidence => $composableBuilder(
+    column: $table.confidence,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$PhotoAssetsTableOrderingComposer get assetId {
+    final $$PhotoAssetsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.photoAssets,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PhotoAssetsTableOrderingComposer(
+            $db: $db,
+            $table: $db.photoAssets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PhotoLabelsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PhotoLabelsTable> {
+  $$PhotoLabelsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get label =>
+      $composableBuilder(column: $table.label, builder: (column) => column);
+
+  GeneratedColumn<double> get confidence => $composableBuilder(
+    column: $table.confidence,
+    builder: (column) => column,
+  );
+
+  $$PhotoAssetsTableAnnotationComposer get assetId {
+    final $$PhotoAssetsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.photoAssets,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PhotoAssetsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.photoAssets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PhotoLabelsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PhotoLabelsTable,
+          PhotoLabel,
+          $$PhotoLabelsTableFilterComposer,
+          $$PhotoLabelsTableOrderingComposer,
+          $$PhotoLabelsTableAnnotationComposer,
+          $$PhotoLabelsTableCreateCompanionBuilder,
+          $$PhotoLabelsTableUpdateCompanionBuilder,
+          (PhotoLabel, $$PhotoLabelsTableReferences),
+          PhotoLabel,
+          PrefetchHooks Function({bool assetId})
+        > {
+  $$PhotoLabelsTableTableManager(_$AppDatabase db, $PhotoLabelsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PhotoLabelsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PhotoLabelsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PhotoLabelsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> assetId = const Value.absent(),
+                Value<String> label = const Value.absent(),
+                Value<double> confidence = const Value.absent(),
+              }) => PhotoLabelsCompanion(
+                id: id,
+                assetId: assetId,
+                label: label,
+                confidence: confidence,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String assetId,
+                required String label,
+                required double confidence,
+              }) => PhotoLabelsCompanion.insert(
+                id: id,
+                assetId: assetId,
+                label: label,
+                confidence: confidence,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$PhotoLabelsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({assetId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (assetId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.assetId,
+                                referencedTable: $$PhotoLabelsTableReferences
+                                    ._assetIdTable(db),
+                                referencedColumn: $$PhotoLabelsTableReferences
+                                    ._assetIdTable(db)
+                                    .assetId,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$PhotoLabelsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PhotoLabelsTable,
+      PhotoLabel,
+      $$PhotoLabelsTableFilterComposer,
+      $$PhotoLabelsTableOrderingComposer,
+      $$PhotoLabelsTableAnnotationComposer,
+      $$PhotoLabelsTableCreateCompanionBuilder,
+      $$PhotoLabelsTableUpdateCompanionBuilder,
+      (PhotoLabel, $$PhotoLabelsTableReferences),
+      PhotoLabel,
+      PrefetchHooks Function({bool assetId})
+    >;
+typedef $$PhotoTextsTableCreateCompanionBuilder =
+    PhotoTextsCompanion Function({
+      required String assetId,
+      required String content,
+      Value<int> rowid,
+    });
+typedef $$PhotoTextsTableUpdateCompanionBuilder =
+    PhotoTextsCompanion Function({
+      Value<String> assetId,
+      Value<String> content,
+      Value<int> rowid,
+    });
+
+final class $$PhotoTextsTableReferences
+    extends BaseReferences<_$AppDatabase, $PhotoTextsTable, PhotoText> {
+  $$PhotoTextsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $PhotoAssetsTable _assetIdTable(_$AppDatabase db) => db.photoAssets
+      .createAlias('photo_texts__asset_id__photo_assets__asset_id');
+
+  $$PhotoAssetsTableProcessedTableManager get assetId {
+    final $_column = $_itemColumn<String>('asset_id')!;
+
+    final manager = $$PhotoAssetsTableTableManager(
+      $_db,
+      $_db.photoAssets,
+    ).filter((f) => f.assetId.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_assetIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$PhotoTextsTableFilterComposer
+    extends Composer<_$AppDatabase, $PhotoTextsTable> {
+  $$PhotoTextsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get content => $composableBuilder(
+    column: $table.content,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$PhotoAssetsTableFilterComposer get assetId {
+    final $$PhotoAssetsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.photoAssets,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PhotoAssetsTableFilterComposer(
+            $db: $db,
+            $table: $db.photoAssets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PhotoTextsTableOrderingComposer
+    extends Composer<_$AppDatabase, $PhotoTextsTable> {
+  $$PhotoTextsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get content => $composableBuilder(
+    column: $table.content,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$PhotoAssetsTableOrderingComposer get assetId {
+    final $$PhotoAssetsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.photoAssets,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PhotoAssetsTableOrderingComposer(
+            $db: $db,
+            $table: $db.photoAssets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PhotoTextsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PhotoTextsTable> {
+  $$PhotoTextsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get content =>
+      $composableBuilder(column: $table.content, builder: (column) => column);
+
+  $$PhotoAssetsTableAnnotationComposer get assetId {
+    final $$PhotoAssetsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.photoAssets,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PhotoAssetsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.photoAssets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PhotoTextsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PhotoTextsTable,
+          PhotoText,
+          $$PhotoTextsTableFilterComposer,
+          $$PhotoTextsTableOrderingComposer,
+          $$PhotoTextsTableAnnotationComposer,
+          $$PhotoTextsTableCreateCompanionBuilder,
+          $$PhotoTextsTableUpdateCompanionBuilder,
+          (PhotoText, $$PhotoTextsTableReferences),
+          PhotoText,
+          PrefetchHooks Function({bool assetId})
+        > {
+  $$PhotoTextsTableTableManager(_$AppDatabase db, $PhotoTextsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PhotoTextsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PhotoTextsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PhotoTextsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> assetId = const Value.absent(),
+                Value<String> content = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PhotoTextsCompanion(
+                assetId: assetId,
+                content: content,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String assetId,
+                required String content,
+                Value<int> rowid = const Value.absent(),
+              }) => PhotoTextsCompanion.insert(
+                assetId: assetId,
+                content: content,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$PhotoTextsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({assetId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (assetId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.assetId,
+                                referencedTable: $$PhotoTextsTableReferences
+                                    ._assetIdTable(db),
+                                referencedColumn: $$PhotoTextsTableReferences
+                                    ._assetIdTable(db)
+                                    .assetId,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$PhotoTextsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PhotoTextsTable,
+      PhotoText,
+      $$PhotoTextsTableFilterComposer,
+      $$PhotoTextsTableOrderingComposer,
+      $$PhotoTextsTableAnnotationComposer,
+      $$PhotoTextsTableCreateCompanionBuilder,
+      $$PhotoTextsTableUpdateCompanionBuilder,
+      (PhotoText, $$PhotoTextsTableReferences),
+      PhotoText,
+      PrefetchHooks Function({bool assetId})
+    >;
+typedef $$PersonsTableCreateCompanionBuilder =
+    PersonsCompanion Function({
+      Value<int> id,
+      Value<String?> displayName,
+      Value<String?> coverAssetId,
+      required DateTime createdAt,
+    });
+typedef $$PersonsTableUpdateCompanionBuilder =
+    PersonsCompanion Function({
+      Value<int> id,
+      Value<String?> displayName,
+      Value<String?> coverAssetId,
+      Value<DateTime> createdAt,
+    });
+
+final class $$PersonsTableReferences
+    extends BaseReferences<_$AppDatabase, $PersonsTable, Person> {
+  $$PersonsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$FaceEmbeddingsTable, List<FaceEmbedding>>
+  _faceEmbeddingsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.faceEmbeddings,
+    aliasName: 'persons__id__face_embeddings__person_id',
+  );
+
+  $$FaceEmbeddingsTableProcessedTableManager get faceEmbeddingsRefs {
+    final manager = $$FaceEmbeddingsTableTableManager(
+      $_db,
+      $_db.faceEmbeddings,
+    ).filter((f) => f.personId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_faceEmbeddingsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$PersonsTableFilterComposer
+    extends Composer<_$AppDatabase, $PersonsTable> {
+  $$PersonsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get coverAssetId => $composableBuilder(
+    column: $table.coverAssetId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> faceEmbeddingsRefs(
+    Expression<bool> Function($$FaceEmbeddingsTableFilterComposer f) f,
+  ) {
+    final $$FaceEmbeddingsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.faceEmbeddings,
+      getReferencedColumn: (t) => t.personId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FaceEmbeddingsTableFilterComposer(
+            $db: $db,
+            $table: $db.faceEmbeddings,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$PersonsTableOrderingComposer
+    extends Composer<_$AppDatabase, $PersonsTable> {
+  $$PersonsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get coverAssetId => $composableBuilder(
+    column: $table.coverAssetId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PersonsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PersonsTable> {
+  $$PersonsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get coverAssetId => $composableBuilder(
+    column: $table.coverAssetId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  Expression<T> faceEmbeddingsRefs<T extends Object>(
+    Expression<T> Function($$FaceEmbeddingsTableAnnotationComposer a) f,
+  ) {
+    final $$FaceEmbeddingsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.faceEmbeddings,
+      getReferencedColumn: (t) => t.personId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$FaceEmbeddingsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.faceEmbeddings,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$PersonsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PersonsTable,
+          Person,
+          $$PersonsTableFilterComposer,
+          $$PersonsTableOrderingComposer,
+          $$PersonsTableAnnotationComposer,
+          $$PersonsTableCreateCompanionBuilder,
+          $$PersonsTableUpdateCompanionBuilder,
+          (Person, $$PersonsTableReferences),
+          Person,
+          PrefetchHooks Function({bool faceEmbeddingsRefs})
+        > {
+  $$PersonsTableTableManager(_$AppDatabase db, $PersonsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PersonsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PersonsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PersonsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String?> displayName = const Value.absent(),
+                Value<String?> coverAssetId = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => PersonsCompanion(
+                id: id,
+                displayName: displayName,
+                coverAssetId: coverAssetId,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String?> displayName = const Value.absent(),
+                Value<String?> coverAssetId = const Value.absent(),
+                required DateTime createdAt,
+              }) => PersonsCompanion.insert(
+                id: id,
+                displayName: displayName,
+                coverAssetId: coverAssetId,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$PersonsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({faceEmbeddingsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (faceEmbeddingsRefs) db.faceEmbeddings,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (faceEmbeddingsRefs)
+                    await $_getPrefetchedData<
+                      Person,
+                      $PersonsTable,
+                      FaceEmbedding
+                    >(
+                      currentTable: table,
+                      referencedTable: $$PersonsTableReferences
+                          ._faceEmbeddingsRefsTable(db),
+                      managerFromTypedResult: (p0) => $$PersonsTableReferences(
+                        db,
+                        table,
+                        p0,
+                      ).faceEmbeddingsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.personId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$PersonsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PersonsTable,
+      Person,
+      $$PersonsTableFilterComposer,
+      $$PersonsTableOrderingComposer,
+      $$PersonsTableAnnotationComposer,
+      $$PersonsTableCreateCompanionBuilder,
+      $$PersonsTableUpdateCompanionBuilder,
+      (Person, $$PersonsTableReferences),
+      Person,
+      PrefetchHooks Function({bool faceEmbeddingsRefs})
+    >;
+typedef $$FaceEmbeddingsTableCreateCompanionBuilder =
+    FaceEmbeddingsCompanion Function({
+      Value<int> id,
+      required String assetId,
+      Value<int?> personId,
+      required Uint8List embedding,
+      required int left,
+      required int top,
+      required int right,
+      required int bottom,
+    });
+typedef $$FaceEmbeddingsTableUpdateCompanionBuilder =
+    FaceEmbeddingsCompanion Function({
+      Value<int> id,
+      Value<String> assetId,
+      Value<int?> personId,
+      Value<Uint8List> embedding,
+      Value<int> left,
+      Value<int> top,
+      Value<int> right,
+      Value<int> bottom,
+    });
+
+final class $$FaceEmbeddingsTableReferences
+    extends BaseReferences<_$AppDatabase, $FaceEmbeddingsTable, FaceEmbedding> {
+  $$FaceEmbeddingsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $PhotoAssetsTable _assetIdTable(_$AppDatabase db) => db.photoAssets
+      .createAlias('face_embeddings__asset_id__photo_assets__asset_id');
+
+  $$PhotoAssetsTableProcessedTableManager get assetId {
+    final $_column = $_itemColumn<String>('asset_id')!;
+
+    final manager = $$PhotoAssetsTableTableManager(
+      $_db,
+      $_db.photoAssets,
+    ).filter((f) => f.assetId.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_assetIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $PersonsTable _personIdTable(_$AppDatabase db) =>
+      db.persons.createAlias('face_embeddings__person_id__persons__id');
+
+  $$PersonsTableProcessedTableManager? get personId {
+    final $_column = $_itemColumn<int>('person_id');
+    if ($_column == null) return null;
+    final manager = $$PersonsTableTableManager(
+      $_db,
+      $_db.persons,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_personIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$FaceEmbeddingsTableFilterComposer
+    extends Composer<_$AppDatabase, $FaceEmbeddingsTable> {
+  $$FaceEmbeddingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get embedding => $composableBuilder(
+    column: $table.embedding,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get left => $composableBuilder(
+    column: $table.left,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get top => $composableBuilder(
+    column: $table.top,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get right => $composableBuilder(
+    column: $table.right,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get bottom => $composableBuilder(
+    column: $table.bottom,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$PhotoAssetsTableFilterComposer get assetId {
+    final $$PhotoAssetsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.photoAssets,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PhotoAssetsTableFilterComposer(
+            $db: $db,
+            $table: $db.photoAssets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$PersonsTableFilterComposer get personId {
+    final $$PersonsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.personId,
+      referencedTable: $db.persons,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PersonsTableFilterComposer(
+            $db: $db,
+            $table: $db.persons,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$FaceEmbeddingsTableOrderingComposer
+    extends Composer<_$AppDatabase, $FaceEmbeddingsTable> {
+  $$FaceEmbeddingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get embedding => $composableBuilder(
+    column: $table.embedding,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get left => $composableBuilder(
+    column: $table.left,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get top => $composableBuilder(
+    column: $table.top,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get right => $composableBuilder(
+    column: $table.right,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get bottom => $composableBuilder(
+    column: $table.bottom,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$PhotoAssetsTableOrderingComposer get assetId {
+    final $$PhotoAssetsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.photoAssets,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PhotoAssetsTableOrderingComposer(
+            $db: $db,
+            $table: $db.photoAssets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$PersonsTableOrderingComposer get personId {
+    final $$PersonsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.personId,
+      referencedTable: $db.persons,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PersonsTableOrderingComposer(
+            $db: $db,
+            $table: $db.persons,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$FaceEmbeddingsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $FaceEmbeddingsTable> {
+  $$FaceEmbeddingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<Uint8List> get embedding =>
+      $composableBuilder(column: $table.embedding, builder: (column) => column);
+
+  GeneratedColumn<int> get left =>
+      $composableBuilder(column: $table.left, builder: (column) => column);
+
+  GeneratedColumn<int> get top =>
+      $composableBuilder(column: $table.top, builder: (column) => column);
+
+  GeneratedColumn<int> get right =>
+      $composableBuilder(column: $table.right, builder: (column) => column);
+
+  GeneratedColumn<int> get bottom =>
+      $composableBuilder(column: $table.bottom, builder: (column) => column);
+
+  $$PhotoAssetsTableAnnotationComposer get assetId {
+    final $$PhotoAssetsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.photoAssets,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PhotoAssetsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.photoAssets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$PersonsTableAnnotationComposer get personId {
+    final $$PersonsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.personId,
+      referencedTable: $db.persons,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PersonsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.persons,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$FaceEmbeddingsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $FaceEmbeddingsTable,
+          FaceEmbedding,
+          $$FaceEmbeddingsTableFilterComposer,
+          $$FaceEmbeddingsTableOrderingComposer,
+          $$FaceEmbeddingsTableAnnotationComposer,
+          $$FaceEmbeddingsTableCreateCompanionBuilder,
+          $$FaceEmbeddingsTableUpdateCompanionBuilder,
+          (FaceEmbedding, $$FaceEmbeddingsTableReferences),
+          FaceEmbedding,
+          PrefetchHooks Function({bool assetId, bool personId})
+        > {
+  $$FaceEmbeddingsTableTableManager(
+    _$AppDatabase db,
+    $FaceEmbeddingsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$FaceEmbeddingsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$FaceEmbeddingsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$FaceEmbeddingsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> assetId = const Value.absent(),
+                Value<int?> personId = const Value.absent(),
+                Value<Uint8List> embedding = const Value.absent(),
+                Value<int> left = const Value.absent(),
+                Value<int> top = const Value.absent(),
+                Value<int> right = const Value.absent(),
+                Value<int> bottom = const Value.absent(),
+              }) => FaceEmbeddingsCompanion(
+                id: id,
+                assetId: assetId,
+                personId: personId,
+                embedding: embedding,
+                left: left,
+                top: top,
+                right: right,
+                bottom: bottom,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String assetId,
+                Value<int?> personId = const Value.absent(),
+                required Uint8List embedding,
+                required int left,
+                required int top,
+                required int right,
+                required int bottom,
+              }) => FaceEmbeddingsCompanion.insert(
+                id: id,
+                assetId: assetId,
+                personId: personId,
+                embedding: embedding,
+                left: left,
+                top: top,
+                right: right,
+                bottom: bottom,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$FaceEmbeddingsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({assetId = false, personId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (assetId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.assetId,
+                                referencedTable: $$FaceEmbeddingsTableReferences
+                                    ._assetIdTable(db),
+                                referencedColumn:
+                                    $$FaceEmbeddingsTableReferences
+                                        ._assetIdTable(db)
+                                        .assetId,
+                              )
+                              as T;
+                    }
+                    if (personId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.personId,
+                                referencedTable: $$FaceEmbeddingsTableReferences
+                                    ._personIdTable(db),
+                                referencedColumn:
+                                    $$FaceEmbeddingsTableReferences
+                                        ._personIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$FaceEmbeddingsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $FaceEmbeddingsTable,
+      FaceEmbedding,
+      $$FaceEmbeddingsTableFilterComposer,
+      $$FaceEmbeddingsTableOrderingComposer,
+      $$FaceEmbeddingsTableAnnotationComposer,
+      $$FaceEmbeddingsTableCreateCompanionBuilder,
+      $$FaceEmbeddingsTableUpdateCompanionBuilder,
+      (FaceEmbedding, $$FaceEmbeddingsTableReferences),
+      FaceEmbedding,
+      PrefetchHooks Function({bool assetId, bool personId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -2110,4 +5759,14 @@ class $AppDatabaseManager {
       $$AlbumEntriesTableTableManager(_db, _db.albumEntries);
   $$EditInstructionsTableTableManager get editInstructions =>
       $$EditInstructionsTableTableManager(_db, _db.editInstructions);
+  $$PhotoAssetsTableTableManager get photoAssets =>
+      $$PhotoAssetsTableTableManager(_db, _db.photoAssets);
+  $$PhotoLabelsTableTableManager get photoLabels =>
+      $$PhotoLabelsTableTableManager(_db, _db.photoLabels);
+  $$PhotoTextsTableTableManager get photoTexts =>
+      $$PhotoTextsTableTableManager(_db, _db.photoTexts);
+  $$PersonsTableTableManager get persons =>
+      $$PersonsTableTableManager(_db, _db.persons);
+  $$FaceEmbeddingsTableTableManager get faceEmbeddings =>
+      $$FaceEmbeddingsTableTableManager(_db, _db.faceEmbeddings);
 }

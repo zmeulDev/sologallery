@@ -16,6 +16,13 @@
          during playback) is left in place. -->
     <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+    <!-- google_mlkit_image_labeling pulls Play-Services / Firebase-IID
+         transitively, which inject a Firebase Cloud Messaging (push) permission
+         and receiver. The bundled labeling model runs fully on-device with no
+         network, so strip both to keep the release build network-free (Absolute
+         rules / Definition of Done #5). Re-verify the merged manifest after any
+         ML Kit dep bump. -->
+    <uses-permission android:name="com.google.android.c2dm.permission.RECEIVE" tools:node="remove" />
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
@@ -45,6 +52,12 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Strip the Firebase Cloud Messaging receiver pulled in transitively by
+             ML Kit (see the c2dm permission note above) — push messaging is
+             never used; on-device labeling needs no network component. -->
+        <receiver
+            android:name="com.google.firebase.iid.FirebaseInstanceIdReceiver"
+            tools:node="remove" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

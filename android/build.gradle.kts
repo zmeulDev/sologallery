@@ -18,20 +18,34 @@ subprojects {
 subprojects {
     project.evaluationDependsOn(":app")
 
-    // The active JDK is 21, so Kotlin defaults its jvmTarget to 21 while
-    // Flutter plugins (e.g. photo_manager) keep Java at 17 — Gradle rejects the
-    // mismatch ("Inconsistent JVM-target compatibility"). Pin such subprojects'
-    // Kotlin target to 17 to match the Java side. See CLAUDE.md Known gotchas.
+    // The active JDK is 21, so Kotlin defaults its jvmTarget to 21 while Flutter
+    // plugins keep Java lower — Gradle rejects the mismatch ("Inconsistent
+    // JVM-target compatibility"). But plugins disagree on which Java level they
+    // pin (photo_manager 17, google_mlkit_commons 11, google_mlkit_image_labeling
+    // 1.8), and their Java `compileOptions` are finalized by AGP (can't be raised
+    // from here). So instead of forcing a single Kotlin target, **match each
+    // module's Kotlin target to its own Java target**, read lazily at task
+    // configuration. See CLAUDE.md Known gotchas.
     //
-    // Skip modules that already pin *both* sides consistently at a lower level
-    // (e.g. `patrol` sets Java **and** Kotlin to 1.8): forcing only their Kotlin
-    // to 17 would *re-introduce* the mismatch. Their own config is left intact.
+    // `patrol` already pins both sides itself (1.8) and is left untouched.
     val selfConsistentModules = setOf("patrol")
     if (project.name !in selfConsistentModules) {
-        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-            compilerOptions {
-                jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-            }
+        project.plugins.withId("com.android.library") {
+            tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>()
+                .configureEach {
+                    val javaTarget = project.extensions
+                        .getByType(com.android.build.gradle.LibraryExtension::class.java)
+                        .compileOptions
+                        .targetCompatibility
+                    val kotlinTarget = when (javaTarget) {
+                        JavaVersion.VERSION_1_8 ->
+                            org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8
+                        JavaVersion.VERSION_11 ->
+                            org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
+                        else -> org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+                    }
+                    compilerOptions { jvmTarget.set(kotlinTarget) }
+                }
         }
     }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/database/daos/albums_dao.dart' show AlbumSummary;
+import '../../core/database/database_provider.dart';
 import '../../services/paged_assets_notifier.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
@@ -63,32 +64,47 @@ final searchAlbumsProvider = Provider.autoDispose<List<AlbumSummary>>((ref) {
   ];
 });
 
-/// The photo results grid: the library scoped by the parsed date window, the
-/// media-type facet, and (optionally) the favorites set, newest first.
+/// The photo results grid, newest first. Two sources depending on the query:
 ///
-/// Rebuilds whenever any facet changes (page resets to 0). When nothing is
-/// being searched on — no date, "all" media, favorites off — it yields an empty
-/// list so the screen shows its idle hint rather than the whole library.
+/// - **Content search** — non-empty text that isn't a date → matches on-device
+///   ML labels (`IndexDao.searchByLabel`), refined by the media-type and
+///   favorites facets in SQL. This is what makes "dog"/"beach" return photos.
+/// - **Metadata search** — a date query (windowed) and/or the media-type /
+///   favorites facets with no text → the `photo_manager` path from the previous
+///   slice.
+///
+/// Rebuilds whenever any facet changes (page resets to 0). Idle — empty text,
+/// "all" media, favorites off — yields an empty list so the screen shows its
+/// idle hint rather than the whole library.
 class SearchAssetsNotifier extends PagedAssetsNotifier {
   MediaTypeFilter _type = MediaTypeFilter.all;
   bool _favoritesOnly = false;
+  String _query = '';
   DateWindow? _window;
 
-  /// When favorites-only is active, the bounded, already-filtered result set
-  /// (favorites live in Drift, not a `photo_manager` path) — sliced per page.
+  /// True when the query is free text (not a date) — routed to label search.
+  bool _contentSearch = false;
+
+  /// When favorites-only is active on the metadata path, the bounded,
+  /// already-filtered result set (favorites live in Drift, not a `photo_manager`
+  /// path) — sliced per page.
   List<AssetRef>? _favoriteMatches;
 
   bool get _idle =>
-      _window == null && _type == MediaTypeFilter.all && !_favoritesOnly;
+      _query.isEmpty && _type == MediaTypeFilter.all && !_favoritesOnly;
 
   @override
   Future<List<AssetRef>> build() async {
     _type = ref.watch(searchTypeProvider);
     _favoritesOnly = ref.watch(searchFavoritesOnlyProvider);
-    _window = parseDateQuery(ref.watch(searchQueryProvider));
+    _query = ref.watch(searchQueryProvider).trim();
+    _window = parseDateQuery(_query);
+    _contentSearch = _query.isNotEmpty && _window == null;
     _favoriteMatches = null;
 
-    if (_favoritesOnly) {
+    // The favorites metadata path resolves the bounded set up front; content
+    // search filters favorites in SQL instead, so it skips this.
+    if (_favoritesOnly && !_contentSearch) {
       final favorites = await ref.watch(savedFavoritesProvider.future);
       _favoriteMatches =
           await ref.read(photoLibraryServiceProvider).resolveFavoriteMatches(
@@ -105,6 +121,16 @@ class SearchAssetsNotifier extends PagedAssetsNotifier {
   @override
   Future<List<AssetRef>> fetchPage(int page, int pageSize) {
     if (_idle) return Future.value(const []);
+
+    if (_contentSearch) {
+      return ref.read(indexDaoProvider).searchContent(
+            query: _query,
+            type: _type,
+            favoritesOnly: _favoritesOnly,
+            limit: pageSize,
+            offset: page * pageSize,
+          );
+    }
 
     if (_favoritesOnly) {
       final all = _favoriteMatches ?? const [];

@@ -337,20 +337,32 @@ Short form; full postmortems in `docs/postmortems/`.
   `allSchemaEntities`). Pin `drift` to drift_dev's patch (currently
   `2.34.0`); re-check when bumping either.
 - **JVM-target mismatch under JDK 21.** Android Studio JBR (JDK 21)
-  compiles plugin Kotlin (e.g. `photo_manager`) to JVM 21 while their
-  Java stays 17 → "Inconsistent JVM-target compatibility". Fix: the
-  `subprojects` block in `android/build.gradle.kts` pins such modules'
-  Kotlin `jvmTarget` to 17. Keep it when adding Android plugins.
-  **But some plugins (e.g. `patrol`) already pin *both* their Java and
-  Kotlin to 1.8** (self-consistent). Forcing only their Kotlin to 17
-  re-breaks them (Kotlin 17 vs Java 1.8) — and it surfaces in a plain
-  `flutter build apk`/`flutter run` (patrol is a dev-dependency plugin, so
-  it compiles into debug builds) even when `patrol test` happens to build.
-  Fix: the Kotlin rule **skips a `selfConsistentModules` set (currently
-  `patrol`)**, leaving their config intact. Do *not* instead override raw
-  `JavaCompile` tasks to 17 — that strips the `android.jar` bootclasspath
-  ("package android.app does not exist"); and `afterEvaluate` on a
-  subproject from the root block throws "already evaluated".
+  compiles plugin Kotlin to JVM 21 while plugins pin their **Java** lower →
+  "Inconsistent JVM-target compatibility". Plugins disagree on the level
+  (`photo_manager` 17, `google_mlkit_commons` 11, `google_mlkit_image_labeling`
+  1.8), and their Java `compileOptions` are **finalized by AGP** — you can't
+  raise them from the root (`afterEvaluate` throws "sourceCompatibility has been
+  finalized"; a subproject `afterEvaluate` from the root can also throw "already
+  evaluated"). So the `subprojects` block in `android/build.gradle.kts` **matches
+  each `com.android.library` module's Kotlin `jvmTarget` to its own (read-lazily)
+  Java `targetCompatibility`** (1.8/11/17), rather than forcing a single value.
+  `patrol` self-pins both sides (1.8) and stays in the `selfConsistentModules`
+  skip set. Do *not* override raw `JavaCompile` tasks to 17 — that strips the
+  `android.jar` bootclasspath ("package android.app does not exist"). Re-check a
+  plain `flutter build apk` (not just `patrol test`) when adding Android plugins.
+- **ML Kit injects a Firebase-push (c2dm) permission + receiver.**
+  `google_mlkit_image_labeling` pulls Play-Services / Firebase-IID transitively,
+  which merge `com.google.android.c2dm.permission.RECEIVE` **and** a
+  `com.google.firebase.iid.FirebaseInstanceIdReceiver` (c2dm intent-filter) into
+  the **release** manifest — a push/network surface that fails the network-free
+  check (Absolute rules / DoD #5), even though the bundled labeling model needs
+  no network at runtime. `android/app/src/main/AndroidManifest.xml` strips both
+  with `tools:node="remove"` (permission + a same-named `<receiver>` inside
+  `<application>`). No `INTERNET` is added. Re-verify the merged manifest after
+  any ML Kit dep bump. Feed ML a downsized JPEG **thumbnail** (not the original)
+  — bounds memory (HEIC OOM) and avoids HEIC-decode issues. The worker isolate
+  must call `BackgroundIsolateBinaryMessenger.ensureInitialized(token)` **before**
+  any ML Kit call or platform-channel calls hang.
 - **`developer.log` does not reach `adb logcat`.** The `SoloGallery`
   logger routes through `dart:developer.log`, which goes to the Dart VM
   service, **not** the Android log — so `adb logcat -s flutter:V

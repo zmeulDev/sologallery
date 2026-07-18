@@ -390,6 +390,37 @@ class PhotoLibraryService {
     return matches;
   }
 
+  // --- Indexing ------------------------------------------------------------
+
+  /// A page of asset ids across the whole library (photos + videos), newest
+  /// first — the id-only scan the background indexer walks to find unindexed
+  /// assets. Includes undated assets on Android (no capture-date window).
+  Future<List<String>> allAssetIds({
+    required int page,
+    required int pageSize,
+  }) async {
+    final filter = _isDarwin ? _darwinFilter() : _androidWindow();
+    final path = await _path(filter);
+    if (path == null) return const [];
+    final assets = await path.getAssetListPaged(page: page, size: pageSize);
+    return [for (final a in assets) a.id];
+  }
+
+  /// The lean metadata the indexer caches in `photo_asset`, or null if the asset
+  /// can't be resolved (e.g. deleted). Cheap — reads the cached entity, no file
+  /// decode.
+  Future<({DateTime createdAt, bool isVideo, int width, int height})?>
+      assetIndexMeta(String assetId) async {
+    final entity = await _entity(assetId);
+    if (entity == null) return null;
+    return (
+      createdAt: entity.createDateTime,
+      isVideo: entity.type == AssetType.video,
+      width: entity.width,
+      height: entity.height,
+    );
+  }
+
   // --- Thumbnails ----------------------------------------------------------
 
   /// Cache of resolved [AssetEntity]s so repeated requests for the same id skip

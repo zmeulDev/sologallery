@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'services/indexing_service.dart';
 import 'services/permission_provider.dart';
 
 /// Root widget: wires themes and the router. Theme mode follows the system.
@@ -24,6 +25,13 @@ class _SoloGalleryAppState extends ConsumerState<SoloGalleryApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Kick indexing if access was already granted on a warm start (the
+    // permission listener below only fires on a *change* to granted).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (ref.read(permissionProvider).canReadLibrary) {
+        ref.read(indexingServiceProvider).start();
+      }
+    });
   }
 
   @override
@@ -34,13 +42,25 @@ class _SoloGalleryAppState extends ConsumerState<SoloGalleryApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      ref.read(permissionProvider.notifier).refresh();
+    switch (state) {
+      case AppLifecycleState.resumed:
+        ref.read(permissionProvider.notifier).refresh();
+        ref.read(indexingServiceProvider).resume();
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        // Defer all indexing work while the app isn't in the foreground.
+        ref.read(indexingServiceProvider).pause();
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Start indexing when access transitions to granted (onboarding grant path).
+    ref.listen(permissionProvider, (_, next) {
+      if (next.canReadLibrary) ref.read(indexingServiceProvider).start();
+    });
     final router = ref.watch(routerProvider);
     return MaterialApp.router(
       title: 'SoloGallery',

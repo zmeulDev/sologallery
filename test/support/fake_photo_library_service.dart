@@ -191,6 +191,33 @@ class FakePhotoLibraryService extends PhotoLibraryService {
   }
 
   @override
+  Future<List<String>> allAssetIds({
+    required int page,
+    required int pageSize,
+  }) async {
+    final all = [...assets, ...undatedAssets];
+    final start = page * pageSize;
+    if (start >= all.length) return const [];
+    final end = start + pageSize > all.length ? all.length : start + pageSize;
+    return [for (final a in all.sublist(start, end)) a.id];
+  }
+
+  @override
+  Future<({DateTime createdAt, bool isVideo, int width, int height})?>
+      assetIndexMeta(String assetId) async {
+    final matches =
+        [...assets, ...undatedAssets].where((a) => a.id == assetId);
+    if (matches.isEmpty) return null;
+    final match = matches.first;
+    return (
+      createdAt: match.createdAt,
+      isVideo: videoDurations.containsKey(assetId),
+      width: 100,
+      height: 100,
+    );
+  }
+
+  @override
   Future<Uint8List?> thumbnail(String assetId, int width, int height) async =>
       thumbnailBytes;
 
