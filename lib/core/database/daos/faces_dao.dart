@@ -130,6 +130,81 @@ class FacesDao extends DatabaseAccessor<AppDatabase> with _$FacesDaoMixin {
     );
   }
 
+  /// Deletes all person clusters — used by Settings' "Rebuild index" after the
+  /// `photo_asset` wipe (which already cascades face embeddings away). Clustering
+  /// re-runs from scratch on the next indexing pass.
+  Future<int> clearPersons() => delete(persons).go();
+
+  // --- Global re-cluster ---------------------------------------------------
+
+  /// Every stored face with its current person + asset + embedding, ordered by
+  /// id (a stable order for deterministic global clustering).
+  Future<List<({int id, int? personId, String assetId, Float32List embedding})>>
+      allFacesForClustering() async {
+    final rows =
+        await (select(faceEmbeddings)..orderBy([(f) => OrderingTerm.asc(f.id)]))
+            .get();
+    return [
+      for (final r in rows)
+        (
+          id: r.id,
+          personId: r.personId,
+          assetId: r.assetId,
+          embedding: _floats(r.embedding),
+        ),
+    ];
+  }
+
+  /// Total number of stored faces — the indexer's signal for when enough new
+  /// faces have accrued to justify a global re-cluster.
+  Future<int> faceCount() async {
+    final c = faceEmbeddings.id.count();
+    final q = selectOnly(faceEmbeddings)..addColumns([c]);
+    return (await q.map((r) => r.read(c) ?? 0).getSingle());
+  }
+
+  /// All person rows — the source of names/covers a global re-cluster preserves.
+  Future<List<Person>> allPersons() => select(persons).get();
+
+  /// Applies a global re-cluster [plan]: removes persons no cluster reuses,
+  /// reassigns every face to its planned person (reusing existing rows so
+  /// renames survive, minting new ones otherwise), and refreshes covers — all in
+  /// one transaction.
+  Future<void> rebuildClusters(List<PlannedCluster> plan) async {
+    await transaction(() async {
+      final keep = {
+        for (final c in plan)
+          if (c.reusePersonId != null) c.reusePersonId!,
+      };
+      // Drop persons no cluster reuses (their faces are reassigned below; the FK
+      // set-null means the delete never orphans a face reference).
+      if (keep.isEmpty) {
+        await delete(persons).go();
+      } else {
+        await (delete(persons)..where((p) => p.id.isNotIn(keep))).go();
+      }
+
+      for (final c in plan) {
+        int personId;
+        if (c.reusePersonId != null) {
+          personId = c.reusePersonId!;
+          await (update(persons)..where((p) => p.id.equals(personId)))
+              .write(PersonsCompanion(coverAssetId: Value(c.coverAssetId)));
+        } else {
+          personId = await into(persons).insert(
+            PersonsCompanion.insert(
+              displayName: Value(c.displayName),
+              coverAssetId: Value(c.coverAssetId),
+              createdAt: DateTime.now(),
+            ),
+          );
+        }
+        await (update(faceEmbeddings)..where((f) => f.id.isIn(c.faceIds)))
+            .write(FaceEmbeddingsCompanion(personId: Value(personId)));
+      }
+    });
+  }
+
   /// People with at least one face, most-photographed first.
   Stream<List<PersonSummary>> watchPersonSummaries() {
     final count = faceEmbeddings.id.count();

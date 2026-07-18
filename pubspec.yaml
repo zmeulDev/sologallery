@@ -50,6 +50,7 @@ dependencies:
   google_mlkit_face_detection: ^0.14.0
   tflite_flutter: ^0.12.1
   image: ^4.9.1
+  package_info_plus: ^10.2.1
 
 dev_dependencies:
   flutter_test:

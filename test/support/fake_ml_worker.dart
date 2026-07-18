@@ -21,14 +21,20 @@ class FakeMlWorker implements MlWorker {
   /// Faces returned for every [analyzeFile] call.
   final List<DetectedFace> faces;
 
-  /// Paths passed to [analyzeFile], in order (call count = length).
+  /// Label/face image paths passed to [analyzeFile], in order (call count =
+  /// length).
   final List<String> calls = [];
+
+  /// The `ocrPath` passed alongside each call (null when OCR fell back to the
+  /// 512 image) — lets tests assert the higher-res OCR pass was wired up.
+  final List<String?> ocrCalls = [];
 
   var disposed = false;
 
   @override
-  Future<ImageAnalysis> analyzeFile(String jpegPath) async {
+  Future<ImageAnalysis> analyzeFile(String jpegPath, {String? ocrPath}) async {
     calls.add(jpegPath);
+    ocrCalls.add(ocrPath);
     return (labels: labels, text: text, faces: faces);
   }
 

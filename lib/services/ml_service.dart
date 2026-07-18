@@ -41,8 +41,11 @@ const _faceModelAsset = 'assets/models/mobilefacenet.tflite';
 /// tests (CLAUDE.md fake-pairing rule — the real path is covered by an on-device
 /// integration test).
 abstract class MlWorker {
-  /// Analyzes the image at [jpegPath] (a downsized JPEG — never an original).
-  Future<ImageAnalysis> analyzeFile(String jpegPath);
+  /// Analyzes the image at [jpegPath] (a downsized JPEG — never an original) for
+  /// labels and faces. When [ocrPath] is given, OCR runs on that (larger)
+  /// image instead, recovering small text the face/label thumbnail misses;
+  /// otherwise OCR uses [jpegPath].
+  Future<ImageAnalysis> analyzeFile(String jpegPath, {String? ocrPath});
 
   /// Tears down the worker isolate and its models.
   void dispose();
@@ -123,12 +126,12 @@ class MlWorkerController implements MlWorker {
   }
 
   @override
-  Future<ImageAnalysis> analyzeFile(String jpegPath) async {
+  Future<ImageAnalysis> analyzeFile(String jpegPath, {String? ocrPath}) async {
     await _start();
     final id = _seq++;
     final completer = Completer<ImageAnalysis>();
     _pending[id] = completer;
-    _commands!.send(_AnalyzeJob(id, jpegPath));
+    _commands!.send(_AnalyzeJob(id, jpegPath, ocrPath));
     return completer.future;
   }
 
@@ -168,7 +171,12 @@ void _workerMain(_WorkerInit init) {
       try {
         final input = InputImage.fromFilePath(msg.path);
         final labels = await labeler.processImage(input);
-        final recognized = await recognizer.processImage(input);
+        // OCR on the higher-res image when supplied (small-text recall); labels
+        // and faces stay on the 512 thumbnail (bounded memory, stable box space).
+        final ocrInput = msg.ocrPath != null
+            ? InputImage.fromFilePath(msg.ocrPath!)
+            : input;
+        final recognized = await recognizer.processImage(ocrInput);
         final text = recognized.text.replaceAll(RegExp(r'\s+'), ' ').trim();
         final detected = await faceDetector.processImage(input);
 
@@ -255,9 +263,12 @@ class _WorkerInit {
 }
 
 class _AnalyzeJob {
-  const _AnalyzeJob(this.id, this.path);
+  const _AnalyzeJob(this.id, this.path, this.ocrPath);
   final int id;
   final String path;
+
+  /// Optional higher-res image for OCR only; null falls back to [path].
+  final String? ocrPath;
 }
 
 class _AnalyzeResult {

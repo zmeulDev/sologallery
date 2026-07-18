@@ -4,6 +4,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sologallery/core/database/app_database.dart';
 import 'package:sologallery/core/database/daos/faces_dao.dart';
+import 'package:sologallery/features/people/domain/face_clustering.dart';
 
 void main() {
   late AppDatabase db;
@@ -87,6 +88,64 @@ void main() {
     await db.facesDao.renamePerson(id, 'Alice');
     final person = await db.facesDao.watchPerson(id).first;
     expect(person!.displayName, 'Alice');
+  });
+
+  test('clearPersons removes every person cluster', () async {
+    await db.facesDao.createPerson();
+    await db.facesDao.createPerson();
+    expect(await db.select(db.persons).get(), hasLength(2));
+
+    final cleared = await db.facesDao.clearPersons();
+    expect(cleared, 2);
+    expect(await db.select(db.persons).get(), isEmpty);
+  });
+
+  test('faceCount and allFacesForClustering expose stored faces', () async {
+    await asset('a');
+    await asset('b', at: DateTime(2026, 7, 1));
+    await db.facesDao.insertFaces('a', [face([1, 0])]);
+    await db.facesDao.insertFaces('b', [face([0, 1])]);
+
+    expect(await db.facesDao.faceCount(), 2);
+    final all = await db.facesDao.allFacesForClustering();
+    expect(all.map((f) => f.assetId), ['a', 'b']); // ordered by id
+    expect(all.first.embedding, [1, 0]);
+    expect(all.every((f) => f.personId == null), isTrue);
+  });
+
+  test('rebuildClusters reassigns faces, drops empty persons, keeps names',
+      () async {
+    await asset('a');
+    await asset('b', at: DateTime(2026, 7, 1));
+    await db.facesDao.insertFaces('a', [face([1, 0])]);
+    await db.facesDao.insertFaces('b', [face([1, 0])]);
+    final faces = await db.facesDao.allFacesForClustering();
+    final faceA = faces.firstWhere((f) => f.assetId == 'a').id;
+    final faceB = faces.firstWhere((f) => f.assetId == 'b').id;
+
+    // Two incremental persons that are really one; person 'p1' was renamed.
+    final p1 = await db.facesDao.createPerson(coverAssetId: 'a');
+    final p2 = await db.facesDao.createPerson(coverAssetId: 'b');
+    await db.facesDao.assignPersonToFace(faceA, p1);
+    await db.facesDao.assignPersonToFace(faceB, p2);
+    await db.facesDao.renamePerson(p1, 'Alice');
+
+    // Re-cluster collapses them into one, reusing the renamed p1.
+    await db.facesDao.rebuildClusters([
+      PlannedCluster(
+        faceIds: [faceA, faceB],
+        reusePersonId: p1,
+        displayName: 'Alice',
+        coverAssetId: 'a',
+      ),
+    ]);
+
+    final persons = await db.facesDao.allPersons();
+    expect(persons, hasLength(1)); // p2 (now empty) removed
+    expect(persons.single.id, p1);
+    expect(persons.single.displayName, 'Alice'); // rename preserved
+    final regrouped = await db.facesDao.allFacesForClustering();
+    expect(regrouped.every((f) => f.personId == p1), isTrue);
   });
 
   test('summaries exclude people with no faces', () async {

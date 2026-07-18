@@ -59,13 +59,13 @@ void main() {
           libraryCacheReadyProvider.overrideWithValue(AsyncData(cacheReady)),
           libraryMonthCountsProvider.overrideWithValue(AsyncData(counts)),
           monthPreviewsProvider.overrideWith(
-            (ref, month) async => [
+            (ref, month) => Stream.value([
               for (final a in byMonth[month] ?? const <AssetRef>[]) a.id,
-            ].take(6).toList(),
+            ].take(6).toList()),
           ),
           olderCountProvider.overrideWithValue(AsyncData(undatedAssets.length)),
-          olderPreviewsProvider.overrideWithValue(
-            AsyncData([for (final a in undatedAssets.take(6)) a.id]),
+          olderPreviewsProvider.overrideWith(
+            (ref) => Stream.value([for (final a in undatedAssets.take(6)) a.id]),
           ),
         ],
         child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),

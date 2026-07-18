@@ -6,6 +6,7 @@ import 'daos/edit_instructions_dao.dart';
 import 'daos/faces_dao.dart';
 import 'daos/favorites_dao.dart';
 import 'daos/index_dao.dart';
+import 'daos/settings_dao.dart';
 import 'tables.dart';
 
 part 'app_database.g.dart';
@@ -28,6 +29,9 @@ part 'app_database.g.dart';
 /// v4 makes `photo_asset.indexed_at` nullable (NULL = metadata-swept, ML
 /// pending) and adds `photo_asset.is_dated`, so the fast metadata sweep can
 /// populate the grid before ML runs and undated assets route to "Older".
+///
+/// v5 adds `app_settings` (generic key/value prefs) — backs the Settings
+/// screen's persisted theme override.
 @DriftDatabase(
   tables: [
     Favorites,
@@ -39,15 +43,23 @@ part 'app_database.g.dart';
     PhotoTexts,
     Persons,
     FaceEmbeddings,
+    AppSettings,
   ],
-  daos: [FavoritesDao, AlbumsDao, EditInstructionsDao, IndexDao, FacesDao],
+  daos: [
+    FavoritesDao,
+    AlbumsDao,
+    EditInstructionsDao,
+    IndexDao,
+    FacesDao,
+    SettingsDao,
+  ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
       : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -81,6 +93,9 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(faceEmbeddings);
             await m.create(faceAsset);
             await m.create(facePerson);
+          }
+          if (from < 5) {
+            await m.createTable(appSettings);
           }
         },
         beforeOpen: (details) async {

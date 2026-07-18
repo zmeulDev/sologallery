@@ -48,7 +48,17 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    // The grid now watches a live Drift stream — bounded pumps (a `.when`
+    // loading spinner never settles under `pumpAndSettle`).
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+
+  /// Tears down the tree and elapses time so Drift's stream-close zero-timer
+  /// doesn't trip the pending-timer teardown invariant.
+  Future<void> disposeTree(WidgetTester tester) async {
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
   }
 
   testWidgets('renders the Older title and a grid of undated assets',
@@ -56,10 +66,12 @@ void main() {
     await pump(tester, undatedAssets: assetsInMonth(2020, 1, 10));
     expect(find.widgetWithText(AppBar, 'Older'), findsOneWidget);
     expect(find.byType(AssetThumbnail), findsAtLeastNWidgets(6));
+    await disposeTree(tester);
   });
 
   testWidgets('empty Older grid shows a note', (tester) async {
     await pump(tester);
     expect(find.text('No undated photos.'), findsOneWidget);
+    await disposeTree(tester);
   });
 }

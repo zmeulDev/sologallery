@@ -71,5 +71,7 @@ void main() {
   testWidgets('SettingsScreen shows its title', (tester) async {
     await pumpScreen(tester, const SettingsScreen());
     expect(find.widgetWithText(AppBar, 'Settings'), findsOneWidget);
+    // SettingsScreen now holds Drift .watch() streams (settings/stats/people).
+    await disposeTree(tester);
   });
 }

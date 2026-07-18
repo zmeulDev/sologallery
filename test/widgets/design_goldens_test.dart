@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sologallery/core/database/daos/albums_dao.dart' show AlbumSummary;
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/albums/widgets/album_card.dart';
+import 'package:sologallery/features/settings/widgets/theme_mode_picker.dart';
 import 'package:sologallery/services/permission_provider.dart';
 import 'package:sologallery/widgets/asset_thumbnail.dart';
 import 'package:sologallery/widgets/filter_pill.dart';
@@ -86,6 +87,14 @@ void main() {
     fileName: 'limited_access_banner',
     builder: () => themedGroup(
       LimitedAccessBanner(onSelectMore: () {}),
+    ),
+  );
+
+  goldenTest(
+    'ThemeModePicker — system selected',
+    fileName: 'theme_mode_picker',
+    builder: () => themedGroup(
+      ThemeModePicker(mode: ThemeMode.system, onChanged: (_) {}),
     ),
   );
 

@@ -25,28 +25,38 @@ void main() {
     await verifier.migrateAndValidate(db, 1);
   });
 
-  test('upgrades v1 → v4 (fresh photo_asset in current shape)', () async {
+  test('upgrades v1 → v5 (fresh photo_asset in current shape + app_settings)',
+      () async {
     final connection = await verifier.startAt(1);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 4);
+    await verifier.migrateAndValidate(db, 5);
   });
 
-  test('upgrades v2 → v4 (adds photo_text + alters photo_asset)', () async {
+  test('upgrades v2 → v5 (adds photo_text + alters photo_asset + app_settings)',
+      () async {
     final connection = await verifier.startAt(2);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 4);
+    await verifier.migrateAndValidate(db, 5);
   });
 
-  test('upgrades v3 → v4 (photo_asset.indexed_at nullable + is_dated)',
+  test('upgrades v3 → v5 (photo_asset.indexed_at nullable + is_dated + settings)',
       () async {
     final connection = await verifier.startAt(3);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 4);
+    await verifier.migrateAndValidate(db, 5);
+  });
+
+  test('upgrades v4 → v5 (adds app_settings)', () async {
+    final connection = await verifier.startAt(4);
+    final db = AppDatabase(connection);
+    addTearDown(db.close);
+
+    await verifier.migrateAndValidate(db, 5);
   });
 }

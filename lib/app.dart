@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'features/settings/theme_mode_provider.dart';
 import 'services/indexing_service.dart';
 import 'services/permission_provider.dart';
 
@@ -62,12 +63,15 @@ class _SoloGalleryAppState extends ConsumerState<SoloGalleryApp>
       if (next.canReadLibrary) ref.read(indexingServiceProvider).start();
     });
     final router = ref.watch(routerProvider);
+    // Persisted theme override (Settings); defaults to system until it loads.
+    final themeMode =
+        ref.watch(themeModeProvider).value ?? ThemeMode.system;
     return MaterialApp.router(
       title: 'SoloGallery',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
       routerConfig: router,
     );
   }

@@ -59,8 +59,19 @@ void main() {
 
       final file = File('${tempDir.path}/ml_test_${id.hashCode}.jpg');
       await file.writeAsBytes(bytes, flush: true);
-      final analysis = await worker.analyzeFile(file.path); // real ML Kit + OCR
+      // Higher-res OCR image (matches IndexingService): OCR on 1024, labels/
+      // faces on the 512 file. Exercises the real analyzeFile(ocrPath:) path.
+      final ocrBytes = await photos.thumbnail(id, 1024, 1024);
+      final ocrFile = ocrBytes != null
+          ? (File('${tempDir.path}/ml_test_ocr_${id.hashCode}.jpg')
+            ..writeAsBytesSync(ocrBytes))
+          : null;
+      final analysis = await worker.analyzeFile(
+        file.path,
+        ocrPath: ocrFile?.path,
+      ); // real ML Kit + higher-res OCR
       if (await file.exists()) await file.delete();
+      if (ocrFile != null && await ocrFile.exists()) await ocrFile.delete();
 
       await db.indexDao.upsertIndexed(
         assetId: id,

@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../core/database/daos/faces_dao.dart';
 import '../core/database/daos/index_dao.dart';
+import '../core/database/daos/settings_dao.dart';
 import '../core/database/database_provider.dart';
 import '../features/people/domain/face_clustering.dart';
 import 'ml_service.dart';
@@ -46,18 +47,33 @@ class IndexingService {
   IndexingService({
     required this.dao,
     required this.faces,
+    required this.settings,
     required this.photos,
     required this.worker,
     this.tempDir,
     this.resweepDebounce = const Duration(seconds: 2),
+    this.reclusterThreshold = 20,
   });
 
   static final _log = Logger('SoloGallery.ml');
 
+  /// Thumbnail edge (px) for the OCR-only pass — larger than the 512 label/face
+  /// thumbnail so small/distant text is recognized. Still a bounded thumbnail
+  /// (never the original), so the HEIC-OOM rule holds.
+  static const _ocrEdge = 1024;
+
   final IndexDao dao;
   final FacesDao faces;
+  final SettingsDao settings;
   final PhotoLibraryService photos;
   final MlWorker worker;
+
+  /// `app_settings` key holding the face count at the last global re-cluster.
+  static const _reclusterBaselineKey = 'faces_at_last_recluster';
+
+  /// New faces since the last global re-cluster before one is triggered. Small
+  /// in tests.
+  final int reclusterThreshold;
 
   /// Where transient ML thumbnails are written; resolved lazily on device.
   Directory? tempDir;
@@ -107,10 +123,12 @@ class IndexingService {
     if (!_controller.isClosed) _controller.add(status);
   }
 
-  void _markSwept() {
-    if (_swept) return;
-    _swept = true;
-    if (!_sweptController.isClosed) _sweptController.add(true);
+  void _markSwept() => _setSwept(true);
+
+  void _setSwept(bool value) {
+    if (_swept == value) return;
+    _swept = value;
+    if (!_sweptController.isClosed) _sweptController.add(value);
   }
 
   /// Starts (or no-ops if already running) a full indexing pass. Fire-and-forget.
@@ -136,6 +154,32 @@ class IndexingService {
   void resume() {
     _paused = false;
     if (!_running) unawaited(start());
+  }
+
+  bool _rebuilding = false;
+
+  /// Wipes the ML index (cache + labels/OCR/faces + persons) and re-runs a full
+  /// pass from scratch — Settings' "Rebuild index". Cancels any active pass
+  /// first, flips the cache back to not-swept (the Library shows its spinner)
+  /// while the fresh sweep repopulates it. Re-entrant calls are ignored.
+  Future<void> rebuild() async {
+    if (_rebuilding) return;
+    _rebuilding = true;
+    try {
+      _cancelled = true;
+      while (_running) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+      _cancelled = false;
+      await dao.clearIndex(); // cascades labels/OCR/faces
+      await faces.clearPersons();
+      _setSwept(false);
+      _emit(const IndexingStatus.idle());
+      _log.info('Rebuilding index from scratch');
+      await start();
+    } finally {
+      _rebuilding = false;
+    }
   }
 
   Future<void> dispose() async {
@@ -202,6 +246,8 @@ class IndexingService {
         await Future<void>.delayed(Duration.zero); // keep the UI isolate smooth
       }
       await _clusterNewFaces();
+      if (_cancelled) return;
+      await _maybeGlobalRecluster();
       _emit(const IndexingStatus.idle());
       _log.info('Indexing pass complete (${todo.length} asset(s))');
     } while (_dirty && !_cancelled);
@@ -275,6 +321,39 @@ class IndexingService {
     _log.info('Clustered ${unclustered.length} new face(s)');
   }
 
+  /// Periodically re-clusters *all* faces from scratch to undo the order-drift of
+  /// incremental assignment (one person splitting into several). Runs only once
+  /// [_reclusterThreshold] new faces have accrued since the last re-cluster
+  /// (baseline persisted in `app_settings`), preserving user renames/covers.
+  /// DB-only work — no ML — so it stays cheap.
+  Future<void> _maybeGlobalRecluster() async {
+    final total = await faces.faceCount();
+    final baseline =
+        int.tryParse(await settings.read(_reclusterBaselineKey) ?? '') ?? 0;
+    if (total - baseline < reclusterThreshold) return;
+
+    final all = await faces.allFacesForClustering();
+    if (all.isEmpty) return;
+    final groups =
+        clusterAll([for (final f in all) (id: f.id, embedding: f.embedding)]);
+    final plan = planClusters(
+      groups: groups,
+      faceMeta: {
+        for (final f in all) f.id: (personId: f.personId, assetId: f.assetId),
+      },
+      persons: {
+        for (final p in await faces.allPersons())
+          p.id: (displayName: p.displayName, coverAssetId: p.coverAssetId),
+      },
+    );
+    if (_cancelled) return;
+    await faces.rebuildClusters(plan);
+    await settings.put(_reclusterBaselineKey, total.toString());
+    _log.info(
+      'Global re-cluster: ${all.length} face(s) -> ${groups.length} person(s)',
+    );
+  }
+
   Future<void> _indexOne(String id) async {
     try {
       final meta = await photos.assetIndexMeta(id);
@@ -285,14 +364,21 @@ class IndexingService {
       var detectedFaces = const <DetectedFace>[];
       final bytes = await photos.thumbnail(id, 512, 512);
       if (bytes != null) {
-        final file = await _writeTemp(id, bytes);
+        final file = await _writeTemp('sg_idx', id, bytes);
+        // A larger thumbnail for OCR only — recovers small text the 512 misses.
+        // Labels/faces stay on the 512 file (bounded memory, stable box space).
+        final ocrBytes = await photos.thumbnail(id, _ocrEdge, _ocrEdge);
+        final ocrFile =
+            ocrBytes != null ? await _writeTemp('sg_ocr', id, ocrBytes) : null;
         try {
-          final analysis = await worker.analyzeFile(file.path);
+          final analysis =
+              await worker.analyzeFile(file.path, ocrPath: ocrFile?.path);
           labels = analysis.labels;
           text = analysis.text;
           detectedFaces = analysis.faces;
         } finally {
           if (await file.exists()) await file.delete();
+          if (ocrFile != null && await ocrFile.exists()) await ocrFile.delete();
         }
       }
 
@@ -321,9 +407,9 @@ class IndexingService {
     }
   }
 
-  Future<File> _writeTemp(String id, Uint8List bytes) async {
+  Future<File> _writeTemp(String prefix, String id, Uint8List bytes) async {
     final dir = tempDir ??= await getTemporaryDirectory();
-    final file = File('${dir.path}/sg_idx_${id.hashCode}.jpg');
+    final file = File('${dir.path}/${prefix}_${id.hashCode}.jpg');
     await file.writeAsBytes(bytes, flush: true);
     return file;
   }
@@ -341,6 +427,7 @@ final indexingServiceProvider = Provider<IndexingService>((ref) {
   final service = IndexingService(
     dao: ref.watch(indexDaoProvider),
     faces: ref.watch(facesDaoProvider),
+    settings: ref.watch(settingsDaoProvider),
     photos: ref.watch(photoLibraryServiceProvider),
     worker: ref.watch(mlWorkerProvider),
   );

@@ -66,6 +66,21 @@ class EditInstructions extends Table {
   Set<Column> get primaryKey => {assetId};
 }
 
+/// Generic key/value app preferences (theme override, and future prefs). One
+/// row per setting; both columns are plain text — callers encode/decode typed
+/// values (see [SettingsDao]). Persisted in Drift per the "Drift for all
+/// persistence" rule (never `shared_preferences`).
+class AppSettings extends Table {
+  /// Stable setting key (e.g. `theme_mode`).
+  TextColumn get key => text()();
+
+  /// Serialized value.
+  TextColumn get value => text()();
+
+  @override
+  Set<Column> get primaryKey => {key};
+}
+
 /// One row per asset that the background indexer has processed — the indexing
 /// cursor and a small cached-metadata table (docs/spec.md#data-model, ML phase).
 /// A row's presence means "already indexed"; the orchestrator subtracts these

@@ -5,6 +5,7 @@ import 'daos/albums_dao.dart';
 import 'daos/faces_dao.dart';
 import 'daos/favorites_dao.dart';
 import 'daos/index_dao.dart';
+import 'daos/settings_dao.dart';
 
 /// App-wide [AppDatabase], kept alive for the whole app lifetime (not
 /// autoDispose) — it owns the single SQLite connection. Screen-scoped
@@ -35,4 +36,9 @@ final indexDaoProvider = Provider<IndexDao>(
 /// [FacesDao] over the app database (face embeddings + person clusters).
 final facesDaoProvider = Provider<FacesDao>(
   (ref) => ref.watch(databaseProvider).facesDao,
+);
+
+/// [SettingsDao] over the app database (key/value app preferences).
+final settingsDaoProvider = Provider<SettingsDao>(
+  (ref) => ref.watch(databaseProvider).settingsDao,
 );

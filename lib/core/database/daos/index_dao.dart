@@ -77,6 +77,12 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
     return (delete(photoAssets)..where((a) => a.assetId.isIn(ids))).go();
   }
 
+  /// Wipes the whole `photo_asset` cache — cascades to labels, OCR text, and
+  /// face embeddings. Backs Settings' "Rebuild index"; the caller re-sweeps
+  /// afterwards. Persons are cleared separately (they are not FK-referenced by
+  /// `photo_asset`) via `FacesDao.clearPersons`.
+  Future<int> clearIndex() => delete(photoAssets).go();
+
   /// Ids awaiting ML analysis (`indexed_at IS NULL`), newest first so recent
   /// photos are labelled first. Replaces the old indexed/library set-diff.
   Future<List<String>> pendingMlIds() {
@@ -85,6 +91,18 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
       ..where(photoAssets.indexedAt.isNull())
       ..orderBy([OrderingTerm.desc(photoAssets.createdAt)]);
     return q.map((r) => r.read(photoAssets.assetId)!).get();
+  }
+
+  /// Cached-library totals for the Settings stats section, reactive: total
+  /// photos+videos and how many of those are videos.
+  Stream<({int photos, int videos})> watchLibraryTotals() {
+    final total = photoAssets.assetId.count();
+    final videos =
+        photoAssets.assetId.count(filter: photoAssets.isVideo.equals(true));
+    final q = selectOnly(photoAssets)..addColumns([total, videos]);
+    return q
+        .map((r) => (photos: r.read(total) ?? 0, videos: r.read(videos) ?? 0))
+        .watchSingle();
   }
 
   // --- ML results ----------------------------------------------------------

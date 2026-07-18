@@ -79,7 +79,7 @@ void main() {
     );
     addTearDown(container.dispose);
     // Keep the autoDispose provider alive so the live window stays subscribed.
-    container.listen(monthAssetsProvider(month), (_, __) {});
+    container.listen(monthAssetsProvider(month), (_, _) {});
 
     final first = await container.read(monthAssetsProvider(month).future);
     expect(first.map((a) => a.id), ['a']);

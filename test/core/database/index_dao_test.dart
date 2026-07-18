@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sologallery/core/database/app_database.dart';
@@ -150,29 +152,54 @@ void main() {
       (id: 'd1', createdAt: DateTime(2026, 8, 1), isVideo: false, width: 1, height: 1, isDated: true),
       (id: 'u1', createdAt: DateTime(2020, 1, 1), isVideo: false, width: 1, height: 1, isDated: false),
     ]);
-    final monthStream = db.indexDao.watchMonthAssets(aug, limit: 90);
-    final olderStream = db.indexDao.watchOlderAssets(limit: 90);
+    final month = <List<String>>[];
+    final older = <List<String>>[];
+    final monthSub = db.indexDao
+        .watchMonthAssets(aug, limit: 90)
+        .listen((rows) => month.add([for (final a in rows) a.id]));
+    final olderSub = db.indexDao
+        .watchOlderAssets(limit: 90)
+        .listen((rows) => older.add([for (final a in rows) a.id]));
+    addTearDown(monthSub.cancel);
+    addTearDown(olderSub.cancel);
+
+    await Future<void>.delayed(const Duration(milliseconds: 20)); // initial
 
     // A newer dated asset lands at the front; a new undated asset joins Older.
-    expect(
-      monthStream.map((rows) => rows.map((a) => a.id).toList()),
-      emitsInOrder([
-        ['d1'],
-        ['d2', 'd1'],
-      ]),
-    );
-    expect(
-      olderStream.map((rows) => rows.map((a) => a.id).toList()),
-      emitsInOrder([
-        ['u1'],
-        ['u2', 'u1'],
-      ]),
-    );
-
     await db.indexDao.upsertMetadata([
       (id: 'd2', createdAt: DateTime(2026, 8, 9), isVideo: false, width: 1, height: 1, isDated: true),
       (id: 'u2', createdAt: DateTime(2021, 1, 1), isVideo: false, width: 1, height: 1, isDated: false),
     ]);
+    await Future<void>.delayed(const Duration(milliseconds: 20)); // re-emit
+
+    expect(month, [
+      ['d1'],
+      ['d2', 'd1'],
+    ]);
+    expect(older, [
+      ['u1'],
+      ['u2', 'u1'],
+    ]);
+  });
+
+  test('watchLibraryTotals counts photos and the video subset', () async {
+    await seed(); // a (photo), b (video), c (photo)
+    expect(await db.indexDao.watchLibraryTotals().first, (photos: 3, videos: 1));
+  });
+
+  test('clearIndex wipes the cache and cascades labels/OCR/faces', () async {
+    await seed();
+    await db.facesDao.insertFaces('a', [
+      (left: 0, top: 0, right: 1, bottom: 1, embedding: Float32List(4)),
+    ]);
+    expect(await db.indexDao.allCachedIds(), isNotEmpty);
+
+    final cleared = await db.indexDao.clearIndex();
+    expect(cleared, 3);
+    expect(await db.indexDao.allCachedIds(), isEmpty);
+    expect(await db.select(db.photoLabels).get(), isEmpty); // cascaded
+    expect(await db.select(db.photoTexts).get(), isEmpty); // cascaded
+    expect(await db.select(db.faceEmbeddings).get(), isEmpty); // cascaded
   });
 
   test('watchFavoritesInCache drops favorites whose asset is not cached',

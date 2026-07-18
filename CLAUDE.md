@@ -15,7 +15,7 @@ analytics, no network calls after install.
 - **Detail view (on tap):** full-screen viewer with horizontal swipe;
   actions: favorite, delete, share, add to existing album; dedicated
   button to reveal EXIF metadata
-- **Bottom nav:** Home Gallery · Favourites · Albums · Settings
+- **Bottom nav:** Home Gallery · Saved · Albums · Settings
 
 ---
 
@@ -146,9 +146,11 @@ flutter test                                  # all unit + widget tests
 flutter test integration_test -d <device-id>  # on-device integration
 adb logcat -s flutter:V SoloGallery:V         # runtime debugging
 adb shell dumpsys dropbox --print             # native crash inspection
-./gradlew :app:processReleaseManifest \
+(cd android && JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
+  ./gradlew :app:processReleaseManifest) \
   && grep -R "INTERNET\|READ_PHONE_STATE\|c2dm" \
      build/app/intermediates/merged_manifests/release/  # must return nothing
+     # gradlew lives in android/; the merged manifest lands under repo-root build/
 ```
 
 ---
@@ -236,10 +238,12 @@ lib/
     router/                     # GoRouter config
     database/                   # Drift DB, tables, DAOs
   features/
-    library/ saved/ search/ albums/ detail/ people/ edit/ settings/
+    library/ saved/ search/ albums/ detail/ people/ onboarding/ settings/
+    # edit/ (non-destructive editor) is spec'd but not built yet
   services/
     photo_library_service.dart  # photo_manager wrapper
-    paged_assets_notifier.dart  # shared pagination base (Library, Saved)
+    paged_assets_notifier.dart  # one-shot pagination base (Search)
+    watched_assets_notifier.dart # reactive growing-window base (Library grids)
     ml_service.dart             # ML Kit + TFLite
     indexing_service.dart       # background indexing orchestration
   widgets/
@@ -366,7 +370,12 @@ Short form; full postmortems in `docs/postmortems/`.
   **before** any ML Kit call or platform-channel calls hang; **tflite is FFI and
   runs in the isolate with no messenger** (load the `.tflite` bytes on the main
   isolate via `rootBundle` and pass them to the worker). Face boxes are stored in
-  the 512-thumb coordinate space so avatars crop the cached thumbnail.
+  the 512-thumb coordinate space so avatars crop the cached thumbnail. **Labels
+  and faces run on the 512 thumbnail; OCR runs on a separate larger (1024)
+  thumbnail** (`_ocrEdge`, via `analyzeFile(jpegPath, {ocrPath})`) for small-text
+  recall — don't collapse them back to one image (it would move the face-box
+  space off 512 and break avatars, or shrink OCR again). Both are still bounded
+  thumbnails, never the original.
 - **Drift: a column can't reuse a builder name** (`text`, `integer`, `boolean`,
   `real`, `blob`, …). `TextColumn get text => text()()` recurses / conflicts with
   `Table.text` → "conflicting_field_and_method". Name it something else
@@ -493,6 +502,33 @@ Short form; full postmortems in `docs/postmortems/`.
   `Duration.zero`) isn't enough. Await a real turn
   (`await Future.delayed(const Duration(milliseconds: 10))`) before reading the
   recomputed value.
+- **Testing Drift `.watch()` reactivity: await the initial emission before
+  mutating.** A `.watch()` query emits its current result on subscribe, then
+  again on change. If a test mutates the table *before* the initial query
+  resolves (both race on the DB executor), the two emissions coalesce and the
+  matcher sees only the post-mutation state — `emitsInOrder([before, after])`
+  fails with `after` at index 0. Collect emissions with a `listen` and put a
+  real `Future.delayed` between the initial read and the mutation (and between
+  mutation and assert). The reactive Library grids use a **growing-window
+  watch** (`WatchedAssetsNotifier`: `LIMIT` grows on `loadMore`, offset stays 0,
+  re-subscribing) — one live subscription stays correct across pages, unlike the
+  one-shot offset paging in `PagedAssetsNotifier` (still used by Search).
+- **A screen that consumes any Drift `.watch()` needs the dispose-tree teardown
+  in every widget test that builds it — including bare "shows its title" smokes.**
+  When a screen starts watching a stream (e.g. Settings' stats/theme, or Library
+  after the cache work), its existing `screens_test.dart`-style cases start
+  tripping the pending-timer invariant unless they end with
+  `pumpWidget(SizedBox()) + pump(1s)` (gotcha above). Grep the screen's test
+  files when you make a static screen reactive. Also: a scrolling `ListView`
+  (Settings) lazily builds — assert off-screen sections/rows only after
+  `tester.binding.setSurfaceSize(tall)` (reset with `setSurfaceSize(null)`), else
+  `find.text` on a below-the-fold row returns nothing.
+- **`package_info_plus` has no host-platform channel** — `PackageInfo.fromPlatform()`
+  throws in `flutter test`, so the `appVersionProvider` FutureProvider resolves to
+  `AsyncError` (the About row shows `—`, no crash). Override it in widget tests
+  (`appVersionProvider.overrideWith((ref) async => '1.0.0 (1)')`). Reads only the
+  Android `PackageManager` / iOS bundle — adds no network perms (release manifest
+  re-verified clean).
 
 ---
 
