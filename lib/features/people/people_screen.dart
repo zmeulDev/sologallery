@@ -57,11 +57,19 @@ class _PersonCard extends StatelessWidget {
     return GestureDetector(
       onTap: () => context.push('/person/${person.id}'),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          LayoutBuilder(
-            builder: (context, c) =>
-                FaceAvatar(personId: person.id, size: c.maxWidth),
+          // The avatar takes the space left after the two text lines and sizes
+          // to the smaller of that height / the width, so the card never
+          // overflows its aspect-ratio-fixed cell (even at large font scales).
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final edge = c.maxWidth < c.maxHeight ? c.maxWidth : c.maxHeight;
+                return Center(
+                  child: FaceAvatar(personId: person.id, size: edge),
+                );
+              },
+            ),
           ),
           const SizedBox(height: 8),
           Text(

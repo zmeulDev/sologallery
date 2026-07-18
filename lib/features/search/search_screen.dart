@@ -334,14 +334,17 @@ class _PeopleStrip extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           SizedBox(
-            height: 84,
+            // Height must equal the avatar diameter: a horizontal ListView gives
+            // children a *tight* cross-axis (height) constraint, so a taller
+            // strip would stretch the avatar into an oval.
+            height: 72,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: people.length,
               separatorBuilder: (_, _) => const SizedBox(width: 12),
               itemBuilder: (context, i) => GestureDetector(
                 onTap: () => context.push('/person/${people[i].id}'),
-                child: FaceAvatar(personId: people[i].id, size: 64),
+                child: FaceAvatar(personId: people[i].id, size: 72),
               ),
             ),
           ),

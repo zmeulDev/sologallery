@@ -375,7 +375,14 @@ Short form; full postmortems in `docs/postmortems/`.
   thumbnail** (`_ocrEdge`, via `analyzeFile(jpegPath, {ocrPath})`) for small-text
   recall — don't collapse them back to one image (it would move the face-box
   space off 512 and break avatars, or shrink OCR again). Both are still bounded
-  thumbnails, never the original.
+  thumbnails, never the original. **`thumbnail(id, 512, 512)` preserves the
+  asset's aspect ratio — the returned image is *not* square** (a portrait comes
+  back ~384×512). Face boxes live in that non-square pixel space, so a face
+  avatar must decode the thumbnail's **real** width/height and scale uniformly
+  (`FaceAvatar` / `faceAvatarPlacement` via `faceThumbProvider`); the old code
+  assumed a 512² square + `BoxFit.fill`, which stretched avatars to ovals and
+  cropped off the face. Host tests use fake (undecodable) bytes, so this only
+  shows on-device — validate people avatars on a real device.
 - **Drift: a column can't reuse a builder name** (`text`, `integer`, `boolean`,
   `real`, `blob`, …). `TextColumn get text => text()()` recurses / conflicts with
   `Table.text` → "conflicting_field_and_method". Name it something else

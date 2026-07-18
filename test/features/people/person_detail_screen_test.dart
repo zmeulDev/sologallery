@@ -1,8 +1,10 @@
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:sologallery/core/database/app_database.dart' show Person;
+import 'package:sologallery/core/database/app_database.dart' show AppDatabase, Person;
+import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/people/people_providers.dart';
 import 'package:sologallery/features/people/person_detail_screen.dart';
@@ -68,5 +70,58 @@ void main() {
   testWidgets('empty state when the person has no photos', (tester) async {
     await pump(tester, person: named('Bob'));
     expect(find.textContaining('No photos'), findsOneWidget);
+  });
+
+  testWidgets('rename dialog saves the name without a disposed-controller crash',
+      (tester) async {
+    // Real in-memory DB so the rename action actually writes; the dialog's
+    // controller must survive the exit animation (regression: it was disposed
+    // eagerly, crashing the pop).
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final id = await db.facesDao.createPerson(); // fresh DB → id 1
+
+    final router = GoRouter(
+      initialLocation: '/person/$id',
+      routes: [
+        GoRoute(
+          path: '/person/:id',
+          builder: (_, _) => PersonDetailScreen(personId: id),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          photoLibraryServiceProvider
+              .overrideWithValue(FakePhotoLibraryService()),
+          personProvider.overrideWith((ref, pid) => Stream.value(named(null))),
+          personAssetsProvider.overrideWith((ref, pid) async => const []),
+        ],
+        child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // Open the rename dialog.
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Name this person'), findsOneWidget);
+
+    // Type a name and Save — then run the exit animation with bounded pumps
+    // (a focused TextField never settles; the crash used to fire here).
+    await tester.enterText(find.byType(TextField), 'Charlie');
+    await tester.tap(find.text('Save'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(tester.takeException(), isNull); // no disposed-controller crash
+    final person = await (db.select(db.persons)
+          ..where((p) => p.id.equals(id)))
+        .getSingleOrNull();
+    expect(person?.displayName, 'Charlie'); // rename persisted
   });
 }
