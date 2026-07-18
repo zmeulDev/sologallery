@@ -13,19 +13,26 @@ in `docs/plans/` before writing code._
 - **Phase 3b** (Saved + Albums screens) ✅ — `docs/plans/phase3b-saved-albums.md`
 - **Phase 4 — videos** (playback + grid duration badges) ✅ —
   `docs/plans/phase4-videos.md`
+- **Library month-grouping fix** (Android `DATE_TAKEN` windowing + "Older"
+  bucket) ✅ — `docs/plans/library-month-grouping-fix.md`
+- **Phase 4 — Search** (metadata: date / media type / album name / favorites)
+  ✅ — `docs/plans/search-metadata.md`
 
-Tree is green: `tool/check.sh` passes (analyze clean, codegen ok, **110 host
-tests** incl. alchemist goldens). Phase-4 video patrol (open a video → real
-`VideoPlayer` mounts → play/pause) passes on the Pixel 9 Pro XL; 3a/3b patrol
-suites still green (detail_actions re-verified against the now-mixed-media query).
-Release manifest re-verified network-free after adding `video_player` (its
-`INTERNET` + `ACCESS_NETWORK_STATE` stripped via `tools:node="remove"`; see
-CLAUDE.md gotcha). Not committed — user handles git.
+Tree is green: `tool/check.sh` passes (analyze clean, codegen ok, **145 host
+tests** incl. alchemist goldens). Search adds a pushed `/search` screen off the
+Library app bar; its real-path native filters (RequestType partition +
+capture-date window) verified on the Pixel 9 Pro XL via
+`integration_test/search_test.dart` (3/3 green). Earlier month-grouping and
+Phase-4 video patrol suites still green. Release manifest still network-free (no
+new deps in Search). Not committed — user handles git.
 
 ## Next up — Phase 4 (remaining)
 
-**Search**, then **ML/indexing** (google_mlkit_*, tflite_flutter — still deferred)
-+ the ML schema tables. See Known follow-ups below.
+**ML/indexing** (google_mlkit_*, tflite_flutter — still deferred) + the ML schema
+tables (`photo_asset`, `photo_label`). Once labels exist, extend Search from
+metadata to **content** search (the Search screen + `searchAssetsProvider` are
+built to take an added label source; see `docs/plans/search-metadata.md` notes).
+See Known follow-ups below.
 
 ## What 3b delivered (for reference)
 

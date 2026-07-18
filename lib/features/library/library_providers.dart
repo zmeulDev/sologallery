@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../services/permission_provider.dart';
 import 'domain/month_summary.dart';
+import 'domain/older_summary.dart';
 import 'domain/year_month.dart';
 
 /// The month sections shown on the Library screen, revealed lazily.
@@ -68,3 +69,13 @@ final libraryMonthsProvider =
     AsyncNotifierProvider.autoDispose<LibraryMonthsNotifier, List<MonthSummary>>(
   LibraryMonthsNotifier.new,
 );
+
+/// The trailing "Older" section: undated photos that can't be placed in a
+/// calendar month. Null when there are none (or on iOS, where every asset has a
+/// creation date). Idle unless photo access allows reading the library.
+final olderSummaryProvider =
+    FutureProvider.autoDispose<OlderSummary?>((ref) async {
+  final access = ref.watch(permissionProvider);
+  if (!access.canReadLibrary) return null;
+  return ref.read(photoLibraryServiceProvider).olderSummary();
+});

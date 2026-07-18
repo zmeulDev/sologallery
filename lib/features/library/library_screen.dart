@@ -30,7 +30,7 @@ class LibraryScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.search),
             tooltip: 'Search',
-            onPressed: null, // wired in the search phase
+            onPressed: () => context.push('/search'),
           ),
         ],
       ),
@@ -72,6 +72,11 @@ class _MonthList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final hasMore = ref.watch(libraryMonthsProvider.notifier).hasMore;
+    // The "Older" section (undated photos) belongs at the very bottom, so it is
+    // only appended once every month has loaded.
+    final older = ref.watch(olderSummaryProvider).value;
+    final showOlder = !hasMore && older != null;
+    final tail = hasMore || showOlder ? 1 : 0;
     return NotificationListener<ScrollNotification>(
       onNotification: (n) {
         if (n.metrics.pixels >= n.metrics.maxScrollExtent - 600) {
@@ -81,18 +86,26 @@ class _MonthList extends ConsumerWidget {
       },
       child: ListView.builder(
         padding: const EdgeInsets.only(top: 4, bottom: 24),
-        itemCount: sections.length + (hasMore ? 1 : 0),
+        itemCount: sections.length + tail,
         itemBuilder: (context, i) {
           if (i >= sections.length) {
-            return const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: Center(
-                child: SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+            if (hasMore) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 ),
-              ),
+              );
+            }
+            return _LibrarySection(
+              label: 'Older',
+              count: older!.count,
+              previewAssetIds: older.previewAssetIds,
+              onViewAll: () => context.push('/older'),
             );
           }
           return _MonthSection(summary: sections[i]);
@@ -109,20 +122,43 @@ class _MonthSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return _LibrarySection(
+      label: summary.month.label,
+      count: summary.count,
+      previewAssetIds: summary.previewAssetIds,
+      onViewAll: () => context.push('/month/${summary.month.key}'),
+    );
+  }
+}
+
+/// One Library section: a labelled header with a "View all" control over a
+/// preview grid. Backs both calendar months and the trailing "Older" bucket.
+class _LibrarySection extends StatelessWidget {
+  const _LibrarySection({
+    required this.label,
+    required this.count,
+    required this.previewAssetIds,
+    required this.onViewAll,
+  });
+
+  final String label;
+  final int count;
+  final List<String> previewAssetIds;
+  final VoidCallback onViewAll;
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           MonthSectionHeader(
-            label: summary.month.label,
-            trailing: _ViewAllButton(
-              count: summary.count,
-              onTap: () => context.push('/month/${summary.month.key}'),
-            ),
+            label: label,
+            trailing: _ViewAllButton(count: count, onTap: onViewAll),
           ),
           const SizedBox(height: 10),
-          _PreviewGrid(assetIds: summary.previewAssetIds),
+          _PreviewGrid(assetIds: previewAssetIds),
         ],
       ),
     );

@@ -388,6 +388,23 @@ Short form; full postmortems in `docs/postmortems/`.
 - **`build_runner` dropped `--delete-conflicting-outputs`** — removed and
   now the default; passing it only prints a warning. `tool/check.sh`
   runs plain `dart run build_runner build`.
+- **photo_manager Android: month windows must filter `DATE_TAKEN`, not
+  `DATE_ADDED`.** `FilterOptionGroup.createTimeCond` filters MediaStore
+  `DATE_ADDED` (when a file landed on the device), but ordering and the reported
+  `createDateTime` use `DATE_TAKEN` (capture date, fallback `DATE_ADDED` when
+  0). A photo captured in June but added in July then lands in July's
+  `createTimeCond` window while the grid groups/orders it under June → June
+  section vanishes and July shows June photos inside. Fix: window by capture
+  date with an `AdvancedCustomFilter` on `CustomColumns.android.dateTaken` (a
+  `DateColumnWhereCondition`; for `dateTaken` it emits **milliseconds**, other
+  date columns seconds). Undated assets (`datetaken` null/0) never match a
+  window — surface them in a separate "Older" bucket
+  (`WhereConditionItem.text('(datetaken IS NULL OR datetaken = 0)')`, ordered by
+  `date_added`). iOS's `creationDate` is consistent across filter/order/report,
+  so it keeps the classic `createTimeCond` path (see
+  `PhotoLibraryService._androidWindow`/`_darwinFilter`). Host fakes can't catch
+  this — `integration_test/library_month_grouping_test.dart` asserts the axes
+  agree on-device.
 - **Flutter is invisible to `uiautomator`/adb UI dumps** unless an
   accessibility service is active (semantics tree built lazily). For
   on-device verification, tap at computed coordinates and read
@@ -421,6 +438,17 @@ Short form; full postmortems in `docs/postmortems/`.
   renders. Force the error state with
   `provider.overrideWithValue(AsyncError<T>(e, StackTrace.empty))` (riverpod
   3.x). `ProviderContainer` tests surface the error fine (real async).
+- **Riverpod 3 `ProviderContainer` tests — two traps.** (1) `await
+  container.read(someStreamProvider.future)` on an **autoDispose
+  `StreamProvider`** fails the test at teardown: disposing the element completes
+  the pending future with an error (`ElementWithFuture.dispose`). Don't await a
+  stream's `.future`; instead `container.listen(...)` to keep it alive and let
+  it emit, then read the derived sync provider. (2) After mutating a
+  `Notifier`/state provider, a downstream provider's recompute is **batched on
+  Riverpod's scheduler (a real Timer)** — a microtask (`await Future(() {})` /
+  `Duration.zero`) isn't enough. Await a real turn
+  (`await Future.delayed(const Duration(milliseconds: 10))`) before reading the
+  recomputed value.
 
 ---
 

@@ -3,7 +3,9 @@ import 'dart:typed_data';
 import 'dart:ui' show Rect;
 
 import 'package:sologallery/features/library/domain/month_summary.dart';
+import 'package:sologallery/features/library/domain/older_summary.dart';
 import 'package:sologallery/features/library/domain/year_month.dart';
+import 'package:sologallery/features/search/domain/search_date.dart';
 import 'package:sologallery/services/photo_library_service.dart';
 
 /// In-memory [PhotoLibraryService] for host tests. Backed by a fixed list of
@@ -18,16 +20,19 @@ class FakePhotoLibraryService extends PhotoLibraryService {
     this.access = PhotoAccess.granted,
     this.grantResult,
     List<AssetRef>? assets,
+    List<AssetRef>? undatedAssets,
     this.thumbnailBytes,
     this.previewBytes,
     Map<String, AssetDetail>? details,
     Map<String, Duration>? videoDurations,
     this.deleteResultOverride,
   })  : assets = List.of(assets ?? const []),
+        undatedAssets = List.of(undatedAssets ?? const []),
         details = details ?? const {},
         videoDurations = videoDurations ?? const {} {
     // Keep the newest-first ordering the real service guarantees.
     this.assets.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    this.undatedAssets.sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
   PhotoAccess access;
@@ -36,6 +41,10 @@ class FakePhotoLibraryService extends PhotoLibraryService {
   final PhotoAccess? grantResult;
 
   final List<AssetRef> assets;
+
+  /// Assets with no capture date, surfaced via the "Older" section (mirrors the
+  /// real service's `datetaken` null/0 bucket).
+  final List<AssetRef> undatedAssets;
   final Uint8List? thumbnailBytes;
   final Uint8List? previewBytes;
 
@@ -104,6 +113,81 @@ class FakePhotoLibraryService extends PhotoLibraryService {
     final start = page * pageSize;
     if (start >= inMonth.length) return const [];
     return inMonth.sublist(start, (start + pageSize).clamp(0, inMonth.length));
+  }
+
+  @override
+  Future<OlderSummary?> olderSummary() async {
+    if (undatedAssets.isEmpty) return null;
+    return OlderSummary(
+      count: undatedAssets.length,
+      previewAssetIds: [for (final a in undatedAssets.take(6)) a.id],
+    );
+  }
+
+  @override
+  Future<List<AssetRef>> olderAssets({
+    required int page,
+    required int pageSize,
+  }) async {
+    final start = page * pageSize;
+    if (start >= undatedAssets.length) return const [];
+    return undatedAssets.sublist(
+      start,
+      (start + pageSize).clamp(0, undatedAssets.length),
+    );
+  }
+
+  bool _typeOk(MediaTypeFilter type, String id) {
+    final isVideo = videoDurations.containsKey(id);
+    switch (type) {
+      case MediaTypeFilter.all:
+        return true;
+      case MediaTypeFilter.photos:
+        return !isVideo;
+      case MediaTypeFilter.videos:
+        return isVideo;
+    }
+  }
+
+  bool _windowOk(DateTime d, DateTime? min, DateTime? max) {
+    if (min != null && d.isBefore(min)) return false;
+    if (max != null && !d.isBefore(max)) return false;
+    return true;
+  }
+
+  @override
+  Future<List<AssetRef>> searchAssets({
+    DateTime? min,
+    DateTime? max,
+    required MediaTypeFilter type,
+    required int page,
+    required int pageSize,
+  }) async {
+    // `assets` is already newest-first, mirroring the real path's ordering.
+    final matched = [
+      for (final a in assets)
+        if (_typeOk(type, a.id) && _windowOk(a.createdAt, min, max)) a,
+    ];
+    final start = page * pageSize;
+    if (start >= matched.length) return const [];
+    return matched.sublist(start, (start + pageSize).clamp(0, matched.length));
+  }
+
+  @override
+  Future<List<AssetRef>> resolveFavoriteMatches({
+    required List<String> ids,
+    DateTime? min,
+    DateTime? max,
+    required MediaTypeFilter type,
+  }) async {
+    final byId = {for (final a in [...assets, ...undatedAssets]) a.id: a};
+    final matches = <AssetRef>[
+      for (final id in ids)
+        if (byId[id] case final a?)
+          if (_typeOk(type, id) && _windowOk(a.createdAt, min, max)) a,
+    ];
+    matches.sort((x, y) => y.createdAt.compareTo(x.createdAt));
+    return matches;
   }
 
   @override

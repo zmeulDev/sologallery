@@ -7,7 +7,9 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../features/library/domain/month_summary.dart';
+import '../features/library/domain/older_summary.dart';
 import '../features/library/domain/year_month.dart';
+import '../features/search/domain/search_date.dart';
 
 /// Coarse photo-library access state, mapped from `photo_manager`'s
 /// [PermissionState]. This is the only permission vocabulary the domain/UI
@@ -145,37 +147,113 @@ class PhotoLibraryService {
   // queries so only the six preview thumbnails per month are ever materialized
   // — full metadata for a whole library is never loaded, and originals are
   // never decoded for grid cells (CLAUDE.md Absolute rules).
+  //
+  // Months are windowed by *capture date* — the same axis the grid orders and
+  // groups by. On Android that is `DATE_TAKEN`; the classic `createTimeCond`
+  // filters `DATE_ADDED` (when a file landed on the device) instead, which
+  // disagrees with the ordering column and mis-buckets imported photos (a June
+  // photo added in July lands in July, and June never appears). So Android uses
+  // an `AdvancedCustomFilter` on `datetaken`. iOS's `creationDate` is already
+  // consistent across filter/order/report, so it keeps the classic filter.
 
-  /// Resolves the single "all photos" path, optionally scoped to a
-  /// `[min, max]` create-time window, ordered newest-first.
-  Future<AssetPathEntity?> _imagesPath({DateTime? min, DateTime? max}) async {
-    const assetFilter = FilterOption(
-      sizeConstraint: SizeConstraint(ignoreSize: true),
-      needTitle: false,
-    );
-    final filter = FilterOptionGroup(
-      imageOption: assetFilter,
-      videoOption: assetFilter,
-      createTimeCond: (min != null && max != null)
-          ? DateTimeCond(min: min, max: max)
-          : DateTimeCond.def(),
-      orders: const [
-        OrderOption(type: OrderOptionType.createDate, asc: false),
-      ],
-    );
+  bool get _isDarwin => Platform.isIOS || Platform.isMacOS;
+
+  /// Resolves the single "all photos" path for [filter] (newest-first ordering
+  /// is baked into the filter), optionally narrowed to a media [type]. Returns
+  /// null when the library (for that type) is empty.
+  Future<AssetPathEntity?> _path(
+    PMFilter filter, {
+    RequestType type = RequestType.common,
+  }) async {
     final paths = await PhotoManager.getAssetPathList(
       onlyAll: true,
-      type: RequestType.common,
+      type: type,
       filterOption: filter,
     );
     return paths.isEmpty ? null : paths.first;
   }
 
-  /// The descending list of calendar months spanned by the library. Includes
+  /// Maps the domain [MediaTypeFilter] onto a `photo_manager` [RequestType],
+  /// keeping the plugin type out of the domain/UI layers.
+  RequestType _requestType(MediaTypeFilter type) {
+    switch (type) {
+      case MediaTypeFilter.all:
+        return RequestType.common;
+      case MediaTypeFilter.photos:
+        return RequestType.image;
+      case MediaTypeFilter.videos:
+        return RequestType.video;
+    }
+  }
+
+  /// iOS/macOS filter: size-ignoring, newest-first by `creationDate`, optionally
+  /// scoped to a `[min, max)` window (inclusive `createTimeCond` bounds).
+  FilterOptionGroup _darwinFilter({DateTime? min, DateTime? max}) {
+    const assetFilter = FilterOption(
+      sizeConstraint: SizeConstraint(ignoreSize: true),
+      needTitle: false,
+    );
+    return FilterOptionGroup(
+      imageOption: assetFilter,
+      videoOption: assetFilter,
+      createTimeCond: (min != null && max != null)
+          ? DateTimeCond(min: min, max: max.subtract(const Duration(seconds: 1)))
+          : DateTimeCond.def(),
+      orders: const [
+        OrderOption(type: OrderOptionType.createDate, asc: false),
+      ],
+    );
+  }
+
+  /// Android capture-date (`DATE_TAKEN`) window, newest-first. [min] inclusive,
+  /// [max] exclusive; assets with no capture date (`datetaken` null/0) never
+  /// match a window — they surface via [olderSummary] instead.
+  AdvancedCustomFilter _androidWindow({DateTime? min, DateTime? max}) {
+    final col = CustomColumns.android.dateTaken;
+    final filter = AdvancedCustomFilter();
+    if (min != null) {
+      filter.addWhereCondition(
+        DateColumnWhereCondition(column: col, operator: '>=', value: min),
+      );
+    }
+    if (max != null) {
+      filter.addWhereCondition(
+        DateColumnWhereCondition(column: col, operator: '<', value: max),
+      );
+    }
+    return filter..addOrderBy(column: col, isAsc: false);
+  }
+
+  /// Android filter for undated assets (`DATE_TAKEN` null/0 — their reported
+  /// `createDateTime` falls back to `DATE_ADDED`), newest-added first.
+  AdvancedCustomFilter _androidUndated() {
+    final taken = CustomColumns.android.dateTaken;
+    return AdvancedCustomFilter()
+      ..addWhereCondition(
+        WhereConditionItem.text('($taken IS NULL OR $taken = 0)'),
+      )
+      ..addOrderBy(column: CustomColumns.android.createDate, isAsc: false);
+  }
+
+  /// The path scoped to one capture-date [month], newest-first.
+  Future<AssetPathEntity?> _monthPath(YearMonth month) {
+    final filter = _isDarwin
+        ? _darwinFilter(min: month.start, max: month.end)
+        : _androidWindow(min: month.start, max: month.end);
+    return _path(filter);
+  }
+
+  /// The descending list of calendar months spanned by *dated* photos. Includes
   /// months with no photos (callers skip empties via [monthSummary]); returns
-  /// empty when the library has no images.
+  /// empty when the library has no dated images. Undated photos are excluded so
+  /// they can't stretch the span — they live in the [olderSummary] section.
   Future<List<YearMonth>> monthsInLibrary() async {
-    final path = await _imagesPath();
+    // Android: exclude undated (datetaken >= 1ms). iOS: creationDate is always
+    // present, so the plain filter already spans only dated assets.
+    final filter = _isDarwin
+        ? _darwinFilter()
+        : _androidWindow(min: DateTime.fromMillisecondsSinceEpoch(1));
+    final path = await _path(filter);
     if (path == null) return const [];
     final count = await path.assetCountAsync;
     if (count == 0) return const [];
@@ -183,7 +261,7 @@ class PhotoLibraryService {
     final oldest = await path.getAssetListRange(start: count - 1, end: count);
     if (newest.isEmpty || oldest.isEmpty) return const [];
     _log.fine('Library spans ${newest.first.createDateTime} .. '
-        '${oldest.first.createDateTime} ($count photos)');
+        '${oldest.first.createDateTime} ($count dated photos)');
     return YearMonth.descendingRange(
       YearMonth.fromDate(newest.first.createDateTime),
       YearMonth.fromDate(oldest.first.createDateTime),
@@ -193,10 +271,7 @@ class PhotoLibraryService {
   /// The exact photo count and up to six newest preview ids for [month], or
   /// null if the month has no photos.
   Future<MonthSummary?> monthSummary(YearMonth month) async {
-    final path = await _imagesPath(
-      min: month.start,
-      max: month.end.subtract(const Duration(seconds: 1)),
-    );
+    final path = await _monthPath(month);
     if (path == null) return null;
     final count = await path.assetCountAsync;
     if (count == 0) return null;
@@ -218,15 +293,101 @@ class PhotoLibraryService {
     required int page,
     required int pageSize,
   }) async {
-    final path = await _imagesPath(
-      min: month.start,
-      max: month.end.subtract(const Duration(seconds: 1)),
-    );
+    final path = await _monthPath(month);
     if (path == null) return const [];
     final assets = await path.getAssetListPaged(page: page, size: pageSize);
     return [
       for (final a in assets) AssetRef(id: a.id, createdAt: a.createDateTime),
     ];
+  }
+
+  /// The exact count and up to six preview ids of undated photos, shown in the
+  /// trailing "Older" section, newest-added first. Null on Darwin (creationDate
+  /// is always present) or when there are none.
+  Future<OlderSummary?> olderSummary() async {
+    if (_isDarwin) return null;
+    final path = await _path(_androidUndated());
+    if (path == null) return null;
+    final count = await path.assetCountAsync;
+    if (count == 0) return null;
+    final preview = await path.getAssetListRange(
+      start: 0,
+      end: count < 6 ? count : 6,
+    );
+    return OlderSummary(
+      count: count,
+      previewAssetIds: [for (final a in preview) a.id],
+    );
+  }
+
+  /// A page of undated asset references for the "Older" full grid, newest-added
+  /// first. Empty on Darwin.
+  Future<List<AssetRef>> olderAssets({
+    required int page,
+    required int pageSize,
+  }) async {
+    if (_isDarwin) return const [];
+    final path = await _path(_androidUndated());
+    if (path == null) return const [];
+    final assets = await path.getAssetListPaged(page: page, size: pageSize);
+    return [
+      for (final a in assets) AssetRef(id: a.id, createdAt: a.createDateTime),
+    ];
+  }
+
+  // --- Search --------------------------------------------------------------
+
+  /// A page of asset references for the metadata Search grid: the library
+  /// filtered by media [type] and, when given, a capture-date window
+  /// `[min, max)` — newest first. A null window spans the whole library. Uses
+  /// the same capture-date axis as the month grid (Android `DATE_TAKEN`, iOS
+  /// `creationDate`), so results order and group consistently.
+  Future<List<AssetRef>> searchAssets({
+    DateTime? min,
+    DateTime? max,
+    required MediaTypeFilter type,
+    required int page,
+    required int pageSize,
+  }) async {
+    final filter =
+        _isDarwin ? _darwinFilter(min: min, max: max) : _androidWindow(min: min, max: max);
+    final path = await _path(filter, type: _requestType(type));
+    if (path == null) return const [];
+    final assets = await path.getAssetListPaged(page: page, size: pageSize);
+    return [
+      for (final a in assets) AssetRef(id: a.id, createdAt: a.createDateTime),
+    ];
+  }
+
+  /// Filters a bounded set of asset [ids] (the user's favorites) by media
+  /// [type] and an optional capture-date window `[min, max)`, newest first.
+  /// Favorites live in Drift (not queryable through a `photo_manager` path), so
+  /// they are resolved via the cached [_entity] and filtered here rather than
+  /// intersected into a paginated path query. Unresolvable ids (e.g. deleted)
+  /// are dropped.
+  Future<List<AssetRef>> resolveFavoriteMatches({
+    required List<String> ids,
+    DateTime? min,
+    DateTime? max,
+    required MediaTypeFilter type,
+  }) async {
+    final matches = <AssetRef>[];
+    for (final id in ids) {
+      final entity = await _entity(id);
+      if (entity == null) continue;
+      if (type == MediaTypeFilter.photos && entity.type != AssetType.image) {
+        continue;
+      }
+      if (type == MediaTypeFilter.videos && entity.type != AssetType.video) {
+        continue;
+      }
+      final created = entity.createDateTime;
+      if (min != null && created.isBefore(min)) continue;
+      if (max != null && !created.isBefore(max)) continue;
+      matches.add(AssetRef(id: id, createdAt: created));
+    }
+    matches.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return matches;
   }
 
   // --- Thumbnails ----------------------------------------------------------

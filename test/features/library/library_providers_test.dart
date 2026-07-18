@@ -54,6 +54,50 @@ void main() {
     expect(summary.previewAssetIds, hasLength(6)); // capped at six
   });
 
+  test('olderSummaryProvider is null without undated photos', () async {
+    final fake = FakePhotoLibraryService(
+      access: PhotoAccess.granted,
+      assets: assetsInMonth(2026, 8, 3),
+    );
+    final container = ProviderContainer(
+      overrides: [photoLibraryServiceProvider.overrideWithValue(fake)],
+    );
+    addTearDown(container.dispose);
+    await container.read(permissionProvider.notifier).refresh();
+    expect(await container.read(olderSummaryProvider.future), isNull);
+  });
+
+  test('olderSummaryProvider summarizes undated photos', () async {
+    final fake = FakePhotoLibraryService(
+      access: PhotoAccess.granted,
+      assets: assetsInMonth(2026, 8, 3),
+      undatedAssets: assetsInMonth(2020, 1, 9, prefix: 'u'),
+    );
+    final container = ProviderContainer(
+      overrides: [photoLibraryServiceProvider.overrideWithValue(fake)],
+    );
+    addTearDown(container.dispose);
+    await container.read(permissionProvider.notifier).refresh();
+
+    final older = await container.read(olderSummaryProvider.future);
+    expect(older, isNotNull);
+    expect(older!.count, 9);
+    expect(older.previewAssetIds, hasLength(6)); // capped at six
+  });
+
+  test('olderSummaryProvider is null without library access', () async {
+    final fake = FakePhotoLibraryService(
+      access: PhotoAccess.denied,
+      undatedAssets: assetsInMonth(2020, 1, 4),
+    );
+    final container = ProviderContainer(
+      overrides: [photoLibraryServiceProvider.overrideWithValue(fake)],
+    );
+    addTearDown(container.dispose);
+    await container.read(permissionProvider.notifier).refresh();
+    expect(await container.read(olderSummaryProvider.future), isNull);
+  });
+
   test('lazily reveals months in batches, skipping empty months', () async {
     // Non-empty: 08, 06, 05, 04, 03, 02 (07 is an intentional gap).
     final assets = <AssetRef>[

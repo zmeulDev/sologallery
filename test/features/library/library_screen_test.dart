@@ -17,15 +17,24 @@ void main() {
     WidgetTester tester, {
     required PhotoAccess access,
     List<AssetRef> assets = const [],
+    List<AssetRef> undatedAssets = const [],
   }) async {
-    final fake = FakePhotoLibraryService(access: access, assets: assets);
-    // A minimal router so the "View all" push target resolves.
+    final fake = FakePhotoLibraryService(
+      access: access,
+      assets: assets,
+      undatedAssets: undatedAssets,
+    );
+    // A minimal router so the "View all" push targets resolve.
     final router = GoRouter(
       routes: [
         GoRoute(path: '/', builder: (_, _) => const LibraryScreen()),
         GoRoute(
           path: '/month/:key',
           builder: (_, _) => const Scaffold(body: Text('month')),
+        ),
+        GoRoute(
+          path: '/older',
+          builder: (_, _) => const Scaffold(body: Text('older-grid')),
         ),
       ],
     );
@@ -67,6 +76,42 @@ void main() {
     await tester.tap(find.text('View all 7'));
     await tester.pumpAndSettle();
     expect(find.text('month'), findsOneWidget);
+  });
+
+  testWidgets('undated photos render a trailing Older section', (tester) async {
+    await pump(
+      tester,
+      access: PhotoAccess.granted,
+      assets: assetsInMonth(2026, 8, 3),
+      undatedAssets: assetsInMonth(2020, 1, 4),
+    );
+
+    expect(find.text('AUGUST 2026'), findsOneWidget);
+    expect(find.text('OLDER'), findsOneWidget);
+    expect(find.text('View all 4'), findsOneWidget);
+  });
+
+  testWidgets('no Older section when there are no undated photos',
+      (tester) async {
+    await pump(
+      tester,
+      access: PhotoAccess.granted,
+      assets: assetsInMonth(2026, 8, 3),
+    );
+    expect(find.text('OLDER'), findsNothing);
+  });
+
+  testWidgets('tapping Older View all navigates to /older', (tester) async {
+    await pump(
+      tester,
+      access: PhotoAccess.granted,
+      assets: assetsInMonth(2026, 8, 3),
+      undatedAssets: assetsInMonth(2020, 1, 4),
+    );
+
+    await tester.tap(find.text('View all 4'));
+    await tester.pumpAndSettle();
+    expect(find.text('older-grid'), findsOneWidget);
   });
 
   testWidgets('limited access shows the banner', (tester) async {

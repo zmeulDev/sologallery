@@ -8,8 +8,10 @@ import '../../features/detail/detail_screen.dart';
 import '../../features/detail/photo_viewer_args.dart';
 import '../../features/library/library_screen.dart';
 import '../../features/library/month_grid_screen.dart';
+import '../../features/library/older_grid_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/saved/saved_screen.dart';
+import '../../features/search/search_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
@@ -51,6 +53,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) =>
             MonthGridScreen(monthKey: state.pathParameters['key']!),
+      ),
+      GoRoute(
+        path: '/older',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const OlderGridScreen(),
+      ),
+      GoRoute(
+        path: '/search',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const SearchScreen(),
       ),
       GoRoute(
         path: '/album/:id',

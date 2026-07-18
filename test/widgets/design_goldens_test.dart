@@ -6,6 +6,7 @@ import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/albums/widgets/album_card.dart';
 import 'package:sologallery/services/permission_provider.dart';
 import 'package:sologallery/widgets/asset_thumbnail.dart';
+import 'package:sologallery/widgets/filter_pill.dart';
 import 'package:sologallery/widgets/limited_access_banner.dart';
 import 'package:sologallery/widgets/month_section_header.dart';
 
@@ -61,6 +62,20 @@ void main() {
           DurationBadge(duration: Duration(minutes: 1, seconds: 5)),
           SizedBox(width: 12),
           DurationBadge(duration: Duration(hours: 1, minutes: 2, seconds: 3)),
+        ],
+      ),
+    ),
+  );
+
+  goldenTest(
+    'FilterPill — selected and unselected',
+    fileName: 'filter_pill',
+    builder: () => themedGroup(
+      Row(
+        children: [
+          FilterPill(label: 'All', selected: true, onTap: () {}),
+          const SizedBox(width: 8),
+          FilterPill(label: 'Videos', selected: false, onTap: () {}),
         ],
       ),
     ),

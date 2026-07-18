@@ -24,3 +24,18 @@ final monthAssetsProvider = AsyncNotifierProvider.autoDispose
     .family<MonthAssetsNotifier, List<AssetRef>, YearMonth>(
   MonthAssetsNotifier.new,
 );
+
+/// Paged undated assets, backing the "Older" full grid.
+class OlderAssetsNotifier extends PagedAssetsNotifier {
+  @override
+  Future<List<AssetRef>> fetchPage(int page, int pageSize) {
+    return ref
+        .read(photoLibraryServiceProvider)
+        .olderAssets(page: page, pageSize: pageSize);
+  }
+}
+
+final olderAssetsProvider =
+    AsyncNotifierProvider.autoDispose<OlderAssetsNotifier, List<AssetRef>>(
+  OlderAssetsNotifier.new,
+);
