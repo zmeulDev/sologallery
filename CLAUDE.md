@@ -371,6 +371,20 @@ Short form; full postmortems in `docs/postmortems/`.
   Run with `patrol test -t <file> -d <device>` (needs `patrol_cli`). The
   Android-14 *limited*-access flow drives a device-specific system photo
   picker, so that case is left `skip: true` — enable per device.
+  **patrol `$('text')` is an *exact* whole-string finder** (not substring):
+  for multi-line/partial notes use `find.textContaining(...)`. Also, a
+  RenderFlex overflow on device throws and fails the test at the *next*
+  expect — that's how the AlbumCard 7px overflow surfaced; layout bugs are
+  real failures on-device even though host widget tests may tolerate them.
+- **`video_player` (media3) injects network permissions** — `video_player_android`
+  declares `INTERNET` **and** `ACCESS_NETWORK_STATE` (for streaming). Both merge
+  into the **release** manifest and break the network-free check (Absolute rules /
+  DoD #5). `android/app/src/main/AndroidManifest.xml` strips both with
+  `tools:node="remove"` (needs `xmlns:tools` on `<manifest>`); media3 degrades to
+  no network monitoring for local files. `WAKE_LOCK` is left (screen-on during
+  playback, not a privacy concern). Surfacing videos also needs `READ_MEDIA_VIDEO`.
+  Re-verify the merged manifest after any video-dep bump. Playback uses local
+  `entity.file` only — never a URL.
 - **`build_runner` dropped `--delete-conflicting-outputs`** — removed and
   now the default; passing it only prints a warning. `tool/check.sh`
   runs plain `dart run build_runner build`.
@@ -381,7 +395,7 @@ Short form; full postmortems in `docs/postmortems/`.
 - **Debug builds inject the `INTERNET` permission** (Dart VM service /
   hot reload) — expected. Verify the **release** merged manifest instead
   (Definition of Done #5): no `INTERNET`/`READ_PHONE_STATE`/`c2dm`.
-- **Drift + widget tests (`FakeAsync`) — three traps.** (1) `await`ing a
+- **Drift + widget tests (`FakeAsync`) — five traps.** (1) `await`ing a
   Drift **stream** `.first` (e.g. `dao.watchAll().first`) inside a
   `testWidgets` body **deadlocks** — the stream needs the fake clock pumped
   but nothing pumps while you await. Assert via a one-shot `.get()`
@@ -389,12 +403,24 @@ Short form; full postmortems in `docs/postmortems/`.
   `ProviderContainer` tests (real async, no FakeAsync) are also fine. (2)
   Disposing a `ProviderScope` that holds a Drift `.watch()` schedules a
   zero-duration Timer (`StreamQueryStore.markAsClosed`) that trips the
-  "A Timer is still pending" teardown invariant for the *fastest* test —
-  end such tests by disposing the tree and elapsing time:
-  `await tester.pumpWidget(const SizedBox()); await tester.pump(const
-  Duration(seconds: 1));`. (3) Any sheet/screen containing a focused
-  `TextField` never settles (cursor-blink is periodic) — use **bounded
-  pumps**, never `pumpAndSettle`, once a `TextField` is on screen.
+  "A Timer is still pending" teardown invariant — end such tests by disposing
+  the tree and elapsing time: `await tester.pumpWidget(const SizedBox());
+  await tester.pump(const Duration(seconds: 1));`. **This must run in the test
+  *body*, not `addTearDown`** — the pending-timer invariant
+  (`_verifyInvariants`) runs *before* `addTearDown` callbacks. (3) Any
+  sheet/screen containing a focused `TextField` never settles (cursor-blink is
+  periodic) — use **bounded pumps**, never `pumpAndSettle`, once a `TextField`
+  is on screen. (4) A screen whose `AsyncValue` **loading** branch shows a
+  `CircularProgressIndicator` (any `.when(loading:)` grid) makes `pumpAndSettle`
+  **hang forever** (the spinner always schedules a frame) until the stream
+  emits — use bounded pumps for title/structure assertions, or emit data first.
+  When a screen starts consuming the DB, its existing widget tests must add a
+  `databaseProvider.overrideWithValue(inMemoryDb)` or they hang here. (5) A
+  `StreamProvider` whose stream **errors** (or whose `overrideWith` create
+  throws) stays `AsyncLoading` under fake-async — the error event never
+  renders. Force the error state with
+  `provider.overrideWithValue(AsyncError<T>(e, StackTrace.empty))` (riverpod
+  3.x). `ProviderContainer` tests surface the error fine (real async).
 
 ---
 

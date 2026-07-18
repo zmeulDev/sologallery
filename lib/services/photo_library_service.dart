@@ -1,4 +1,4 @@
-import 'dart:io' show Platform;
+import 'dart:io' show File, Platform;
 import 'dart:typed_data';
 import 'dart:ui' show Rect;
 
@@ -52,6 +52,7 @@ class AssetDetail {
     required this.createdAt,
     required this.orientationDegrees,
     required this.isVideo,
+    this.videoDuration,
     this.sizeBytes,
     this.mimeType,
     this.latitude,
@@ -67,6 +68,9 @@ class AssetDetail {
   /// EXIF orientation as reported by the platform (degrees).
   final int orientationDegrees;
   final bool isVideo;
+
+  /// Clip length for a video asset; null for images.
+  final Duration? videoDuration;
 
   /// Original file size in bytes, best-effort (null if the file can't be read).
   final int? sizeBytes;
@@ -145,11 +149,13 @@ class PhotoLibraryService {
   /// Resolves the single "all photos" path, optionally scoped to a
   /// `[min, max]` create-time window, ordered newest-first.
   Future<AssetPathEntity?> _imagesPath({DateTime? min, DateTime? max}) async {
+    const assetFilter = FilterOption(
+      sizeConstraint: SizeConstraint(ignoreSize: true),
+      needTitle: false,
+    );
     final filter = FilterOptionGroup(
-      imageOption: const FilterOption(
-        sizeConstraint: SizeConstraint(ignoreSize: true),
-        needTitle: false,
-      ),
+      imageOption: assetFilter,
+      videoOption: assetFilter,
       createTimeCond: (min != null && max != null)
           ? DateTimeCond(min: min, max: max)
           : DateTimeCond.def(),
@@ -159,7 +165,7 @@ class PhotoLibraryService {
     );
     final paths = await PhotoManager.getAssetPathList(
       onlyAll: true,
-      type: RequestType.image,
+      type: RequestType.common,
       filterOption: filter,
     );
     return paths.isEmpty ? null : paths.first;
@@ -270,6 +276,34 @@ class PhotoLibraryService {
     return entity.thumbnailDataWithOption(option);
   }
 
+  // --- Video ---------------------------------------------------------------
+
+  /// The clip length for [assetId] if it is a video, else null (used to render
+  /// the grid duration badge). Cheap — reads the cached entity's metadata; never
+  /// opens the file.
+  Future<Duration?> videoDuration(String assetId) async {
+    final entity = await _entity(assetId);
+    if (entity == null || entity.type != AssetType.video) return null;
+    return entity.videoDuration;
+  }
+
+  /// Whether [assetId] is a video (drives the detail viewer's player-vs-image
+  /// branch). Cheap — reads the cached entity's type.
+  Future<bool> isVideoAsset(String assetId) async {
+    final entity = await _entity(assetId);
+    return entity?.type == AssetType.video;
+  }
+
+  /// The on-device file backing a video [assetId], for local playback, or null
+  /// if it isn't a video or can't be resolved. A file reference only — the
+  /// original is never copied or modified (Absolute rules), and playback is
+  /// purely local (no network).
+  Future<File?> videoFile(String assetId) async {
+    final entity = await _entity(assetId);
+    if (entity == null || entity.type != AssetType.video) return null;
+    return entity.file;
+  }
+
   // --- Detail metadata, delete, share -------------------------------------
 
   /// The `photo_manager`-native metadata for [assetId] shown in the EXIF sheet,
@@ -305,6 +339,8 @@ class PhotoLibraryService {
       createdAt: entity.createDateTime,
       orientationDegrees: entity.orientation,
       isVideo: entity.type == AssetType.video,
+      videoDuration:
+          entity.type == AssetType.video ? entity.videoDuration : null,
       sizeBytes: sizeBytes,
       mimeType: mimeType,
       latitude: lat,

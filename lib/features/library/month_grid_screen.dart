@@ -70,7 +70,11 @@ class _Grid extends ConsumerWidget {
               '/photo/${items[i].id}',
               extra: PhotoViewerArgs([for (final a in items) a.id], i),
             ),
-            child: AssetThumbnail(assetId: items[i].id, size: 400),
+            child: AssetThumbnail(
+              assetId: items[i].id,
+              size: 400,
+              showVideoBadge: true,
+            ),
           );
         },
       ),

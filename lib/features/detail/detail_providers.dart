@@ -1,3 +1,4 @@
+import 'dart:io' show File;
 import 'dart:typed_data';
 import 'dart:ui' show Rect;
 
@@ -21,6 +22,18 @@ final detailImageProvider = FutureProvider.autoDispose.family<Uint8List?, String
   (ref, assetId) => ref
       .read(photoLibraryServiceProvider)
       .previewImage(assetId, kDetailImageMaxEdge),
+);
+
+/// Whether [assetId] is a video — selects the player vs. still-image page in
+/// the detail viewer. Overridable in widget tests.
+final isVideoProvider = FutureProvider.autoDispose.family<bool, String>(
+  (ref, assetId) => ref.read(photoLibraryServiceProvider).isVideoAsset(assetId),
+);
+
+/// The local file backing a video asset, for in-viewer playback. Null for
+/// stills or unresolvable assets. Overridable in widget tests.
+final videoFileProvider = FutureProvider.autoDispose.family<File?, String>(
+  (ref, assetId) => ref.read(photoLibraryServiceProvider).videoFile(assetId),
 );
 
 /// `photo_manager`-native metadata for the EXIF sheet of one asset.

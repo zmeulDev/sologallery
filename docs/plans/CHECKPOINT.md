@@ -10,30 +10,34 @@ in `docs/plans/` before writing code._
 - **Phase 2** (permissions + month gallery) ✅ — `docs/plans/phase2-permissions-gallery.md`
 - **Phase 3a** (detail viewer + EXIF + favorite/share/delete/add-to-album) ✅ —
   `docs/plans/phase3a-detail-viewer.md`
+- **Phase 3b** (Saved + Albums screens) ✅ — `docs/plans/phase3b-saved-albums.md`
+- **Phase 4 — videos** (playback + grid duration badges) ✅ —
+  `docs/plans/phase4-videos.md`
 
-Tree is green: `tool/check.sh` passes (analyze clean, codegen ok, **80 host
-tests** incl. alchemist goldens). Phase-3a patrol favorite/EXIF/add-album passes
-on the Pixel 9 Pro XL. Release manifest verified network-free. Not committed —
-user handles git.
+Tree is green: `tool/check.sh` passes (analyze clean, codegen ok, **110 host
+tests** incl. alchemist goldens). Phase-4 video patrol (open a video → real
+`VideoPlayer` mounts → play/pause) passes on the Pixel 9 Pro XL; 3a/3b patrol
+suites still green (detail_actions re-verified against the now-mixed-media query).
+Release manifest re-verified network-free after adding `video_player` (its
+`INTERNET` + `ACCESS_NETWORK_STATE` stripped via `tools:node="remove"`; see
+CLAUDE.md gotcha). Not committed — user handles git.
 
-## Next up — Phase 3b: Saved + Albums screens
+## Next up — Phase 4 (remaining)
 
-Phase 3 was split; 3b is the remaining half. Build the two screens as
-first-class destinations (their DAOs are already wired + tested from the 3a
-detail actions):
+**Search**, then **ML/indexing** (google_mlkit_*, tflite_flutter — still deferred)
++ the ML schema tables. See Known follow-ups below.
 
-- **Saved** (`/saved`, `lib/features/saved/saved_screen.dart` — currently a
-  `PlaceholderView`): favorites grid, newest-favorited first. Reuse
-  `FavoritesDao.watchAll()` + `PagedAssetsNotifier` (built in Phase 2 for exactly
-  this) + `AssetThumbnail`; tap → detail viewer with the favorites sequence as
-  `PhotoViewerArgs`. AsyncValue loading/empty/error states.
-- **Albums** (`/albums`, `lib/features/albums/albums_screen.dart` — placeholder):
-  album list (`AlbumsDao.watchAllAlbums`), create album, delete album, and the
-  `/album/:id` album-detail grid (`AlbumsDao.watchEntries`) → detail viewer.
-  Add the `/album/:id` route (mirror `/photo/:id` / `/month/:key`).
-- Invoke `/frontend-design:frontend-design` before building these screens.
-- Tests: DAO paths already covered; add provider + widget + golden tiers and an
-  on-device patrol favorite-round-trip + album-open smoke.
+## What 3b delivered (for reference)
+
+- **Saved** (`/saved`): `saved_providers.dart` (`savedFavoritesProvider`, a
+  `StreamProvider` over `FavoritesDao.watchAll` — a DB stream, **not**
+  `PagedAssetsNotifier`; favorites are a bounded reactive set) + rebuilt
+  `saved_screen.dart` (3-col grid → detail viewer).
+- **Albums** (`/albums`, `/album/:id`): `albums_providers.dart` (summaries /
+  album / entries / create+delete actions), `widgets/album_card.dart`, rebuilt
+  `albums_screen.dart` (2-col cards, create dialog, long-press delete),
+  `album_detail_screen.dart`. New DAO reads `watchAlbum` + `watchAlbumSummaries`
+  (+ `AlbumSummary` DTO). `/album/:id` route added.
 
 ## Reusable building blocks (already in place)
 
@@ -41,6 +45,7 @@ detail actions):
 - `PagedAssetsNotifier` (`lib/services/paged_assets_notifier.dart`) — shared grid paginator
 - `AssetThumbnail` + `thumbnailProvider`; `PhotoViewerArgs` + `/photo/:id` viewer
 - Detail providers/actions (`lib/features/detail/`) — pattern to mirror
+- Saved/Albums providers + `AlbumCard` (`lib/features/saved`, `lib/features/albums`)
 
 ## Known follow-ups / debts
 
@@ -51,8 +56,8 @@ detail actions):
 - Detail **zoom** shows a screen-capped preview, not the full original — a
   zoom-to-original pass is a later enhancement.
 - **App id** is still `com.example.sologallery` — change before any release.
-- **Phase 4** (after 3b): videos, search, ML/indexing (google_mlkit_*,
-  tflite_flutter — still deferred) + the ML schema tables.
+- **Phase 4 remaining** (videos ✅ done): search, then ML/indexing
+  (google_mlkit_*, tflite_flutter — still deferred) + the ML schema tables.
 
 ## Gotchas worth re-reading before test work
 

@@ -35,3 +35,12 @@ final thumbnailProvider =
         .thumbnail(req.assetId, req.width, req.height);
   },
 );
+
+/// Clip length for a video asset, or null for images. Drives the grid duration
+/// badge (see [AssetThumbnail]). `autoDispose` and keyed by id so it rides the
+/// same warm entity the thumbnail already resolved. Overridable in tests.
+final videoDurationProvider =
+    FutureProvider.autoDispose.family<Duration?, String>(
+  (ref, assetId) =>
+      ref.read(photoLibraryServiceProvider).videoDuration(assetId),
+);

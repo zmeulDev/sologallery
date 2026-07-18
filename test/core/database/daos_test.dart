@@ -109,6 +109,54 @@ void main() {
       final orphans = await db.select(db.albumEntries).get();
       expect(orphans, isEmpty);
     });
+
+    test('watchAlbum returns the row, then null once deleted', () async {
+      final id = await db.albumsDao.createAlbum('Trip');
+      expect((await db.albumsDao.watchAlbum(id).first)?.name, 'Trip');
+
+      await db.albumsDao.deleteAlbum(id);
+      expect(await db.albumsDao.watchAlbum(id).first, isNull);
+    });
+
+    test('watchAlbumSummaries counts entries and picks the newest as cover',
+        () async {
+      final id = await db.albumsDao.createAlbum('Trip');
+      await db.albumsDao.addEntry(id, 'old', at: DateTime(2020, 1, 1));
+      await db.albumsDao.addEntry(id, 'new', at: DateTime(2024, 1, 1));
+
+      final summaries = await db.albumsDao.watchAlbumSummaries().first;
+      expect(summaries, hasLength(1));
+      expect(summaries.single.entryCount, 2);
+      // Cover falls back to the most recently added entry.
+      expect(summaries.single.coverAssetId, 'new');
+    });
+
+    test('watchAlbumSummaries prefers an explicit coverAssetId', () async {
+      final id = await db.albumsDao.createAlbum('Trip', coverAssetId: 'chosen');
+      await db.albumsDao.addEntry(id, 'other', at: DateTime(2024, 1, 1));
+
+      final summaries = await db.albumsDao.watchAlbumSummaries().first;
+      expect(summaries.single.coverAssetId, 'chosen');
+    });
+
+    test('watchAlbumSummaries includes empty albums with a null cover',
+        () async {
+      await db.albumsDao.createAlbum('Empty');
+
+      final summaries = await db.albumsDao.watchAlbumSummaries().first;
+      expect(summaries.single.entryCount, 0);
+      expect(summaries.single.coverAssetId, isNull);
+    });
+
+    test('watchAlbumSummaries orders by sortIndex then creation', () async {
+      final b = await db.albumsDao.createAlbum('B');
+      final a = await db.albumsDao.createAlbum('A');
+      await (db.update(db.albums)..where((row) => row.id.equals(a)))
+          .write(const AlbumsCompanion(sortIndex: Value(-1)));
+
+      final summaries = await db.albumsDao.watchAlbumSummaries().first;
+      expect(summaries.map((s) => s.id).toList(), [a, b]);
+    });
   });
 
   group('EditInstructionsDao', () {

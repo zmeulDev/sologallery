@@ -38,6 +38,23 @@ void main() {
     });
   });
 
+  group('formatDuration', () {
+    test('m:ss under an hour', () {
+      expect(formatDuration(const Duration(seconds: 5)), '0:05');
+      expect(formatDuration(const Duration(minutes: 1, seconds: 5)), '1:05');
+      expect(formatDuration(const Duration(minutes: 12, seconds: 30)), '12:30');
+    });
+    test('h:mm:ss past an hour', () {
+      expect(
+        formatDuration(const Duration(hours: 1, minutes: 2, seconds: 3)),
+        '1:02:03',
+      );
+    });
+    test('null for a still', () {
+      expect(formatDuration(null), isNull);
+    });
+  });
+
   test('formatTakenDate is zero-padded 24-hour', () {
     expect(formatTakenDate(DateTime(2026, 7, 12, 14, 3)), 'Jul 12, 2026 · 14:03');
   });

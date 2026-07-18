@@ -43,6 +43,18 @@ String formatTakenDate(DateTime dt) {
   return '$month ${dt.day}, ${dt.year} · $hh:$mm';
 }
 
+/// Clip length as `m:ss` (or `h:mm:ss` past an hour), or null for a still.
+String? formatDuration(Duration? duration) {
+  if (duration == null) return null;
+  final seconds = duration.inSeconds;
+  final h = seconds ~/ 3600;
+  final m = (seconds % 3600) ~/ 60;
+  final s = seconds % 60;
+  final ss = s.toString().padLeft(2, '0');
+  if (h > 0) return '$h:${m.toString().padLeft(2, '0')}:$ss';
+  return '$m:$ss';
+}
+
 /// Coordinate pair to four decimals, or null when there is no location.
 String? formatCoordinates(double? latitude, double? longitude) {
   if (latitude == null || longitude == null) return null;

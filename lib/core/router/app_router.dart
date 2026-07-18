@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/albums/album_detail_screen.dart';
 import '../../features/albums/albums_screen.dart';
 import '../../features/detail/detail_screen.dart';
 import '../../features/detail/photo_viewer_args.dart';
@@ -50,6 +51,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) =>
             MonthGridScreen(monthKey: state.pathParameters['key']!),
+      ),
+      GoRoute(
+        path: '/album/:id',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final id = int.tryParse(state.pathParameters['id'] ?? '');
+          if (id == null) return const _InvalidAlbum();
+          return AlbumDetailScreen(albumId: id);
+        },
       ),
       GoRoute(
         path: '/photo/:id',
@@ -102,3 +112,16 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+/// Shown when `/album/:id` carries a non-integer id (a malformed deep link).
+class _InvalidAlbum extends StatelessWidget {
+  const _InvalidAlbum();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(),
+      body: const Center(child: Text('That album couldn\'t be found.')),
+    );
+  }
+}

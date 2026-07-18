@@ -1,3 +1,4 @@
+import 'dart:io' show File;
 import 'dart:typed_data';
 import 'dart:ui' show Rect;
 
@@ -20,9 +21,11 @@ class FakePhotoLibraryService extends PhotoLibraryService {
     this.thumbnailBytes,
     this.previewBytes,
     Map<String, AssetDetail>? details,
+    Map<String, Duration>? videoDurations,
     this.deleteResultOverride,
   })  : assets = List.of(assets ?? const []),
-        details = details ?? const {} {
+        details = details ?? const {},
+        videoDurations = videoDurations ?? const {} {
     // Keep the newest-first ordering the real service guarantees.
     this.assets.sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
@@ -38,6 +41,10 @@ class FakePhotoLibraryService extends PhotoLibraryService {
 
   /// Per-id metadata returned by [assetDetail].
   final Map<String, AssetDetail> details;
+
+  /// Ids that are videos, mapped to their clip length. An id present here is a
+  /// video ([isVideoAsset]) and drives the grid badge ([videoDuration]).
+  final Map<String, Duration> videoDurations;
 
   /// When set, [deleteAssets] returns this instead of the requested ids (used
   /// to simulate the user cancelling the OS trash dialog with an empty result).
@@ -106,6 +113,18 @@ class FakePhotoLibraryService extends PhotoLibraryService {
   @override
   Future<Uint8List?> previewImage(String assetId, int maxEdge) async =>
       previewBytes ?? thumbnailBytes;
+
+  @override
+  Future<Duration?> videoDuration(String assetId) async =>
+      videoDurations[assetId];
+
+  @override
+  Future<bool> isVideoAsset(String assetId) async =>
+      videoDurations.containsKey(assetId);
+
+  // Host tests never play real video; on-device patrol covers the real file.
+  @override
+  Future<File?> videoFile(String assetId) async => null;
 
   @override
   Future<AssetDetail?> assetDetail(String assetId) async => details[assetId];

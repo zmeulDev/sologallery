@@ -3,7 +3,8 @@
     "allow": [
       "Bash(rm *)",
       "Bash(flutter --version)",
-      "Bash(dart --version)"
+      "Bash(dart --version)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb devices *)"
     ]
   }
 }

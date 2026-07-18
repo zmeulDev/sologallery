@@ -9,6 +9,8 @@ import 'package:sologallery/features/detail/detail_providers.dart';
 import 'package:sologallery/features/detail/detail_screen.dart';
 import 'package:sologallery/features/detail/photo_viewer_args.dart';
 import 'package:sologallery/features/detail/widgets/detail_action_bar.dart';
+import 'package:sologallery/features/detail/widgets/photo_page.dart';
+import 'package:sologallery/features/detail/widgets/video_page.dart';
 import 'package:sologallery/services/permission_provider.dart';
 import 'package:sologallery/services/photo_library_service.dart';
 
@@ -24,8 +26,10 @@ void main() {
     WidgetTester tester, {
     List<String> ids = const ['a1'],
     Map<String, AssetDetail> details = const {},
+    Map<String, Duration> videoDurations = const {},
   }) async {
-    final fake = FakePhotoLibraryService(details: details);
+    final fake =
+        FakePhotoLibraryService(details: details, videoDurations: videoDurations);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -118,6 +122,27 @@ void main() {
     await tester.tap(find.byIcon(Icons.delete_outline));
     await tester.pumpAndSettle();
     expect(find.text('Delete photo?'), findsOneWidget);
+    await settleTeardown(tester);
+  });
+
+  testWidgets('a still renders a PhotoPage', (tester) async {
+    await pump(tester, ids: ['a1']);
+    expect(find.byType(PhotoPage), findsOneWidget);
+    expect(find.byType(VideoPage), findsNothing);
+    await settleTeardown(tester);
+  });
+
+  testWidgets('a video renders a VideoPage', (tester) async {
+    // videoDurations marks 'v1' a video; the fake's videoFile returns null, so
+    // VideoPage lands on its unavailable branch (no real controller on host —
+    // real playback is covered on-device by patrol).
+    await pump(
+      tester,
+      ids: ['v1'],
+      videoDurations: {'v1': const Duration(seconds: 42)},
+    );
+    expect(find.byType(VideoPage), findsOneWidget);
+    expect(find.byType(PhotoPage), findsNothing);
     await settleTeardown(tester);
   });
 }

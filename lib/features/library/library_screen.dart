@@ -153,7 +153,7 @@ class _PreviewGrid extends StatelessWidget {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(4),
-              child: AssetThumbnail(assetId: id, size: 300),
+              child: AssetThumbnail(assetId: id, size: 300, showVideoBadge: true),
             ),
           ),
       ],

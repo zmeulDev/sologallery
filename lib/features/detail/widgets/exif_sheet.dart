@@ -103,6 +103,8 @@ class _Chips extends StatelessWidget {
         label: 'Resolution',
         value: formatMegapixels(detail.width, detail.height),
       ),
+      if (formatDuration(detail.videoDuration) case final length?)
+        _ExifChip(label: 'Duration', value: length),
       if (formatFileSize(detail.sizeBytes) case final size?)
         _ExifChip(label: 'Size', value: size),
       if (formatType(detail.mimeType) case final type?)

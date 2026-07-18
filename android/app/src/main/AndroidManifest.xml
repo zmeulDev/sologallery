@@ -1,11 +1,21 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Photo library access (photo_manager). Read-only, images only.
-         Android 13+ (API 33) uses the granular media permission; API 34+ adds
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Photo library access (photo_manager). Read-only (images + videos).
+         Android 13+ (API 33) uses the granular media permissions; API 34+ adds
          the "selected photos" (limited) grant; API <=32 falls back to the
          legacy storage read. No network permissions — see CLAUDE.md
          Absolute rules (zero network calls). -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <!-- video_player_android (media3) declares INTERNET + ACCESS_NETWORK_STATE
+         for network/adaptive streaming; we only ever play local files, so strip
+         both from the merged manifest to keep the release build network-free
+         (Absolute rules / Definition of Done #5). media3 degrades gracefully to
+         no network monitoring for local playback. WAKE_LOCK (keep the screen on
+         during playback) is left in place. -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />

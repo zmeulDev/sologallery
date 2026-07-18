@@ -7,6 +7,7 @@ import 'widgets/add_to_album_sheet.dart';
 import 'widgets/detail_action_bar.dart';
 import 'widgets/exif_sheet.dart';
 import 'widgets/photo_page.dart';
+import 'widgets/video_page.dart';
 
 /// Full-screen photo viewer (`/photo/:id`). Swipes horizontally through the
 /// originating sequence; tap toggles the chrome; the action bar favorites,
@@ -120,7 +121,7 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
                 controller: _controller,
                 itemCount: _ids.length,
                 onPageChanged: (i) => setState(() => _index = i),
-                itemBuilder: (context, i) => PhotoPage(assetId: _ids[i]),
+                itemBuilder: (context, i) => _DetailPage(assetId: _ids[i]),
               ),
             ),
           ),
@@ -143,6 +144,21 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
         ],
       ),
     );
+  }
+}
+
+/// One page of the viewer: a [VideoPage] for a video asset, else a [PhotoPage].
+/// Branches on [isVideoProvider]; shows the still while the kind resolves so an
+/// image never flashes the player and vice versa.
+class _DetailPage extends ConsumerWidget {
+  const _DetailPage({required this.assetId});
+
+  final String assetId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isVideo = ref.watch(isVideoProvider(assetId)).value ?? false;
+    return isVideo ? VideoPage(assetId: assetId) : PhotoPage(assetId: assetId);
   }
 }
 
