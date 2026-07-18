@@ -2,13 +2,11 @@ import 'dart:io' show File, Platform;
 import 'dart:typed_data';
 import 'dart:ui' show Rect;
 
+import 'package:flutter/services.dart' show MethodCall;
 import 'package:logging/logging.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../features/library/domain/month_summary.dart';
-import '../features/library/domain/older_summary.dart';
-import '../features/library/domain/year_month.dart';
 import '../features/search/domain/search_date.dart';
 
 /// Coarse photo-library access state, mapped from `photo_manager`'s
@@ -140,21 +138,47 @@ class PhotoLibraryService {
     return PhotoManager.presentLimited();
   }
 
+  // --- Library change notifications ----------------------------------------
+
+  void Function()? _onLibraryChanged;
+
+  void _handleChange(MethodCall _) => _onLibraryChanged?.call();
+
+  /// Registers [onChanged] to fire whenever the device photo library changes
+  /// while the app is foregrounded (a new capture, an import, a deletion). Lets
+  /// the indexer re-sweep the cache live instead of only on the next resume.
+  /// Idempotent — replaces any prior callback.
+  Future<void> startLibraryChangeNotify(void Function() onChanged) async {
+    _onLibraryChanged = onChanged;
+    PhotoManager.addChangeCallback(_handleChange);
+    await PhotoManager.startChangeNotify();
+    _log.fine('Started library change notifications');
+  }
+
+  /// Stops delivering library-change callbacks and clears the registration.
+  Future<void> stopLibraryChangeNotify() async {
+    PhotoManager.removeChangeCallback(_handleChange);
+    await PhotoManager.stopChangeNotify();
+    _onLibraryChanged = null;
+    _log.fine('Stopped library change notifications');
+  }
+
   // --- Asset queries -------------------------------------------------------
   //
-  // The gallery reads `photo_manager` directly (no cached `photo_asset` table
-  // until the indexing phase). Month sections are built with *filtered* path
-  // queries so only the six preview thumbnails per month are ever materialized
-  // — full metadata for a whole library is never loaded, and originals are
-  // never decoded for grid cells (CLAUDE.md Absolute rules).
+  // The Library/Saved grids read the cached `photo_asset` table (filled by the
+  // metadata sweep), not `photo_manager` directly. This service supplies the
+  // sweep's source ([libraryMetadataPage]), metadata Search, and thumbnails —
+  // full metadata for a whole library is never loaded, and originals are never
+  // decoded for grid cells (CLAUDE.md Absolute rules).
   //
-  // Months are windowed by *capture date* — the same axis the grid orders and
+  // Assets are windowed by *capture date* — the same axis the grid orders and
   // groups by. On Android that is `DATE_TAKEN`; the classic `createTimeCond`
   // filters `DATE_ADDED` (when a file landed on the device) instead, which
   // disagrees with the ordering column and mis-buckets imported photos (a June
   // photo added in July lands in July, and June never appears). So Android uses
-  // an `AdvancedCustomFilter` on `datetaken`. iOS's `creationDate` is already
-  // consistent across filter/order/report, so it keeps the classic filter.
+  // an `AdvancedCustomFilter` on `datetaken`, and the sweep tags such assets
+  // `is_dated`. iOS's `creationDate` is already consistent across
+  // filter/order/report, so it keeps the classic filter.
 
   bool get _isDarwin => Platform.isIOS || Platform.isMacOS;
 
@@ -207,7 +231,8 @@ class PhotoLibraryService {
 
   /// Android capture-date (`DATE_TAKEN`) window, newest-first. [min] inclusive,
   /// [max] exclusive; assets with no capture date (`datetaken` null/0) never
-  /// match a window — they surface via [olderSummary] instead.
+  /// match a window — [libraryMetadataPage] surfaces them as the undated set
+  /// (cached with `is_dated = false`) instead.
   AdvancedCustomFilter _androidWindow({DateTime? min, DateTime? max}) {
     final col = CustomColumns.android.dateTaken;
     final filter = AdvancedCustomFilter();
@@ -233,106 +258,6 @@ class PhotoLibraryService {
         WhereConditionItem.text('($taken IS NULL OR $taken = 0)'),
       )
       ..addOrderBy(column: CustomColumns.android.createDate, isAsc: false);
-  }
-
-  /// The path scoped to one capture-date [month], newest-first.
-  Future<AssetPathEntity?> _monthPath(YearMonth month) {
-    final filter = _isDarwin
-        ? _darwinFilter(min: month.start, max: month.end)
-        : _androidWindow(min: month.start, max: month.end);
-    return _path(filter);
-  }
-
-  /// The descending list of calendar months spanned by *dated* photos. Includes
-  /// months with no photos (callers skip empties via [monthSummary]); returns
-  /// empty when the library has no dated images. Undated photos are excluded so
-  /// they can't stretch the span — they live in the [olderSummary] section.
-  Future<List<YearMonth>> monthsInLibrary() async {
-    // Android: exclude undated (datetaken >= 1ms). iOS: creationDate is always
-    // present, so the plain filter already spans only dated assets.
-    final filter = _isDarwin
-        ? _darwinFilter()
-        : _androidWindow(min: DateTime.fromMillisecondsSinceEpoch(1));
-    final path = await _path(filter);
-    if (path == null) return const [];
-    final count = await path.assetCountAsync;
-    if (count == 0) return const [];
-    final newest = await path.getAssetListRange(start: 0, end: 1);
-    final oldest = await path.getAssetListRange(start: count - 1, end: count);
-    if (newest.isEmpty || oldest.isEmpty) return const [];
-    _log.fine('Library spans ${newest.first.createDateTime} .. '
-        '${oldest.first.createDateTime} ($count dated photos)');
-    return YearMonth.descendingRange(
-      YearMonth.fromDate(newest.first.createDateTime),
-      YearMonth.fromDate(oldest.first.createDateTime),
-    );
-  }
-
-  /// The exact photo count and up to six newest preview ids for [month], or
-  /// null if the month has no photos.
-  Future<MonthSummary?> monthSummary(YearMonth month) async {
-    final path = await _monthPath(month);
-    if (path == null) return null;
-    final count = await path.assetCountAsync;
-    if (count == 0) return null;
-    final preview = await path.getAssetListRange(
-      start: 0,
-      end: count < 6 ? count : 6,
-    );
-    return MonthSummary(
-      month: month,
-      count: count,
-      previewAssetIds: [for (final a in preview) a.id],
-    );
-  }
-
-  /// A page of asset references for one [month], newest first, for the
-  /// full-month grid.
-  Future<List<AssetRef>> monthAssets(
-    YearMonth month, {
-    required int page,
-    required int pageSize,
-  }) async {
-    final path = await _monthPath(month);
-    if (path == null) return const [];
-    final assets = await path.getAssetListPaged(page: page, size: pageSize);
-    return [
-      for (final a in assets) AssetRef(id: a.id, createdAt: a.createDateTime),
-    ];
-  }
-
-  /// The exact count and up to six preview ids of undated photos, shown in the
-  /// trailing "Older" section, newest-added first. Null on Darwin (creationDate
-  /// is always present) or when there are none.
-  Future<OlderSummary?> olderSummary() async {
-    if (_isDarwin) return null;
-    final path = await _path(_androidUndated());
-    if (path == null) return null;
-    final count = await path.assetCountAsync;
-    if (count == 0) return null;
-    final preview = await path.getAssetListRange(
-      start: 0,
-      end: count < 6 ? count : 6,
-    );
-    return OlderSummary(
-      count: count,
-      previewAssetIds: [for (final a in preview) a.id],
-    );
-  }
-
-  /// A page of undated asset references for the "Older" full grid, newest-added
-  /// first. Empty on Darwin.
-  Future<List<AssetRef>> olderAssets({
-    required int page,
-    required int pageSize,
-  }) async {
-    if (_isDarwin) return const [];
-    final path = await _path(_androidUndated());
-    if (path == null) return const [];
-    final assets = await path.getAssetListPaged(page: page, size: pageSize);
-    return [
-      for (final a in assets) AssetRef(id: a.id, createdAt: a.createDateTime),
-    ];
   }
 
   // --- Search --------------------------------------------------------------
@@ -392,18 +317,39 @@ class PhotoLibraryService {
 
   // --- Indexing ------------------------------------------------------------
 
-  /// A page of asset ids across the whole library (photos + videos), newest
-  /// first — the id-only scan the background indexer walks to find unindexed
-  /// assets. Includes undated assets on Android (no capture-date window).
-  Future<List<String>> allAssetIds({
+  /// A page of lean per-asset metadata for the fast metadata sweep — the axis
+  /// that fills the `photo_asset` cache before ML runs. [dated] selects the
+  /// dated window (capture-date present) or, on Android, the undated set; the
+  /// undated set is always empty on Darwin (`creationDate` is always present).
+  /// Metadata comes inline from the paged query — no per-asset entity round-trip.
+  Future<List<({String id, DateTime createdAt, bool isVideo, int width, int height})>>
+      libraryMetadataPage({
+    required bool dated,
     required int page,
     required int pageSize,
   }) async {
-    final filter = _isDarwin ? _darwinFilter() : _androidWindow();
+    final PMFilter? filter;
+    if (dated) {
+      filter = _isDarwin
+          ? _darwinFilter()
+          : _androidWindow(min: DateTime.fromMillisecondsSinceEpoch(1));
+    } else {
+      filter = _isDarwin ? null : _androidUndated();
+    }
+    if (filter == null) return const []; // Darwin has no undated assets.
     final path = await _path(filter);
     if (path == null) return const [];
     final assets = await path.getAssetListPaged(page: page, size: pageSize);
-    return [for (final a in assets) a.id];
+    return [
+      for (final a in assets)
+        (
+          id: a.id,
+          createdAt: a.createDateTime,
+          isVideo: a.type == AssetType.video,
+          width: a.width,
+          height: a.height,
+        ),
+    ];
   }
 
   /// The lean metadata the indexer caches in `photo_asset`, or null if the asset

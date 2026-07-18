@@ -5,6 +5,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sologallery/core/database/app_database.dart';
 import 'package:sologallery/services/indexing_service.dart';
+import 'package:sologallery/services/photo_library_service.dart';
 
 import '../support/asset_fixtures.dart';
 import '../support/fake_ml_worker.dart';
@@ -18,14 +19,16 @@ void main() {
 
   IndexingService serviceFor(
     FakePhotoLibraryService photos,
-    FakeMlWorker worker,
-  ) =>
+    FakeMlWorker worker, {
+    Duration debounce = const Duration(seconds: 2),
+  }) =>
       IndexingService(
         dao: db.indexDao,
         faces: db.facesDao,
         photos: photos,
         worker: worker,
         tempDir: Directory.systemTemp,
+        resweepDebounce: debounce,
       );
 
   test('indexes every library asset and persists labels', () async {
@@ -40,7 +43,7 @@ void main() {
 
     await serviceFor(photos, worker).start();
 
-    expect(await db.indexDao.indexedAssetIds(), hasLength(3));
+    expect(await db.indexDao.allCachedIds(), hasLength(3));
     expect(worker.calls, hasLength(3));
     final labels = await db.select(db.photoLabels).get();
     expect(labels, hasLength(6)); // 2 per asset
@@ -93,7 +96,7 @@ void main() {
 
     await serviceFor(photos, worker).start();
 
-    expect(await db.indexDao.indexedAssetIds(), hasLength(1));
+    expect(await db.indexDao.allCachedIds(), hasLength(1));
     expect(worker.calls, isEmpty);
     expect(await db.select(db.photoLabels).get(), isEmpty);
   });
@@ -105,9 +108,41 @@ void main() {
 
     await service.start();
 
-    expect(await db.indexDao.indexedAssetIds(), isEmpty);
+    expect(await db.indexDao.allCachedIds(), isEmpty);
     expect(worker.calls, isEmpty);
     expect((await service.watchStatus().first).isIndexing, isFalse);
+  });
+
+  test('a foreground library change re-sweeps in the new asset', () async {
+    final photos = FakePhotoLibraryService(
+      assets: assetsInMonth(2026, 8, 1),
+      thumbnailBytes: Uint8List.fromList([1]),
+    );
+    final worker = FakeMlWorker();
+    final service =
+        serviceFor(photos, worker, debounce: const Duration(milliseconds: 5));
+    addTearDown(service.dispose);
+
+    await service.start();
+    expect(await db.indexDao.allCachedIds(), hasLength(1));
+    expect(photos.startChangeNotifyCount, 1); // listener registered once
+
+    // A new photo lands while the app is foregrounded.
+    photos.assets.add(
+      AssetRef(id: 'new-asset', createdAt: DateTime(2026, 8, 15)),
+    );
+    photos.fireLibraryChange();
+    await Future<void>.delayed(const Duration(milliseconds: 60)); // debounce + sweep
+
+    expect(await db.indexDao.allCachedIds(), containsAll(<String>['new-asset']));
+  });
+
+  test('dispose stops the change listener', () async {
+    final photos = FakePhotoLibraryService(thumbnailBytes: Uint8List(0));
+    final service = serviceFor(photos, FakeMlWorker());
+    await service.start();
+    await service.dispose();
+    expect(photos.stopChangeNotifyCount, 1);
   });
 
   test('dispose tears down the worker', () async {

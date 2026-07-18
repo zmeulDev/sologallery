@@ -24,6 +24,10 @@ part 'app_database.g.dart';
 ///
 /// v3 adds `photo_text` (on-device OCR) plus `persons` + `face_embedding`
 /// (on-device face clustering / people).
+///
+/// v4 makes `photo_asset.indexed_at` nullable (NULL = metadata-swept, ML
+/// pending) and adds `photo_asset.is_dated`, so the fast metadata sweep can
+/// populate the grid before ML runs and undated assets route to "Older".
 @DriftDatabase(
   tables: [
     Favorites,
@@ -43,7 +47,7 @@ class AppDatabase extends _$AppDatabase {
       : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -52,10 +56,24 @@ class AppDatabase extends _$AppDatabase {
         },
         onUpgrade: (m, from, to) async {
           if (from < 2) {
+            // A fresh photo_assets is created from the *current* (v4) definition
+            // — already nullable indexed_at + is_dated — so the v4 step below
+            // must be skipped (else it would re-add is_dated).
             await m.createTable(photoAssets);
             await m.createTable(photoLabels);
             await m.create(photoLabelAsset);
             await m.create(photoLabelLabel);
+          } else if (from < 4) {
+            // Upgrading from v2/v3, where photo_assets has the old shape:
+            // recreate it with the relaxed indexed_at nullability and the new
+            // is_dated column, copying existing rows. Those rows were fully
+            // ML-indexed, so indexed_at is preserved and is_dated defaults true.
+            await m.alterTable(
+              TableMigration(
+                photoAssets,
+                newColumns: [photoAssets.isDated],
+              ),
+            );
           }
           if (from < 3) {
             await m.createTable(photoTexts);

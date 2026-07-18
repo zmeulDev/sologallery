@@ -32,7 +32,11 @@ void main() {
       reason: 'Grant photo access before running (open the app once and allow).',
     );
 
-    final ids = await photos.allAssetIds(page: 0, pageSize: 20);
+    final metaRows = [
+      ...await photos.libraryMetadataPage(dated: true, page: 0, pageSize: 20),
+      ...await photos.libraryMetadataPage(dated: false, page: 0, pageSize: 20),
+    ];
+    final ids = [for (final r in metaRows) r.id];
     expect(ids, isNotEmpty, reason: 'Need at least one photo on device.');
 
     // In-memory DB so the test never touches the real app database.
@@ -85,7 +89,7 @@ void main() {
     }
 
     // The pipeline wrote index rows (the isolate ran and the DB accepted them).
-    expect(await db.indexDao.indexedAssetIds(), isNotEmpty);
+    expect(await db.indexDao.allCachedIds(), isNotEmpty);
 
     // If any face was detected, the real tflite embedder produced a non-empty
     // vector and it was stored (proves the FFI model runs in the isolate).

@@ -41,6 +41,18 @@ void main() {
   });
 
   testWidgets('renders a grid cell per favorite', (tester) async {
+    // Saved joins favorites to the photo_asset cache; seed both assets.
+    await db.indexDao.upsertMetadata([
+      for (final id in ['a1', 'a2'])
+        (
+          id: id,
+          createdAt: DateTime(2024),
+          isVideo: false,
+          width: 1,
+          height: 1,
+          isDated: true,
+        ),
+    ]);
     await db.favoritesDao.add('a1', at: DateTime(2024, 1, 2));
     await db.favoritesDao.add('a2', at: DateTime(2024, 1, 1));
     await tester.pumpWidget(

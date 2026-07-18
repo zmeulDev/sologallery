@@ -62,9 +62,11 @@ void main() {
   test('a capture-month query windows results to that month', () async {
     await requireAccess();
 
-    final months = await service.monthsInLibrary();
-    expect(months, isNotEmpty, reason: 'Seed at least one dated photo.');
-    final month = months.first; // newest dated month
+    // Newest dated month, from the same capture-date axis the grid caches.
+    final newest =
+        await service.libraryMetadataPage(dated: true, page: 0, pageSize: 1);
+    expect(newest, isNotEmpty, reason: 'Seed at least one dated photo.');
+    final month = YearMonth.fromDate(newest.first.createdAt);
 
     final windowed = await service.searchAssets(
       min: month.start,
@@ -81,12 +83,23 @@ void main() {
               '${month.label}.');
     }
 
-    // The date-only search over a month equals the month grid's own query.
-    final viaMonth = await service.monthAssets(month, page: 0, pageSize: 200);
+    // The date-only search over a month equals the dated assets the grid caches
+    // for it (both come off the same DATE_TAKEN axis, newest first).
+    final sweptForMonth = <String>[];
+    var page = 0;
+    while (true) {
+      final rows =
+          await service.libraryMetadataPage(dated: true, page: page, pageSize: 200);
+      if (rows.isEmpty) break;
+      for (final r in rows) {
+        if (YearMonth.fromDate(r.createdAt) == month) sweptForMonth.add(r.id);
+      }
+      page++;
+    }
     expect(
       windowed.map((a) => a.id).toList(),
-      viaMonth.map((a) => a.id).toList(),
-      reason: 'Search window and month grid disagree for ${month.label}.',
+      sweptForMonth,
+      reason: 'Search window and cached month assets disagree for ${month.label}.',
     );
   });
 

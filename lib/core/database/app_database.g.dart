@@ -1231,6 +1231,21 @@ class $PhotoAssetsTable extends PhotoAssets
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _isDatedMeta = const VerificationMeta(
+    'isDated',
+  );
+  @override
+  late final GeneratedColumn<bool> isDated = GeneratedColumn<bool>(
+    'is_dated',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_dated" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
   static const VerificationMeta _indexedAtMeta = const VerificationMeta(
     'indexedAt',
   );
@@ -1238,9 +1253,9 @@ class $PhotoAssetsTable extends PhotoAssets
   late final GeneratedColumn<DateTime> indexedAt = GeneratedColumn<DateTime>(
     'indexed_at',
     aliasedName,
-    false,
+    true,
     type: DriftSqlType.dateTime,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
   );
   @override
   List<GeneratedColumn> get $columns => [
@@ -1249,6 +1264,7 @@ class $PhotoAssetsTable extends PhotoAssets
     isVideo,
     width,
     height,
+    isDated,
     indexedAt,
   ];
   @override
@@ -1303,13 +1319,17 @@ class $PhotoAssetsTable extends PhotoAssets
     } else if (isInserting) {
       context.missing(_heightMeta);
     }
+    if (data.containsKey('is_dated')) {
+      context.handle(
+        _isDatedMeta,
+        isDated.isAcceptableOrUnknown(data['is_dated']!, _isDatedMeta),
+      );
+    }
     if (data.containsKey('indexed_at')) {
       context.handle(
         _indexedAtMeta,
         indexedAt.isAcceptableOrUnknown(data['indexed_at']!, _indexedAtMeta),
       );
-    } else if (isInserting) {
-      context.missing(_indexedAtMeta);
     }
     return context;
   }
@@ -1340,10 +1360,14 @@ class $PhotoAssetsTable extends PhotoAssets
         DriftSqlType.int,
         data['${effectivePrefix}height'],
       )!,
+      isDated: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_dated'],
+      )!,
       indexedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}indexed_at'],
-      )!,
+      ),
     );
   }
 
@@ -1364,15 +1388,24 @@ class PhotoAsset extends DataClass implements Insertable<PhotoAsset> {
   final int width;
   final int height;
 
-  /// When indexing last completed for this asset.
-  final DateTime indexedAt;
+  /// Whether this asset has a real capture date (the axis the grid groups by).
+  /// `false` only for Android *undated* assets, whose [createdAt] is a
+  /// `DATE_ADDED` fallback — they surface in the trailing "Older" bucket instead
+  /// of a calendar month. Always `true` on iOS (`creationDate` is always present).
+  final bool isDated;
+
+  /// When ML indexing (labels/OCR/faces) last completed for this asset. `NULL`
+  /// means the fast metadata sweep has cached the row but ML has not run yet —
+  /// the background indexer's remaining work is exactly the `NULL` rows.
+  final DateTime? indexedAt;
   const PhotoAsset({
     required this.assetId,
     required this.createdAt,
     required this.isVideo,
     required this.width,
     required this.height,
-    required this.indexedAt,
+    required this.isDated,
+    this.indexedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1382,7 +1415,10 @@ class PhotoAsset extends DataClass implements Insertable<PhotoAsset> {
     map['is_video'] = Variable<bool>(isVideo);
     map['width'] = Variable<int>(width);
     map['height'] = Variable<int>(height);
-    map['indexed_at'] = Variable<DateTime>(indexedAt);
+    map['is_dated'] = Variable<bool>(isDated);
+    if (!nullToAbsent || indexedAt != null) {
+      map['indexed_at'] = Variable<DateTime>(indexedAt);
+    }
     return map;
   }
 
@@ -1393,7 +1429,10 @@ class PhotoAsset extends DataClass implements Insertable<PhotoAsset> {
       isVideo: Value(isVideo),
       width: Value(width),
       height: Value(height),
-      indexedAt: Value(indexedAt),
+      isDated: Value(isDated),
+      indexedAt: indexedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(indexedAt),
     );
   }
 
@@ -1408,7 +1447,8 @@ class PhotoAsset extends DataClass implements Insertable<PhotoAsset> {
       isVideo: serializer.fromJson<bool>(json['isVideo']),
       width: serializer.fromJson<int>(json['width']),
       height: serializer.fromJson<int>(json['height']),
-      indexedAt: serializer.fromJson<DateTime>(json['indexedAt']),
+      isDated: serializer.fromJson<bool>(json['isDated']),
+      indexedAt: serializer.fromJson<DateTime?>(json['indexedAt']),
     );
   }
   @override
@@ -1420,7 +1460,8 @@ class PhotoAsset extends DataClass implements Insertable<PhotoAsset> {
       'isVideo': serializer.toJson<bool>(isVideo),
       'width': serializer.toJson<int>(width),
       'height': serializer.toJson<int>(height),
-      'indexedAt': serializer.toJson<DateTime>(indexedAt),
+      'isDated': serializer.toJson<bool>(isDated),
+      'indexedAt': serializer.toJson<DateTime?>(indexedAt),
     };
   }
 
@@ -1430,14 +1471,16 @@ class PhotoAsset extends DataClass implements Insertable<PhotoAsset> {
     bool? isVideo,
     int? width,
     int? height,
-    DateTime? indexedAt,
+    bool? isDated,
+    Value<DateTime?> indexedAt = const Value.absent(),
   }) => PhotoAsset(
     assetId: assetId ?? this.assetId,
     createdAt: createdAt ?? this.createdAt,
     isVideo: isVideo ?? this.isVideo,
     width: width ?? this.width,
     height: height ?? this.height,
-    indexedAt: indexedAt ?? this.indexedAt,
+    isDated: isDated ?? this.isDated,
+    indexedAt: indexedAt.present ? indexedAt.value : this.indexedAt,
   );
   PhotoAsset copyWithCompanion(PhotoAssetsCompanion data) {
     return PhotoAsset(
@@ -1446,6 +1489,7 @@ class PhotoAsset extends DataClass implements Insertable<PhotoAsset> {
       isVideo: data.isVideo.present ? data.isVideo.value : this.isVideo,
       width: data.width.present ? data.width.value : this.width,
       height: data.height.present ? data.height.value : this.height,
+      isDated: data.isDated.present ? data.isDated.value : this.isDated,
       indexedAt: data.indexedAt.present ? data.indexedAt.value : this.indexedAt,
     );
   }
@@ -1458,14 +1502,22 @@ class PhotoAsset extends DataClass implements Insertable<PhotoAsset> {
           ..write('isVideo: $isVideo, ')
           ..write('width: $width, ')
           ..write('height: $height, ')
+          ..write('isDated: $isDated, ')
           ..write('indexedAt: $indexedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(assetId, createdAt, isVideo, width, height, indexedAt);
+  int get hashCode => Object.hash(
+    assetId,
+    createdAt,
+    isVideo,
+    width,
+    height,
+    isDated,
+    indexedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1475,6 +1527,7 @@ class PhotoAsset extends DataClass implements Insertable<PhotoAsset> {
           other.isVideo == this.isVideo &&
           other.width == this.width &&
           other.height == this.height &&
+          other.isDated == this.isDated &&
           other.indexedAt == this.indexedAt);
 }
 
@@ -1484,7 +1537,8 @@ class PhotoAssetsCompanion extends UpdateCompanion<PhotoAsset> {
   final Value<bool> isVideo;
   final Value<int> width;
   final Value<int> height;
-  final Value<DateTime> indexedAt;
+  final Value<bool> isDated;
+  final Value<DateTime?> indexedAt;
   final Value<int> rowid;
   const PhotoAssetsCompanion({
     this.assetId = const Value.absent(),
@@ -1492,6 +1546,7 @@ class PhotoAssetsCompanion extends UpdateCompanion<PhotoAsset> {
     this.isVideo = const Value.absent(),
     this.width = const Value.absent(),
     this.height = const Value.absent(),
+    this.isDated = const Value.absent(),
     this.indexedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -1501,20 +1556,21 @@ class PhotoAssetsCompanion extends UpdateCompanion<PhotoAsset> {
     required bool isVideo,
     required int width,
     required int height,
-    required DateTime indexedAt,
+    this.isDated = const Value.absent(),
+    this.indexedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : assetId = Value(assetId),
        createdAt = Value(createdAt),
        isVideo = Value(isVideo),
        width = Value(width),
-       height = Value(height),
-       indexedAt = Value(indexedAt);
+       height = Value(height);
   static Insertable<PhotoAsset> custom({
     Expression<String>? assetId,
     Expression<DateTime>? createdAt,
     Expression<bool>? isVideo,
     Expression<int>? width,
     Expression<int>? height,
+    Expression<bool>? isDated,
     Expression<DateTime>? indexedAt,
     Expression<int>? rowid,
   }) {
@@ -1524,6 +1580,7 @@ class PhotoAssetsCompanion extends UpdateCompanion<PhotoAsset> {
       if (isVideo != null) 'is_video': isVideo,
       if (width != null) 'width': width,
       if (height != null) 'height': height,
+      if (isDated != null) 'is_dated': isDated,
       if (indexedAt != null) 'indexed_at': indexedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -1535,7 +1592,8 @@ class PhotoAssetsCompanion extends UpdateCompanion<PhotoAsset> {
     Value<bool>? isVideo,
     Value<int>? width,
     Value<int>? height,
-    Value<DateTime>? indexedAt,
+    Value<bool>? isDated,
+    Value<DateTime?>? indexedAt,
     Value<int>? rowid,
   }) {
     return PhotoAssetsCompanion(
@@ -1544,6 +1602,7 @@ class PhotoAssetsCompanion extends UpdateCompanion<PhotoAsset> {
       isVideo: isVideo ?? this.isVideo,
       width: width ?? this.width,
       height: height ?? this.height,
+      isDated: isDated ?? this.isDated,
       indexedAt: indexedAt ?? this.indexedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -1567,6 +1626,9 @@ class PhotoAssetsCompanion extends UpdateCompanion<PhotoAsset> {
     if (height.present) {
       map['height'] = Variable<int>(height.value);
     }
+    if (isDated.present) {
+      map['is_dated'] = Variable<bool>(isDated.value);
+    }
     if (indexedAt.present) {
       map['indexed_at'] = Variable<DateTime>(indexedAt.value);
     }
@@ -1584,6 +1646,7 @@ class PhotoAssetsCompanion extends UpdateCompanion<PhotoAsset> {
           ..write('isVideo: $isVideo, ')
           ..write('width: $width, ')
           ..write('height: $height, ')
+          ..write('isDated: $isDated, ')
           ..write('indexedAt: $indexedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -3941,7 +4004,8 @@ typedef $$PhotoAssetsTableCreateCompanionBuilder =
       required bool isVideo,
       required int width,
       required int height,
-      required DateTime indexedAt,
+      Value<bool> isDated,
+      Value<DateTime?> indexedAt,
       Value<int> rowid,
     });
 typedef $$PhotoAssetsTableUpdateCompanionBuilder =
@@ -3951,7 +4015,8 @@ typedef $$PhotoAssetsTableUpdateCompanionBuilder =
       Value<bool> isVideo,
       Value<int> width,
       Value<int> height,
-      Value<DateTime> indexedAt,
+      Value<bool> isDated,
+      Value<DateTime?> indexedAt,
       Value<int> rowid,
     });
 
@@ -4044,6 +4109,11 @@ class $$PhotoAssetsTableFilterComposer
 
   ColumnFilters<int> get height => $composableBuilder(
     column: $table.height,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isDated => $composableBuilder(
+    column: $table.isDated,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4162,6 +4232,11 @@ class $$PhotoAssetsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isDated => $composableBuilder(
+    column: $table.isDated,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get indexedAt => $composableBuilder(
     column: $table.indexedAt,
     builder: (column) => ColumnOrderings(column),
@@ -4191,6 +4266,9 @@ class $$PhotoAssetsTableAnnotationComposer
 
   GeneratedColumn<int> get height =>
       $composableBuilder(column: $table.height, builder: (column) => column);
+
+  GeneratedColumn<bool> get isDated =>
+      $composableBuilder(column: $table.isDated, builder: (column) => column);
 
   GeneratedColumn<DateTime> get indexedAt =>
       $composableBuilder(column: $table.indexedAt, builder: (column) => column);
@@ -4308,7 +4386,8 @@ class $$PhotoAssetsTableTableManager
                 Value<bool> isVideo = const Value.absent(),
                 Value<int> width = const Value.absent(),
                 Value<int> height = const Value.absent(),
-                Value<DateTime> indexedAt = const Value.absent(),
+                Value<bool> isDated = const Value.absent(),
+                Value<DateTime?> indexedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PhotoAssetsCompanion(
                 assetId: assetId,
@@ -4316,6 +4395,7 @@ class $$PhotoAssetsTableTableManager
                 isVideo: isVideo,
                 width: width,
                 height: height,
+                isDated: isDated,
                 indexedAt: indexedAt,
                 rowid: rowid,
               ),
@@ -4326,7 +4406,8 @@ class $$PhotoAssetsTableTableManager
                 required bool isVideo,
                 required int width,
                 required int height,
-                required DateTime indexedAt,
+                Value<bool> isDated = const Value.absent(),
+                Value<DateTime?> indexedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PhotoAssetsCompanion.insert(
                 assetId: assetId,
@@ -4334,6 +4415,7 @@ class $$PhotoAssetsTableTableManager
                 isVideo: isVideo,
                 width: width,
                 height: height,
+                isDated: isDated,
                 indexedAt: indexedAt,
                 rowid: rowid,
               ),

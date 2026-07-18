@@ -375,6 +375,26 @@ Short form; full postmortems in `docs/postmortems/`.
   columns.** `select(t).join([...])..groupBy([...])` with
   `expr.count()` read via `row.read(count)` throws "This result set does not have
   a column for that expression" unless you `..addColumns([count])` on the query.
+- **Drift `column.year`/`.month` datetime extraction runs in UTC.** With the
+  default int (unix-seconds) DateTime storage, `photoAssets.createdAt.month`
+  emits `strftime('%m', …, 'unixepoch')` — **UTC**, no `'localtime'`. Grouping the
+  month grid by it mis-buckets assets near a month boundary in any non-UTC
+  timezone (a local-Aug-1 00:00 capture reads as July), disagreeing with
+  `YearMonth.fromDate` (local) and the `monthAssets` `[start,end)` window (local
+  DateTimes → same absolute instant). Group by a
+  `CustomExpression<String>("STRFTIME('%Y-%m', created_at, 'unixepoch', 'localtime')")`
+  instead (`YYYY-MM`, so lexical order = chronological). See
+  `IndexDao.watchMonthCounts`.
+- **Drift migrations: `m.createTable(current)` builds the *current* shape, so a
+  table whose columns change after introduction needs an `else if` guard and
+  to-current-only validation.** Once `photo_assets` changed in v4, the v1→v2
+  `createTable(photoAssets)` branch produced the v4 shape (nullable `indexed_at`
+  + `is_dated`), so the v4 `alterTable` must be `else if (from < 4)` (else a
+  v1→v4 run double-adds `is_dated`). And `SchemaVerifier.migrateAndValidate(db, k)`
+  for an **intermediate** k now fails — `createTable` reflects the live shape, not
+  vk's — so validate every path **to the current version** (v1→v4, v2→v4, v3→v4),
+  not each step. `TableMigration(t, newColumns: […])` recreates the table (relaxing
+  `NOT NULL`→nullable, adding defaulted columns) copying existing rows.
 - **`developer.log` does not reach `adb logcat`.** The `SoloGallery`
   logger routes through `dart:developer.log`, which goes to the Dart VM
   service, **not** the Android log — so `adb logcat -s flutter:V

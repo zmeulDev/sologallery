@@ -8,8 +8,6 @@ import '../../core/database/app_database.dart' show Album;
 import '../../core/database/database_provider.dart';
 import '../../services/permission_provider.dart' show photoLibraryServiceProvider;
 import '../../services/photo_library_service.dart' show AssetDetail;
-import '../library/library_providers.dart';
-import '../library/month_assets_provider.dart';
 
 /// Longest-edge cap (px) for the detail preview — sharp on any phone screen,
 /// yet small enough to keep a 48MP HEIC from decoding at full size (OOM gotcha).
@@ -81,15 +79,17 @@ class DetailActions {
 
   /// Deletes [assetId] from the device library (the OS shows its own trash
   /// dialog) and, if the user confirmed, purges the favorite and album rows and
-  /// invalidates the library grids. Returns whether the asset was deleted.
+  /// the `photo_asset` cache row (which cascades to labels/OCR/faces). Removing
+  /// the cache row makes every reactive grid — Library home, Saved, and the
+  /// paged full-month/Older grids — drop it immediately. Returns whether the
+  /// asset was deleted.
   Future<bool> delete(String assetId) async {
     final deleted =
         await _ref.read(photoLibraryServiceProvider).deleteAssets([assetId]);
     if (!deleted.contains(assetId)) return false;
     await _ref.read(favoritesDaoProvider).remove(assetId);
     await _ref.read(albumsDaoProvider).removeAssetEverywhere(assetId);
-    _ref.invalidate(libraryMonthsProvider);
-    _ref.invalidate(monthAssetsProvider);
+    await _ref.read(indexDaoProvider).deleteAssets([assetId]);
     return true;
   }
 

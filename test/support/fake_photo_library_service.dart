@@ -2,16 +2,13 @@ import 'dart:io' show File;
 import 'dart:typed_data';
 import 'dart:ui' show Rect;
 
-import 'package:sologallery/features/library/domain/month_summary.dart';
-import 'package:sologallery/features/library/domain/older_summary.dart';
-import 'package:sologallery/features/library/domain/year_month.dart';
 import 'package:sologallery/features/search/domain/search_date.dart';
 import 'package:sologallery/services/photo_library_service.dart';
 
 /// In-memory [PhotoLibraryService] for host tests. Backed by a fixed list of
-/// [AssetRef]s (newest first); month queries are derived from it exactly as the
-/// real service derives them from `photo_manager`, so provider/UI logic is
-/// exercised against a real-shaped data source without the plugin.
+/// [AssetRef]s (newest first); the metadata-sweep source ([libraryMetadataPage])
+/// is derived from it, so provider/service logic is exercised against a
+/// real-shaped data source without the plugin.
 ///
 /// This fake is paired with an on-device patrol test exercising the real
 /// `photo_manager` path (CLAUDE.md "fake-pairing rule").
@@ -62,8 +59,28 @@ class FakePhotoLibraryService extends PhotoLibraryService {
   int requestCount = 0;
   int openSettingsCount = 0;
   int presentLimitedCount = 0;
+  int startChangeNotifyCount = 0;
+  int stopChangeNotifyCount = 0;
   final List<List<String>> deleteCalls = [];
   final List<List<String>> shareCalls = [];
+
+  /// The callback the indexer registered; invoke [fireLibraryChange] to
+  /// simulate the device library changing (no plugin in host tests).
+  void Function()? capturedOnChanged;
+
+  void fireLibraryChange() => capturedOnChanged?.call();
+
+  @override
+  Future<void> startLibraryChangeNotify(void Function() onChanged) async {
+    capturedOnChanged = onChanged;
+    startChangeNotifyCount++;
+  }
+
+  @override
+  Future<void> stopLibraryChangeNotify() async {
+    capturedOnChanged = null;
+    stopChangeNotifyCount++;
+  }
 
   @override
   Future<PhotoAccess> currentAccess() async => access;
@@ -80,61 +97,27 @@ class FakePhotoLibraryService extends PhotoLibraryService {
   @override
   Future<void> presentLimited() async => presentLimitedCount++;
 
-  List<AssetRef> _inMonth(YearMonth m) =>
-      assets.where((a) => YearMonth.fromDate(a.createdAt) == m).toList();
-
   @override
-  Future<List<YearMonth>> monthsInLibrary() async {
-    if (assets.isEmpty) return const [];
-    return YearMonth.descendingRange(
-      YearMonth.fromDate(assets.first.createdAt),
-      YearMonth.fromDate(assets.last.createdAt),
-    );
-  }
-
-  @override
-  Future<MonthSummary?> monthSummary(YearMonth month) async {
-    final inMonth = _inMonth(month);
-    if (inMonth.isEmpty) return null;
-    return MonthSummary(
-      month: month,
-      count: inMonth.length,
-      previewAssetIds: [for (final a in inMonth.take(6)) a.id],
-    );
-  }
-
-  @override
-  Future<List<AssetRef>> monthAssets(
-    YearMonth month, {
+  Future<List<({String id, DateTime createdAt, bool isVideo, int width, int height})>>
+      libraryMetadataPage({
+    required bool dated,
     required int page,
     required int pageSize,
   }) async {
-    final inMonth = _inMonth(month);
+    final source = dated ? assets : undatedAssets;
     final start = page * pageSize;
-    if (start >= inMonth.length) return const [];
-    return inMonth.sublist(start, (start + pageSize).clamp(0, inMonth.length));
-  }
-
-  @override
-  Future<OlderSummary?> olderSummary() async {
-    if (undatedAssets.isEmpty) return null;
-    return OlderSummary(
-      count: undatedAssets.length,
-      previewAssetIds: [for (final a in undatedAssets.take(6)) a.id],
-    );
-  }
-
-  @override
-  Future<List<AssetRef>> olderAssets({
-    required int page,
-    required int pageSize,
-  }) async {
-    final start = page * pageSize;
-    if (start >= undatedAssets.length) return const [];
-    return undatedAssets.sublist(
-      start,
-      (start + pageSize).clamp(0, undatedAssets.length),
-    );
+    if (start >= source.length) return const [];
+    final end = start + pageSize > source.length ? source.length : start + pageSize;
+    return [
+      for (final a in source.sublist(start, end))
+        (
+          id: a.id,
+          createdAt: a.createdAt,
+          isVideo: videoDurations.containsKey(a.id),
+          width: 100,
+          height: 100,
+        ),
+    ];
   }
 
   bool _typeOk(MediaTypeFilter type, String id) {
@@ -188,18 +171,6 @@ class FakePhotoLibraryService extends PhotoLibraryService {
     ];
     matches.sort((x, y) => y.createdAt.compareTo(x.createdAt));
     return matches;
-  }
-
-  @override
-  Future<List<String>> allAssetIds({
-    required int page,
-    required int pageSize,
-  }) async {
-    final all = [...assets, ...undatedAssets];
-    final start = page * pageSize;
-    if (start >= all.length) return const [];
-    final end = start + pageSize > all.length ? all.length : start + pageSize;
-    return [for (final a in all.sublist(start, end)) a.id];
   }
 
   @override

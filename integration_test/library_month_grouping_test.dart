@@ -1,11 +1,16 @@
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:sologallery/core/database/app_database.dart';
 import 'package:sologallery/features/library/domain/year_month.dart';
 import 'package:sologallery/services/photo_library_service.dart';
 
-/// On-device proof that month sections are windowed by **capture date**
-/// (`DATE_TAKEN`), the same axis the grid orders and groups by — not by
-/// `DATE_ADDED` (device-add date), which the classic `createTimeCond` uses.
+/// On-device proof that the cache-backed grid groups by **capture date**
+/// (`DATE_TAKEN`), the same axis it orders by — not by `DATE_ADDED` (device-add
+/// date), which the classic `createTimeCond` uses. The grid now reads the
+/// `photo_asset` cache, so this sweeps the live library into a fresh cache
+/// (exactly as [IndexingService] does, via [PhotoLibraryService.libraryMetadataPage])
+/// and asserts the DAO's month grouping over real device metadata.
 ///
 /// This is the paired real-path counterpart to the host tests that use
 /// `FakePhotoLibraryService` (CLAUDE.md "fake-pairing rule"): the fake can't
@@ -18,7 +23,7 @@ import 'package:sologallery/services/photo_library_service.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  test('every month section contains only assets captured in that month',
+  test('cache-backed month sections contain only assets captured that month',
       () async {
     final service = PhotoLibraryService();
     final access = await service.currentAccess();
@@ -29,56 +34,79 @@ void main() {
           'once and allow access).',
     );
 
-    final months = await service.monthsInLibrary();
-    expect(months, isNotEmpty, reason: 'Seed at least one dated photo.');
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+
+    // Sweep the live library into the cache exactly as the indexer does.
+    final live = <String>{};
+    for (final dated in const [true, false]) {
+      var page = 0;
+      while (true) {
+        final rows = await service.libraryMetadataPage(
+          dated: dated,
+          page: page,
+          pageSize: 500,
+        );
+        if (rows.isEmpty) break;
+        await db.indexDao.upsertMetadata([
+          for (final r in rows)
+            (
+              id: r.id,
+              createdAt: r.createdAt,
+              isVideo: r.isVideo,
+              width: r.width,
+              height: r.height,
+              isDated: dated,
+            ),
+        ]);
+        for (final r in rows) {
+          live.add(r.id);
+        }
+        page++;
+      }
+    }
+    expect(live, isNotEmpty, reason: 'Seed at least one photo on the device.');
+
+    final counts = await db.indexDao.watchMonthCounts().first;
+    expect(counts, isNotEmpty, reason: 'Seed at least one dated photo.');
 
     final seenIds = <String>{};
-    var totalAssertedMonths = 0;
-
-    for (final month in months) {
-      final summary = await service.monthSummary(month);
-      if (summary == null) continue; // empty calendar month in the span
-      totalAssertedMonths++;
-
-      // Page through the whole month; assert the grouping axis == the filter
-      // axis for every returned asset.
-      var page = 0;
-      var pageAssets = await service.monthAssets(month, page: page, pageSize: 90);
+    for (final entry in counts) {
+      var offset = 0;
       var counted = 0;
-      while (pageAssets.isNotEmpty) {
-        for (final a in pageAssets) {
+      while (true) {
+        final page =
+            await db.indexDao.monthAssets(entry.month, limit: 90, offset: offset);
+        if (page.isEmpty) break;
+        for (final a in page) {
           expect(
             YearMonth.fromDate(a.createdAt),
-            month,
+            entry.month,
             reason: 'Asset ${a.id} (captured ${a.createdAt}) surfaced under '
-                '${month.label} — filter/group axis mismatch.',
+                '${entry.month.label} — filter/group axis mismatch.',
           );
           expect(seenIds.add(a.id), isTrue,
               reason: 'Asset ${a.id} appeared in more than one section.');
           counted++;
         }
-        page++;
-        pageAssets = await service.monthAssets(month, page: page, pageSize: 90);
+        offset += 90;
       }
-      expect(counted, summary.count,
-          reason: '${month.label}: paged $counted != summary count '
-              '${summary.count}.');
+      expect(counted, entry.count,
+          reason: '${entry.month.label}: paged $counted != count ${entry.count}.');
     }
 
-    expect(totalAssertedMonths, greaterThan(0));
-
     // Undated assets, if any, form the disjoint "Older" bucket.
-    final older = await service.olderSummary();
-    if (older != null) {
-      var page = 0;
-      var pageAssets = await service.olderAssets(page: page, pageSize: 90);
-      while (pageAssets.isNotEmpty) {
-        for (final a in pageAssets) {
+    final olderCount = await db.indexDao.watchOlderCount().first;
+    if (olderCount > 0) {
+      var offset = 0;
+      while (true) {
+        final page = await db.indexDao.olderAssets(limit: 90, offset: offset);
+        if (page.isEmpty) break;
+        for (final a in page) {
           expect(seenIds.add(a.id), isTrue,
               reason: 'Undated asset ${a.id} also appeared in a month section.');
         }
-        page++;
-        pageAssets = await service.olderAssets(page: page, pageSize: 90);
+        offset += 90;
       }
     }
   });

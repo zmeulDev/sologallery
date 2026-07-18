@@ -4,9 +4,12 @@ import 'package:sologallery/core/database/app_database.dart';
 
 import 'generated_migrations/schema.dart';
 
-/// Establishes the schema-verification harness. As new schema versions land,
-/// add `verifier.migrateAndValidate(db, N)` cases here so every v(N-1)→vN
-/// upgrade path is exercised against the committed dumps in `drift_schemas/`.
+/// Establishes the schema-verification harness. Each case migrates a real old
+/// schema all the way to the current version and asserts it matches the
+/// committed dump (`drift_schemas/`). We validate every path *to current* (not
+/// each intermediate step) because `onUpgrade`'s `createTable` calls use the
+/// live table definitions, so a stopped-at-vN run would reflect the current
+/// photo_assets shape, not vN's — only the end state (v4) is historically exact.
 void main() {
   late SchemaVerifier verifier;
 
@@ -19,26 +22,31 @@ void main() {
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    // Migrating "to" the current version validates that the live schema built
-    // by the generated code equals drift_schemas/drift_schema_v1.json.
     await verifier.migrateAndValidate(db, 1);
   });
 
-  test('upgrades v1 → v2 (adds photo_asset + photo_label)', () async {
+  test('upgrades v1 → v4 (fresh photo_asset in current shape)', () async {
     final connection = await verifier.startAt(1);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    // Runs onUpgrade from the real v1 schema and asserts the result matches the
-    // committed drift_schemas/drift_schema_v2.json.
-    await verifier.migrateAndValidate(db, 2);
+    await verifier.migrateAndValidate(db, 4);
   });
 
-  test('upgrades v2 → v3 (adds photo_text)', () async {
+  test('upgrades v2 → v4 (adds photo_text + alters photo_asset)', () async {
     final connection = await verifier.startAt(2);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 3);
+    await verifier.migrateAndValidate(db, 4);
+  });
+
+  test('upgrades v3 → v4 (photo_asset.indexed_at nullable + is_dated)',
+      () async {
+    final connection = await verifier.startAt(3);
+    final db = AppDatabase(connection);
+    addTearDown(db.close);
+
+    await verifier.migrateAndValidate(db, 4);
   });
 }

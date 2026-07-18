@@ -21,10 +21,13 @@ in `docs/plans/` before writing code._
   `docs/plans/ml-indexing-labels.md`
 - **Phase 4 — ML/indexing slice 2** (OCR + faces/people) ✅ —
   `docs/plans/ml-indexing-ocr-faces.md`
+- **Grid on `photo_asset` cache** (Library + Saved read the cache; fast metadata
+  sweep decoupled from ML; schema v4) ✅ — `docs/plans/grid-photo-asset-cache.md`
 
-Tree is green: `tool/check.sh` passes (analyze clean, codegen ok, **190 host
-tests** incl. alchemist goldens). Schema is now **v3**: `photo_asset`,
-`photo_label`, `photo_text` (OCR), `persons` + `face_embedding` (people). A
+Tree is green: `tool/check.sh` passes (analyze clean, codegen ok, **198 host
+tests** incl. alchemist goldens). Schema is now **v4**: `photo_asset` (now with
+nullable `indexed_at` = ML-pending + `is_dated`), `photo_label`, `photo_text`
+(OCR), `persons` + `face_embedding` (people). A
 background-isolate indexer (`IndexingService` + `MlWorkerController`) runs, per
 asset in one pass, ML Kit **bundled** image labeling + Latin OCR + face detection
 plus a bundled **MobileFaceNet tflite** embedder; incremental nearest-centroid
@@ -40,8 +43,22 @@ google_mlkit_text_recognition, google_mlkit_face_detection, tflite_flutter, imag
 ## Next up — Phase 4 (remaining)
 
 Polish/refinements: periodic **global re-cluster** (clustering is incremental
-now), higher-res OCR pass, tighter face-avatar crop, and moving the gallery grid
-onto the `photo_asset` cache. See Known follow-ups below.
+now), higher-res OCR pass, tighter face-avatar crop. Grid-on-cache is now done.
+Cache follow-ups: a `photo_manager` change listener to re-sweep while
+foregrounded (new photos currently appear on next `resume`); make the paged
+full-month/Older grids reactive. See Known follow-ups below.
+
+**How the grid works now:** `IndexingService._sweepMetadata` runs at the head of
+each pass (init / permission-grant / resume in `app.dart`), caching lean
+`photo_asset` rows for the whole library (no ML) and pruning deleted ones; ML
+then backfills labels/faces for `indexed_at IS NULL` rows. Library home =
+`libraryMonthCountsProvider` (one grouped stream via `IndexDao.watchMonthCounts`,
+local-month) + lazy `monthPreviewsProvider`; Older = `olderCountProvider` /
+`olderPreviewsProvider`. Full-month/Older grids page `IndexDao.monthAssets` /
+`olderAssets`. Saved = `IndexDao.watchFavoritesInCache` (favorites ⨝ cache, so
+deleted-asset favorites drop). `libraryCacheReadyProvider` gates the empty state
+until the first sweep. Detail delete prunes the cache row so reactive grids
+update immediately.
 
 ## What 3b delivered (for reference)
 

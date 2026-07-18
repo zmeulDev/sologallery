@@ -86,8 +86,16 @@ class PhotoAssets extends Table {
 
   IntColumn get height => integer()();
 
-  /// When indexing last completed for this asset.
-  DateTimeColumn get indexedAt => dateTime()();
+  /// Whether this asset has a real capture date (the axis the grid groups by).
+  /// `false` only for Android *undated* assets, whose [createdAt] is a
+  /// `DATE_ADDED` fallback — they surface in the trailing "Older" bucket instead
+  /// of a calendar month. Always `true` on iOS (`creationDate` is always present).
+  BoolColumn get isDated => boolean().withDefault(const Constant(true))();
+
+  /// When ML indexing (labels/OCR/faces) last completed for this asset. `NULL`
+  /// means the fast metadata sweep has cached the row but ML has not run yet —
+  /// the background indexer's remaining work is exactly the `NULL` rows.
+  DateTimeColumn get indexedAt => dateTime().nullable()();
 
   @override
   Set<Column> get primaryKey => {assetId};

@@ -1,6 +1,9 @@
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sologallery/core/database/app_database.dart';
+import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/library/older_grid_screen.dart';
 import 'package:sologallery/services/permission_provider.dart';
@@ -15,13 +18,30 @@ void main() {
     WidgetTester tester, {
     List<AssetRef> undatedAssets = const [],
   }) async {
+    // The Older grid paginates the undated (is_dated=false) cache rows.
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    await db.indexDao.upsertMetadata([
+      for (final a in undatedAssets)
+        (
+          id: a.id,
+          createdAt: a.createdAt,
+          isVideo: false,
+          width: 1,
+          height: 1,
+          isDated: false,
+        ),
+    ]);
     final fake = FakePhotoLibraryService(
       access: PhotoAccess.granted,
       undatedAssets: undatedAssets,
     );
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [photoLibraryServiceProvider.overrideWithValue(fake)],
+        overrides: [
+          photoLibraryServiceProvider.overrideWithValue(fake),
+          databaseProvider.overrideWithValue(db),
+        ],
         child: MaterialApp(
           theme: AppTheme.light,
           home: const OlderGridScreen(),

@@ -9,6 +9,7 @@ import 'package:sologallery/features/albums/albums_screen.dart';
 import 'package:sologallery/features/library/library_screen.dart';
 import 'package:sologallery/features/saved/saved_screen.dart';
 import 'package:sologallery/features/settings/settings_screen.dart';
+import 'package:sologallery/services/indexing_service.dart';
 import 'package:sologallery/services/permission_provider.dart';
 
 import '../support/fake_photo_library_service.dart';
@@ -26,6 +27,9 @@ void main() {
           databaseProvider.overrideWithValue(db),
           photoLibraryServiceProvider
               .overrideWithValue(FakePhotoLibraryService()),
+          // Mark the cache ready so LibraryScreen renders its grid branch and
+          // never instantiates the real ML worker via the indexing service.
+          libraryCacheReadyProvider.overrideWithValue(const AsyncData(true)),
         ],
         child: MaterialApp(theme: AppTheme.light, home: screen),
       ),
@@ -48,6 +52,8 @@ void main() {
     await pumpScreen(tester, const LibraryScreen());
     expect(find.widgetWithText(AppBar, 'Library'), findsOneWidget);
     expect(find.byIcon(Icons.search), findsOneWidget);
+    // LibraryScreen now holds Drift .watch() streams (month counts / older).
+    await disposeTree(tester);
   });
 
   testWidgets('SavedScreen shows its title', (tester) async {

@@ -1,81 +1,42 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/database/database_provider.dart';
 import '../../services/permission_provider.dart';
-import 'domain/month_summary.dart';
-import 'domain/older_summary.dart';
 import 'domain/year_month.dart';
 
-/// The month sections shown on the Library screen, revealed lazily.
-///
-/// On build it loads the library's candidate month span, then fills the first
-/// batch of non-empty [MonthSummary]s. [loadMore] appends the next batch as the
-/// user scrolls. Idle (empty) unless photo access allows reading the library;
-/// it re-runs automatically when access changes (via the watched
-/// [permissionProvider]).
-class LibraryMonthsNotifier extends AsyncNotifier<List<MonthSummary>> {
-  /// Non-empty months resolved per batch.
-  static const _batchSize = 4;
+/// A non-empty calendar month and its exact photo count, for the Library home.
+typedef MonthCount = ({YearMonth month, int count});
 
-  List<YearMonth> _candidates = const [];
-  int _cursor = 0;
-  bool _loadingMore = false;
-
-  bool get hasMore => _cursor < _candidates.length;
-
-  @override
-  Future<List<MonthSummary>> build() async {
-    final access = ref.watch(permissionProvider);
-    if (!access.canReadLibrary) {
-      _candidates = const [];
-      _cursor = 0;
-      return const [];
-    }
-    _candidates = await ref.read(photoLibraryServiceProvider).monthsInLibrary();
-    _cursor = 0;
-    return _fill(const []);
-  }
-
-  /// Walks candidate months from [_cursor], skipping empties, until [_batchSize]
-  /// non-empty summaries have been added or candidates are exhausted.
-  Future<List<MonthSummary>> _fill(List<MonthSummary> acc) async {
-    final service = ref.read(photoLibraryServiceProvider);
-    final result = [...acc];
-    var added = 0;
-    while (_cursor < _candidates.length && added < _batchSize) {
-      final summary = await service.monthSummary(_candidates[_cursor]);
-      _cursor++;
-      if (summary != null) {
-        result.add(summary);
-        added++;
-      }
-    }
-    return result;
-  }
-
-  /// Appends the next batch without flipping the screen back to a loading state.
-  Future<void> loadMore() async {
-    if (_loadingMore || !hasMore) return;
-    _loadingMore = true;
-    try {
-      final next = await _fill(state.value ?? const []);
-      state = AsyncData(next);
-    } finally {
-      _loadingMore = false;
-    }
-  }
-}
-
-final libraryMonthsProvider =
-    AsyncNotifierProvider.autoDispose<LibraryMonthsNotifier, List<MonthSummary>>(
-  LibraryMonthsNotifier.new,
-);
-
-/// The trailing "Older" section: undated photos that can't be placed in a
-/// calendar month. Null when there are none (or on iOS, where every asset has a
-/// creation date). Idle unless photo access allows reading the library.
-final olderSummaryProvider =
-    FutureProvider.autoDispose<OlderSummary?>((ref) async {
+/// The Library home's month sections, newest first — one grouped SQL query over
+/// the `photo_asset` cache (only non-empty months are returned). Reactive: the
+/// grid reflows as the metadata sweep fills the cache and as photos are added or
+/// deleted. Idle (empty) unless photo access allows reading the library.
+final libraryMonthCountsProvider =
+    StreamProvider.autoDispose<List<MonthCount>>((ref) {
   final access = ref.watch(permissionProvider);
-  if (!access.canReadLibrary) return null;
-  return ref.read(photoLibraryServiceProvider).olderSummary();
+  if (!access.canReadLibrary) return Stream.value(const []);
+  return ref.watch(indexDaoProvider).watchMonthCounts();
+});
+
+/// Up to six newest preview ids for one [month], loaded lazily per visible
+/// section and reactive — re-emits as the cache changes so a new capture shows
+/// in the section thumbnails without leaving the app. Keyed by [YearMonth].
+final monthPreviewsProvider =
+    StreamProvider.autoDispose.family<List<String>, YearMonth>((ref, month) {
+  return ref.watch(indexDaoProvider).watchMonthPreviews(month);
+});
+
+/// Count of undated ("Older") photos — the trailing section, undated assets that
+/// can't be placed in a calendar month. Zero on iOS (every asset is dated) and
+/// when there are none. Idle unless photo access allows reading the library.
+final olderCountProvider = StreamProvider.autoDispose<int>((ref) {
+  final access = ref.watch(permissionProvider);
+  if (!access.canReadLibrary) return Stream.value(0);
+  return ref.watch(indexDaoProvider).watchOlderCount();
+});
+
+/// Up to six preview ids for the "Older" section, reactive.
+final olderPreviewsProvider =
+    StreamProvider.autoDispose<List<String>>((ref) {
+  return ref.watch(indexDaoProvider).watchOlderPreviews();
 });

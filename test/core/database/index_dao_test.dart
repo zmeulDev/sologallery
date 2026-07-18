@@ -1,6 +1,7 @@
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sologallery/core/database/app_database.dart';
+import 'package:sologallery/features/library/domain/year_month.dart';
 import 'package:sologallery/features/search/domain/search_date.dart';
 
 void main() {
@@ -60,9 +61,127 @@ void main() {
     return [for (final r in rows) r.id];
   }
 
-  test('indexedAssetIds returns every indexed asset', () async {
+  // --- Metadata sweep + grid reads ---------------------------------------
+
+  test('upsertMetadata caches rows as ML-pending, newest first', () async {
+    await db.indexDao.upsertMetadata([
+      (id: 'a', createdAt: DateTime(2026, 8, 10), isVideo: false, width: 1, height: 1, isDated: true),
+      (id: 'b', createdAt: DateTime(2026, 6, 10), isVideo: false, width: 1, height: 1, isDated: true),
+    ]);
+    expect(await db.indexDao.allCachedIds(), {'a', 'b'});
+    // Both await ML, newest capture first.
+    expect(await db.indexDao.pendingMlIds(), ['a', 'b']);
+  });
+
+  test('a later sweep does not reset an already-ML\'d row to pending', () async {
+    await db.indexDao.upsertMetadata([
+      (id: 'a', createdAt: DateTime(2026, 8, 10), isVideo: false, width: 1, height: 1, isDated: true),
+    ]);
+    await db.indexDao.upsertIndexed(
+      assetId: 'a',
+      createdAt: DateTime(2026, 8, 10),
+      isVideo: false,
+      width: 1,
+      height: 1,
+      labels: const [('Dog', 0.9)],
+      text: '',
+    );
+    expect(await db.indexDao.pendingMlIds(), isEmpty);
+    // Re-sweep with the same metadata — indexedAt must be preserved.
+    await db.indexDao.upsertMetadata([
+      (id: 'a', createdAt: DateTime(2026, 8, 10), isVideo: false, width: 1, height: 1, isDated: true),
+    ]);
+    expect(await db.indexDao.pendingMlIds(), isEmpty);
+    expect(await search('dog'), ['a']); // labels survive the re-sweep
+  });
+
+  test('deleteAssets prunes rows and cascades to labels/text', () async {
     await seed();
-    expect(await db.indexDao.indexedAssetIds(), {'a', 'b', 'c'});
+    expect(await db.indexDao.allCachedIds(), {'a', 'b', 'c'});
+    await db.indexDao.deleteAssets(['a', 'b']);
+    expect(await db.indexDao.allCachedIds(), {'c'});
+    expect(await search('dog'), isEmpty); // a, b (and their labels) gone
+  });
+
+  test('watchMonthCounts groups dated assets by month, newest first', () async {
+    await seed(); // a:2026-08, b:2026-07, c:2026-06
+    final counts = await db.indexDao.watchMonthCounts().first;
+    expect(counts.map((e) => e.month).toList(),
+        const [YearMonth(2026, 8), YearMonth(2026, 7), YearMonth(2026, 6)]);
+    expect(counts.map((e) => e.count).toList(), [1, 1, 1]);
+  });
+
+  test('undated assets route to Older, not to month counts', () async {
+    await db.indexDao.upsertMetadata([
+      (id: 'd', createdAt: DateTime(2026, 8, 1), isVideo: false, width: 1, height: 1, isDated: true),
+      (id: 'u', createdAt: DateTime(2020, 1, 1), isVideo: false, width: 1, height: 1, isDated: false),
+    ]);
+    final counts = await db.indexDao.watchMonthCounts().first;
+    expect(counts.map((e) => e.month).toList(), const [YearMonth(2026, 8)]);
+    expect(await db.indexDao.watchOlderCount().first, 1);
+    expect(await db.indexDao.watchOlderPreviews().first, ['u']);
+    final month = await db.indexDao.monthAssets(
+      const YearMonth(2026, 8),
+      limit: 10,
+      offset: 0,
+    );
+    expect(month.map((a) => a.id).toList(), ['d']);
+  });
+
+  test('watchMonthPreviews caps and monthAssets paginates, newest first',
+      () async {
+    await db.indexDao.upsertMetadata([
+      for (var i = 1; i <= 8; i++)
+        (id: 'm$i', createdAt: DateTime(2026, 8, i), isVideo: false, width: 1, height: 1, isDated: true),
+    ]);
+    const aug = YearMonth(2026, 8);
+    expect((await db.indexDao.watchMonthPreviews(aug).first).length, 6); // capped
+    expect(await db.indexDao.watchMonthPreviews(aug).first,
+        ['m8', 'm7', 'm6', 'm5', 'm4', 'm3']);
+    final page0 = await db.indexDao.monthAssets(aug, limit: 5, offset: 0);
+    final page1 = await db.indexDao.monthAssets(aug, limit: 5, offset: 5);
+    expect(page0.map((a) => a.id).toList(), ['m8', 'm7', 'm6', 'm5', 'm4']);
+    expect(page1.map((a) => a.id).toList(), ['m3', 'm2', 'm1']);
+  });
+
+  test('watchMonthAssets/watchOlderAssets re-emit on cache change', () async {
+    const aug = YearMonth(2026, 8);
+    await db.indexDao.upsertMetadata([
+      (id: 'd1', createdAt: DateTime(2026, 8, 1), isVideo: false, width: 1, height: 1, isDated: true),
+      (id: 'u1', createdAt: DateTime(2020, 1, 1), isVideo: false, width: 1, height: 1, isDated: false),
+    ]);
+    final monthStream = db.indexDao.watchMonthAssets(aug, limit: 90);
+    final olderStream = db.indexDao.watchOlderAssets(limit: 90);
+
+    // A newer dated asset lands at the front; a new undated asset joins Older.
+    expect(
+      monthStream.map((rows) => rows.map((a) => a.id).toList()),
+      emitsInOrder([
+        ['d1'],
+        ['d2', 'd1'],
+      ]),
+    );
+    expect(
+      olderStream.map((rows) => rows.map((a) => a.id).toList()),
+      emitsInOrder([
+        ['u1'],
+        ['u2', 'u1'],
+      ]),
+    );
+
+    await db.indexDao.upsertMetadata([
+      (id: 'd2', createdAt: DateTime(2026, 8, 9), isVideo: false, width: 1, height: 1, isDated: true),
+      (id: 'u2', createdAt: DateTime(2021, 1, 1), isVideo: false, width: 1, height: 1, isDated: false),
+    ]);
+  });
+
+  test('watchFavoritesInCache drops favorites whose asset is not cached',
+      () async {
+    await seed(); // a, b, c cached
+    await db.favoritesDao.add('a', at: DateTime(2026, 1, 2));
+    await db.favoritesDao.add('z', at: DateTime(2026, 1, 3)); // not cached
+    final favs = await db.indexDao.watchFavoritesInCache().first;
+    expect(favs.map((f) => f.assetId).toList(), ['a']); // z (dangling) dropped
   });
 
   test('matches a label as a case-insensitive substring, newest first',
