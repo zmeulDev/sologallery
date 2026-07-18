@@ -19,24 +19,29 @@ in `docs/plans/` before writing code._
   ✅ — `docs/plans/search-metadata.md`
 - **Phase 4 — ML/indexing slice 1** (image labels + content search) ✅ —
   `docs/plans/ml-indexing-labels.md`
+- **Phase 4 — ML/indexing slice 2** (OCR + faces/people) ✅ —
+  `docs/plans/ml-indexing-ocr-faces.md`
 
-Tree is green: `tool/check.sh` passes (analyze clean, codegen ok, **164 host
-tests** incl. alchemist goldens). Schema is now **v2** (`photo_asset`,
-`photo_label`; migration test + committed dump). A background-isolate indexer
-(`IndexingService` + `MlWorkerController` running ML Kit's **bundled** image
-labeler) populates labels, lifecycle-gated (pause on background); Search now does
-**content** search over labels ("dog" → photos). Verified on the Pixel 9 Pro XL
-via `integration_test/ml_indexing_test.dart` (real isolate + model + DB). Release
-manifest re-verified network-free after stripping ML Kit's injected c2dm push
-permission + receiver (new gotcha). `google_mlkit_image_labeling` added; the
-`android/build.gradle.kts` Kotlin-target rule now matches each module's own Java
-target (ML Kit modules pin 11/1.8). Not committed — user handles git.
+Tree is green: `tool/check.sh` passes (analyze clean, codegen ok, **190 host
+tests** incl. alchemist goldens). Schema is now **v3**: `photo_asset`,
+`photo_label`, `photo_text` (OCR), `persons` + `face_embedding` (people). A
+background-isolate indexer (`IndexingService` + `MlWorkerController`) runs, per
+asset in one pass, ML Kit **bundled** image labeling + Latin OCR + face detection
+plus a bundled **MobileFaceNet tflite** embedder; incremental nearest-centroid
+clustering assigns faces to `persons`. Search does **content** search over labels
+**and** OCR text; a People strip on Search idle → `/people` (grid) → `/person/:id`
+(rename + photos). Verified on the Pixel 9 Pro XL via
+`integration_test/ml_indexing_test.dart` (real isolate + all 3 models + tflite +
+DB). Release manifest re-verified network-free after stripping ML Kit/tflite
+injected perms (c2dm, READ_PHONE_STATE, WRITE_EXTERNAL_STORAGE). Deps:
+google_mlkit_text_recognition, google_mlkit_face_detection, tflite_flutter, image
++ `assets/models/mobilefacenet.tflite` (BSD-3). Not committed — user handles git.
 
 ## Next up — Phase 4 (remaining)
 
-**ML/indexing slice 2+**: OCR (text recognition) and/or faces/people
-(`face_embedding` + tflite + clustering + People screen). Optional: move the
-gallery grid onto the `photo_asset` cache. See Known follow-ups below.
+Polish/refinements: periodic **global re-cluster** (clustering is incremental
+now), higher-res OCR pass, tighter face-avatar crop, and moving the gallery grid
+onto the `photo_asset` cache. See Known follow-ups below.
 
 ## What 3b delivered (for reference)
 

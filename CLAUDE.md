@@ -350,19 +350,31 @@ Short form; full postmortems in `docs/postmortems/`.
   skip set. Do *not* override raw `JavaCompile` tasks to 17 — that strips the
   `android.jar` bootclasspath ("package android.app does not exist"). Re-check a
   plain `flutter build apk` (not just `patrol test`) when adding Android plugins.
-- **ML Kit injects a Firebase-push (c2dm) permission + receiver.**
-  `google_mlkit_image_labeling` pulls Play-Services / Firebase-IID transitively,
-  which merge `com.google.android.c2dm.permission.RECEIVE` **and** a
-  `com.google.firebase.iid.FirebaseInstanceIdReceiver` (c2dm intent-filter) into
-  the **release** manifest — a push/network surface that fails the network-free
-  check (Absolute rules / DoD #5), even though the bundled labeling model needs
-  no network at runtime. `android/app/src/main/AndroidManifest.xml` strips both
-  with `tools:node="remove"` (permission + a same-named `<receiver>` inside
-  `<application>`). No `INTERNET` is added. Re-verify the merged manifest after
-  any ML Kit dep bump. Feed ML a downsized JPEG **thumbnail** (not the original)
-  — bounds memory (HEIC OOM) and avoids HEIC-decode issues. The worker isolate
-  must call `BackgroundIsolateBinaryMessenger.ensureInitialized(token)` **before**
-  any ML Kit call or platform-channel calls hang.
+- **ML Kit / tflite deps inject privacy permissions + a push receiver.** The
+  Play-Services / Firebase-IID / gms chain behind `google_mlkit_*` and
+  `tflite_flutter` merges into the **release** manifest:
+  `com.google.android.c2dm.permission.RECEIVE` + a
+  `com.google.firebase.iid.FirebaseInstanceIdReceiver` (image_labeling), and
+  `READ_PHONE_STATE` + `WRITE_EXTERNAL_STORAGE` (face_detection / tflite) — all
+  fail the network/privacy check (Absolute rules / DoD #5) though every model is
+  bundled and on-device. `android/app/src/main/AndroidManifest.xml` strips them
+  all with `tools:node="remove"` (permissions + the same-named `<receiver>` in
+  `<application>`). No `INTERNET` is added. **Re-verify the merged manifest after
+  any ML/tflite dep bump.** Feed ML a downsized JPEG **thumbnail** (not the
+  original) — bounds memory (HEIC OOM) and avoids HEIC-decode issues. The worker
+  isolate must call `BackgroundIsolateBinaryMessenger.ensureInitialized(token)`
+  **before** any ML Kit call or platform-channel calls hang; **tflite is FFI and
+  runs in the isolate with no messenger** (load the `.tflite` bytes on the main
+  isolate via `rootBundle` and pass them to the worker). Face boxes are stored in
+  the 512-thumb coordinate space so avatars crop the cached thumbnail.
+- **Drift: a column can't reuse a builder name** (`text`, `integer`, `boolean`,
+  `real`, `blob`, …). `TextColumn get text => text()()` recurses / conflicts with
+  `Table.text` → "conflicting_field_and_method". Name it something else
+  (`content`) and map in the DAO.
+- **Drift: an aggregate in a joined select must be added to the selected
+  columns.** `select(t).join([...])..groupBy([...])` with
+  `expr.count()` read via `row.read(count)` throws "This result set does not have
+  a column for that expression" unless you `..addColumns([count])` on the query.
 - **`developer.log` does not reach `adb logcat`.** The `SoloGallery`
   logger routes through `dart:developer.log`, which goes to the Dart VM
   service, **not** the Android log — so `adb logcat -s flutter:V

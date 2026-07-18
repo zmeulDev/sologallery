@@ -23,6 +23,13 @@
          rules / Definition of Done #5). Re-verify the merged manifest after any
          ML Kit dep bump. -->
     <uses-permission android:name="com.google.android.c2dm.permission.RECEIVE" tools:node="remove" />
+    <!-- The face-detection / tflite dependency chain (Play-Services / gms) also
+         injects READ_PHONE_STATE and WRITE_EXTERNAL_STORAGE. Neither is needed —
+         all ML is on-device and originals are never written — and READ_PHONE_STATE
+         fails the privacy check (Absolute rules / DoD #5). Strip both. Re-verify
+         the merged manifest after any ML/tflite dep bump. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />

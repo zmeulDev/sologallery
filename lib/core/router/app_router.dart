@@ -10,6 +10,8 @@ import '../../features/library/library_screen.dart';
 import '../../features/library/month_grid_screen.dart';
 import '../../features/library/older_grid_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
+import '../../features/people/people_screen.dart';
+import '../../features/people/person_detail_screen.dart';
 import '../../features/saved/saved_screen.dart';
 import '../../features/search/search_screen.dart';
 import '../../features/settings/settings_screen.dart';
@@ -63,6 +65,22 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/search',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const SearchScreen(),
+      ),
+      GoRoute(
+        path: '/people',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const PeopleScreen(),
+      ),
+      GoRoute(
+        path: '/person/:id',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final id = int.tryParse(state.pathParameters['id'] ?? '');
+          if (id == null) {
+            return const _NotFound(message: 'That person couldn\'t be found.');
+          }
+          return PersonDetailScreen(personId: id);
+        },
       ),
       GoRoute(
         path: '/album/:id',
@@ -131,9 +149,21 @@ class _InvalidAlbum extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return const _NotFound(message: 'That album couldn\'t be found.');
+  }
+}
+
+/// Generic "not found" fallback for malformed deep links.
+class _NotFound extends StatelessWidget {
+  const _NotFound({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(),
-      body: const Center(child: Text('That album couldn\'t be found.')),
+      body: Center(child: Text(message)),
     );
   }
 }

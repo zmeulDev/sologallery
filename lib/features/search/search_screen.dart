@@ -9,10 +9,13 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../widgets/asset_grid.dart';
 import '../../widgets/asset_thumbnail.dart';
+import '../../core/database/daos/faces_dao.dart' show PersonSummary;
 import '../../services/indexing_service.dart';
 import '../../widgets/filter_pill.dart';
 import '../../widgets/month_section_header.dart';
 import '../library/month_grid_screen.dart' show CenteredNote;
+import '../people/people_providers.dart';
+import '../people/widgets/face_avatar.dart';
 import 'domain/search_date.dart';
 import 'search_providers.dart';
 
@@ -96,7 +99,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             const _IndexingNote(),
           Expanded(
             child: idle
-                ? const _IdleHint()
+                ? const _IdleView()
                 : _Results(albums: albums, showNoMatch: albums.isEmpty),
           ),
         ],
@@ -288,6 +291,61 @@ class _IndexingNote extends StatelessWidget {
       child: Text(
         'Still indexing your library — results will keep improving.',
         style: styles.caption.copyWith(color: colors.textSecondary),
+      ),
+    );
+  }
+}
+
+/// The idle state: a People strip (when clusters exist) above the search prompt.
+class _IdleView extends ConsumerWidget {
+  const _IdleView();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final people = ref.watch(personSummariesProvider).value ?? const [];
+    return Column(
+      children: [
+        if (people.isNotEmpty) _PeopleStrip(people: people),
+        const Expanded(child: _IdleHint()),
+      ],
+    );
+  }
+}
+
+/// A horizontal row of person avatars linking into the People screens.
+class _PeopleStrip extends StatelessWidget {
+  const _PeopleStrip({required this.people});
+
+  final List<PersonSummary> people;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          MonthSectionHeader(
+            label: 'People',
+            trailing: TextButton(
+              onPressed: () => context.push('/people'),
+              child: const Text('See all'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 84,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: people.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              itemBuilder: (context, i) => GestureDetector(
+                onTap: () => context.push('/person/${people[i].id}'),
+                child: FaceAvatar(personId: people[i].id, size: 64),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -136,6 +136,7 @@ class FacesDao extends DatabaseAccessor<AppDatabase> with _$FacesDaoMixin {
     final q = select(persons).join([
       innerJoin(faceEmbeddings, faceEmbeddings.personId.equalsExp(persons.id)),
     ])
+      ..addColumns([count])
       ..groupBy([persons.id])
       ..orderBy([OrderingTerm.desc(count)]);
     return q.watch().map((rows) => [

@@ -1,5 +1,19 @@
 # ML/Indexing slice 2 — OCR + faces/people
 
+Status: **COMPLETE** (2026-07-18). All three parts done. `tool/check.sh` green
+(**190 host tests**: clustering unit, faces/index DAO, migration v1→v2→v3,
+provider content-search, People widgets, fake-worker service incl. clustering);
+`integration_test/ml_indexing_test.dart` green on the Pixel 9 Pro XL (real isolate
+running label + OCR + face-detect + **tflite** embed, writing photo_text +
+face_embeddings). Release manifest re-verified network-free after stripping ML
+Kit / tflite injected perms (c2dm, READ_PHONE_STATE, WRITE_EXTERNAL_STORAGE).
+Deps added: google_mlkit_text_recognition, google_mlkit_face_detection,
+tflite_flutter, image; asset assets/models/mobilefacenet.tflite (BSD-3, attributed
+in assets/models/README.md). Next step: none. Follow-ups — periodic global
+re-cluster (v1 is incremental nearest-centroid), higher-res OCR pass, tighter
+face-avatar crop (stores box in 512-thumb coords), and seed test_assets/ for the
+HEIC OOM assertion (currently runs against the live library).
+
 ## Context
 
 Slice 1 built the indexing pipeline (background-isolate `MlWorkerController`,

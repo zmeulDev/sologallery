@@ -44,6 +44,7 @@ void main() {
 
     var anyLabel = <String, double>{};
     var labeledAssetId = '';
+    var anyFace = false;
 
     // Index a bounded handful end-to-end through the *real* isolate.
     for (final id in ids.take(5)) {
@@ -66,6 +67,17 @@ void main() {
         labels: analysis.labels,
         text: analysis.text,
       );
+      await db.facesDao.insertFaces(id, [
+        for (final f in analysis.faces)
+          (
+            left: f.left,
+            top: f.top,
+            right: f.right,
+            bottom: f.bottom,
+            embedding: f.embedding,
+          ),
+      ]);
+      if (analysis.faces.isNotEmpty) anyFace = true;
       if (analysis.labels.isNotEmpty && anyLabel.isEmpty) {
         anyLabel = {analysis.labels.first.$1: analysis.labels.first.$2};
         labeledAssetId = id;
@@ -74,6 +86,14 @@ void main() {
 
     // The pipeline wrote index rows (the isolate ran and the DB accepted them).
     expect(await db.indexDao.indexedAssetIds(), isNotEmpty);
+
+    // If any face was detected, the real tflite embedder produced a non-empty
+    // vector and it was stored (proves the FFI model runs in the isolate).
+    final faceRows = await db.select(db.faceEmbeddings).get();
+    if (anyFace) {
+      expect(faceRows, isNotEmpty);
+      expect(faceRows.first.embedding.length, greaterThan(0));
+    }
 
     // If the model produced any label, content search must surface that asset.
     if (anyLabel.isNotEmpty) {

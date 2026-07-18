@@ -22,6 +22,7 @@ void main() {
   ) =>
       IndexingService(
         dao: db.indexDao,
+        faces: db.facesDao,
         photos: photos,
         worker: worker,
         tempDir: Directory.systemTemp,
@@ -46,6 +47,26 @@ void main() {
     final texts = await db.select(db.photoTexts).get();
     expect(texts, hasLength(3)); // OCR text stored per asset
     expect(texts.first.content, 'Hello world');
+  });
+
+  test('detected faces are stored and clustered into a person', () async {
+    final emb = Float32List.fromList(List.filled(192, 0.1));
+    final photos = FakePhotoLibraryService(
+      assets: assetsInMonth(2026, 8, 2),
+      thumbnailBytes: Uint8List.fromList([1]),
+    );
+    // Same embedding on both assets → should merge into one person.
+    final worker = FakeMlWorker(
+      faces: [(left: 0, top: 0, right: 10, bottom: 10, embedding: emb)],
+    );
+
+    await serviceFor(photos, worker).start();
+
+    final faceRows = await db.select(db.faceEmbeddings).get();
+    expect(faceRows, hasLength(2)); // one face per asset
+    final persons = await db.select(db.persons).get();
+    expect(persons, hasLength(1)); // clustered together
+    expect(faceRows.every((f) => f.personId == persons.first.id), isTrue);
   });
 
   test('a second pass skips already-indexed assets', () async {
