@@ -147,10 +147,20 @@ class IndexingService {
     if (!_sweptController.isClosed) _sweptController.add(value);
   }
 
-  /// Starts (or no-ops if already running) a full indexing pass. Fire-and-forget.
+  /// Starts a full indexing pass, or folds the request into the one already
+  /// running. Fire-and-forget.
+  ///
+  /// A request that arrives mid-pass is never dropped: the caller changed
+  /// something the in-flight pass may have already read past — a consent flag,
+  /// or newly arrived assets — so it sets [_dirty] and the pass loops again
+  /// with fresh state. Returning silently instead is what left face detection
+  /// enabled but never run on first launch.
   Future<void> start() async {
     _ensureChangeNotify();
-    if (_running) return;
+    if (_running) {
+      _dirty = true;
+      return;
+    }
     _running = true;
     _cancelled = false;
     _paused = false;
@@ -209,6 +219,58 @@ class IndexingService {
   // Both live here rather than in the UI because withdrawing consent has to
   // delete the derived data, and enabling has to arrange for it to be derived —
   // and this service owns the baseline keys, the DAOs, and the pass lifecycle.
+
+  /// Applies all three consent answers at once — onboarding's single entry
+  /// point.
+  ///
+  /// Deliberately *not* three [setSearchEnabled] / [setMemoriesEnabled] /
+  /// [setFacesEnabled] calls in a row. Each of those persists its own flag and
+  /// then kicks a pass, so the first one starts a pass that reads the other two
+  /// flags before they have been written. Faces lost that race on first run:
+  /// the pass ran with `facesEnabled: false`, still stamped `indexed_at` on
+  /// every asset, and since [IndexDao.pendingMlIds] only returns unstamped rows
+  /// nothing ever revisited them — People stayed empty until the user toggled
+  /// face detection in Settings. Here the flags land in one transaction before
+  /// any pass can observe them, and exactly one pass is kicked at the end.
+  Future<void> applyConsent({
+    required bool searchEnabled,
+    required bool memoriesEnabled,
+    required bool facesEnabled,
+  }) async {
+    await settings.setConsent(
+      search: searchEnabled,
+      memories: memoriesEnabled,
+      faces: facesEnabled,
+    );
+
+    // Enabling either ML feature re-queues the whole cache: anything indexed
+    // while it was off carries an `indexed_at` stamp that would otherwise hide
+    // it from pendingMlIds forever.
+    if (searchEnabled || facesEnabled) await dao.resetMlPending();
+
+    // Declining deletes what was already derived. An upgrading user reaches
+    // this step with labels, faces, persons and memories already on disk from
+    // before consent existed, and "no" has to mean the inferences go — not
+    // merely that the UI stops showing them.
+    if (!searchEnabled) await dao.clearContent();
+    if (!facesEnabled) {
+      await faces.clearFaces();
+      await faces.clearPersons();
+      await settings.put(_reclusterBaselineKey, '0');
+    }
+    if (!memoriesEnabled) await memories.clearMemories();
+
+    // Memories are planned from labels and clusters, so every branch above
+    // invalidates the current plan: clear the baselines and the pass replans
+    // immediately rather than waiting for the once-a-day trigger.
+    await settings.put(_memoriesDateKey, '');
+    await settings.put(_memoriesCountKey, '0');
+
+    // One pass, after everything is durable. If the permission-grant pass is
+    // still in flight, [start] folds this into it (_dirty) instead of dropping
+    // it, and that pass re-reads the flags on its next round.
+    unawaited(start());
+  }
 
   /// Enables or disables content search (ML labels + OCR text).
   ///
@@ -308,18 +370,38 @@ class IndexingService {
   }
 
   Future<void> _run() async {
-    // Read the consent flags once per pass, not per asset: every derived
-    // feature is opt-in and off until the user says otherwise (SettingsDao).
-    final searchEnabled = await settings.readSearchEnabled();
-    final facesEnabled = await settings.readFacesEnabled();
-    final memoriesEnabled = await settings.readMemoriesEnabled();
-    // Labels/OCR and faces are the only things ML produces. With both declined
-    // there is no analysis to do at all — the pass degrades to the metadata
-    // sweep that fills the grid, and the worker isolate never spawns.
-    final needsMl = searchEnabled || facesEnabled;
+    // The flags the previous round ran with (null on the first round).
+    bool? ranWithSearch;
+    bool? ranWithFaces;
 
     do {
       _dirty = false;
+      // Re-read the consent flags at the top of every round, not once per pass:
+      // a flag flipped while this pass was in flight is precisely what set
+      // _dirty, and looping again on the stale answer would defeat the point.
+      // Still once per *round*, never per asset.
+      final searchEnabled = await settings.readSearchEnabled();
+      final facesEnabled = await settings.readFacesEnabled();
+      final memoriesEnabled = await settings.readMemoriesEnabled();
+
+      // A feature that switched on since the last round means everything that
+      // round processed was stamped `indexed_at` without it, and pendingMlIds
+      // only returns unstamped rows — so those assets would never be revisited.
+      // The enabling caller does call resetMlPending, but it lands *while* the
+      // round is still running and the rest of that round re-stamps straight
+      // over it. Re-queueing here, after the round has ended, is the only point
+      // where the reset can't be undone.
+      if ((searchEnabled && ranWithSearch == false) ||
+          (facesEnabled && ranWithFaces == false)) {
+        await dao.resetMlPending();
+      }
+      ranWithSearch = searchEnabled;
+      ranWithFaces = facesEnabled;
+      // Labels/OCR and faces are the only things ML produces. With both
+      // declined there is no analysis to do at all — the pass degrades to the
+      // metadata sweep that fills the grid, and the worker never spawns.
+      final needsMl = searchEnabled || facesEnabled;
+
       await _sweepMetadata();
       if (_cancelled) return;
 

@@ -9,13 +9,13 @@ import '../tables.dart';
 
 part 'faces_dao.g.dart';
 
-/// One detected face to persist: its bounding box (512-thumb coords) and
-/// embedding vector.
+/// One detected face to persist: its bounding box (normalized `[0, 1]` against
+/// the analyzed image — see [FaceEmbeddings]) and embedding vector.
 typedef FaceRecord = ({
-  int left,
-  int top,
-  int right,
-  int bottom,
+  double left,
+  double top,
+  double right,
+  double bottom,
   Float32List embedding,
 });
 
@@ -257,15 +257,36 @@ class FacesDao extends DatabaseAccessor<AppDatabase> with _$FacesDaoMixin {
     ];
   }
 
-  /// The bounding box of a representative face for [personId], to crop the
-  /// avatar. Newest face first; null if the person has no faces.
-  Future<({String assetId, int left, int top, int right, int bottom})?>
+  /// The bounding box of the representative face for [personId], to crop the
+  /// avatar. Null if the person has no faces.
+  ///
+  /// Prefers the face on the person's curated [Persons.coverAssetId] — the photo
+  /// clustering deliberately picked and preserves across re-clusters
+  /// (`planClusters`). Ordering by newest face instead would re-point the avatar
+  /// at a different photo every time indexing added a face to this person, so
+  /// the grid visibly reshuffled as a pass progressed. Newest is kept only as
+  /// the fallback for a person whose cover asset is unset or whose face on it
+  /// has since gone.
+  Future<({String assetId, double left, double top, double right, double bottom})?>
       coverFace(int personId) async {
-    final row = await (select(faceEmbeddings)
-          ..where((f) => f.personId.equals(personId))
-          ..orderBy([(f) => OrderingTerm.desc(f.id)])
-          ..limit(1))
+    final person = await (select(persons)..where((p) => p.id.equals(personId)))
         .getSingleOrNull();
+
+    final q = select(faceEmbeddings)
+      ..where((f) => f.personId.equals(personId))
+      ..orderBy([(f) => OrderingTerm.desc(f.id)])
+      ..limit(1);
+    final cover = person?.coverAssetId;
+    var row = cover == null
+        ? null
+        : await (select(faceEmbeddings)
+              ..where(
+                (f) => f.personId.equals(personId) & f.assetId.equals(cover),
+              )
+              ..orderBy([(f) => OrderingTerm.asc(f.id)])
+              ..limit(1))
+            .getSingleOrNull();
+    row ??= await q.getSingleOrNull();
     if (row == null) return null;
     return (
       assetId: row.assetId,

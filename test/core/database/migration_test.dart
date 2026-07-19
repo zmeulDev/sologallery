@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sologallery/core/database/app_database.dart';
 
 import 'generated_migrations/schema.dart';
+import 'generated_migrations/schema_v6.dart';
 
 /// Establishes the schema-verification harness. Each case migrates a real old
 /// schema all the way to the current version and asserts it matches the
@@ -25,46 +26,89 @@ void main() {
     await verifier.migrateAndValidate(db, 1);
   });
 
-  test('upgrades v1 → v6 (fresh photo_asset in current shape + all later tables)',
+  test('upgrades v1 → v7 (fresh photo_asset in current shape + all later tables)',
       () async {
     final connection = await verifier.startAt(1);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 6);
+    await verifier.migrateAndValidate(db, 7);
   });
 
-  test('upgrades v2 → v6 (adds photo_text + alters photo_asset + settings/memories)',
+  test('upgrades v2 → v7 (adds photo_text + alters photo_asset + settings/memories)',
       () async {
     final connection = await verifier.startAt(2);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 6);
+    await verifier.migrateAndValidate(db, 7);
   });
 
-  test('upgrades v3 → v6 (photo_asset.indexed_at nullable + is_dated + rest)',
+  test('upgrades v3 → v7 (photo_asset.indexed_at nullable + is_dated + rest)',
       () async {
     final connection = await verifier.startAt(3);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 6);
+    await verifier.migrateAndValidate(db, 7);
   });
 
-  test('upgrades v4 → v6 (adds app_settings + memories)', () async {
+  test('upgrades v4 → v7 (adds app_settings + memories)', () async {
     final connection = await verifier.startAt(4);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 6);
+    await verifier.migrateAndValidate(db, 7);
   });
 
-  test('upgrades v5 → v6 (adds memories + memory_entries)', () async {
+  test('upgrades v5 → v7 (adds memories + memory_entries)', () async {
     final connection = await verifier.startAt(5);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 6);
+    await verifier.migrateAndValidate(db, 7);
+  });
+
+  test('upgrades v6 → v7 (face box columns become normalized reals)', () async {
+    final connection = await verifier.startAt(6);
+    final db = AppDatabase(connection);
+    addTearDown(db.close);
+
+    await verifier.migrateAndValidate(db, 7);
+  });
+
+  test(
+      'v6 → v7 drops pixel-space faces and clusters, and re-queues the assets '
+      'so they are re-derived', () async {
+    final schema = await verifier.schemaAt(6);
+    final old = DatabaseAtV6(schema.newConnection());
+    // A fully ML-indexed v6 asset with one clustered face, box in pixels.
+    await old.customStatement(
+      'INSERT INTO photo_assets '
+      '(asset_id, created_at, is_video, width, height, is_dated, indexed_at) '
+      "VALUES ('a', 1000, 0, 4032, 3024, 1, 2000)",
+    );
+    await old.customStatement(
+      'INSERT INTO persons (id, display_name, cover_asset_id, created_at) '
+      "VALUES (1, 'Ana', 'a', 1000)",
+    );
+    await old.customStatement(
+      'INSERT INTO face_embeddings '
+      '(id, asset_id, person_id, embedding, "left", "top", "right", "bottom") '
+      "VALUES (1, 'a', 1, x'0000803f', 100, 120, 260, 280)",
+    );
+    await old.close();
+
+    final db = AppDatabase(schema.newConnection());
+    addTearDown(db.close);
+    await verifier.migrateAndValidate(db, 7);
+
+    // The pixel box is unconvertible — the thumbnail size it was measured
+    // against was never recorded — so the face and the cluster built from it
+    // go, rather than being reinterpreted as a (nonsense) fraction.
+    expect(await db.facesDao.faceCount(), 0);
+    expect(await db.facesDao.allPersons(), isEmpty);
+    // And the asset is unstamped again, so the next pass re-derives both.
+    expect(await db.indexDao.pendingMlIds(), ['a']);
   });
 }

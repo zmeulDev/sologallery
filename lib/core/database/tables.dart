@@ -239,11 +239,21 @@ class MemoryEntries extends Table {
       ];
 }
 
-/// One detected face: its on-device embedding vector plus the bounding box (in
-/// the 512px indexing-thumbnail coordinate space, so avatars crop the cached
-/// thumbnail). [personId] is the cluster it was assigned to (null until
-/// clustered). Cascades from [PhotoAssets]; a deleted [Persons] row nulls the
-/// link (faces survive re-clustering).
+/// One detected face: its on-device embedding vector plus the bounding box.
+/// [personId] is the cluster it was assigned to (null until clustered).
+/// Cascades from [PhotoAssets]; a deleted [Persons] row nulls the link (faces
+/// survive re-clustering).
+///
+/// The box is stored **normalized to `[0, 1]`** against the analysis
+/// thumbnail's real decoded width/height — a *fraction* of the image, not
+/// pixels. Pixels were tried first (v3–v6) and were wrong: they only mean
+/// something alongside the exact thumbnail dimensions they were measured
+/// against, which were never recorded, so the avatar had to guess them from a
+/// `512` constant. `photo_manager`'s `thumbnail(id, 512, 512)` returns an
+/// aspect-**fill** image (short edge 512, long edge larger — a 4:3 photo comes
+/// back 683×512), so that guess was off by the aspect ratio and every avatar
+/// cropped ~33% too large and down-and-right of the face. Fractions need no
+/// such guess: multiply by whatever image is on screen.
 @TableIndex(name: 'face_asset', columns: {#assetId})
 @TableIndex(name: 'face_person', columns: {#personId})
 class FaceEmbeddings extends Table {
@@ -259,8 +269,9 @@ class FaceEmbeddings extends Table {
   /// The face-embedding vector, `Float32List` bytes (little-endian).
   BlobColumn get embedding => blob()();
 
-  IntColumn get left => integer()();
-  IntColumn get top => integer()();
-  IntColumn get right => integer()();
-  IntColumn get bottom => integer()();
+  /// Box edges as fractions of the image's width/height, in `[0, 1]`.
+  RealColumn get left => real()();
+  RealColumn get top => real()();
+  RealColumn get right => real()();
+  RealColumn get bottom => real()();
 }

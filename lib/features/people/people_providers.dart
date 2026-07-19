@@ -6,13 +6,14 @@ import '../../core/database/database_provider.dart';
 import '../../services/photo_library_service.dart' show AssetRef;
 import '../settings/consent_provider.dart';
 
-/// A person's cover face: the asset to crop and the box within its 512-thumb.
+/// A person's cover face: the asset to crop and the box within it, normalized
+/// to `[0, 1]` fractions of the image (see the `FaceEmbeddings` table docs).
 typedef CoverFace = ({
   String assetId,
-  int left,
-  int top,
-  int right,
-  int bottom,
+  double left,
+  double top,
+  double right,
+  double bottom,
 });
 
 /// Clustered people with a face count, most-photographed first. A DB stream so

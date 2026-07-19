@@ -10,7 +10,13 @@ class FakeMlWorker implements MlWorker {
     this.labels = const [('Dog', 0.9)],
     this.text = '',
     this.faces = const [],
+    this.beforeAnalyze,
   });
+
+  /// Awaited at the start of every [analyzeFile], with the 0-based call index.
+  /// Lets a test hold a pass open mid-flight — the window in which consent
+  /// changes used to be lost.
+  final Future<void> Function(int callIndex)? beforeAnalyze;
 
   /// Labels returned for every [analyzeFile] call.
   final List<Label> labels;
@@ -43,6 +49,7 @@ class FakeMlWorker implements MlWorker {
     bool content = true,
     bool faces = true,
   }) async {
+    await beforeAnalyze?.call(calls.length);
     calls.add(jpegPath);
     ocrCalls.add(ocrPath);
     faceRequests.add(faces);

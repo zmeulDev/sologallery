@@ -53,16 +53,20 @@ class ConsentNotifier extends Notifier<ConsentState> {
   /// memories already derived from before consent existed, so declining has to
   /// delete them. Writing the settings straight to the DAO would leave exactly
   /// the data the user just refused sitting on disk.
+  ///
+  /// All three answers go through a single [IndexingService.applyConsent] —
+  /// setting them one at a time let an indexing pass start on a half-written
+  /// answer (see that method).
   Future<void> record({
     required bool search,
     required bool memories,
     required bool faces,
   }) async {
-    final indexing = ref.read(indexingServiceProvider);
-    await indexing.setSearchEnabled(search);
-    await indexing.setMemoriesEnabled(memories);
-    await indexing.setFacesEnabled(faces);
-    await ref.read(settingsDaoProvider).recordConsent();
+    await ref.read(indexingServiceProvider).applyConsent(
+          searchEnabled: search,
+          memoriesEnabled: memories,
+          facesEnabled: faces,
+        );
     _log.info(
       'Analysis consent recorded '
       '(search: $search, memories: $memories, faces: $faces)',

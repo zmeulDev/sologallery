@@ -16,13 +16,16 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 /// One image label: the ML Kit tag text and the model's confidence in `[0, 1]`.
 typedef Label = (String label, double confidence);
 
-/// One detected face: its bounding box (in the analyzed thumbnail's pixel
-/// coordinates) and its embedding vector.
+/// One detected face: its bounding box and its embedding vector.
+///
+/// The box is **normalized to `[0, 1]`** against the analyzed image's real
+/// decoded size, so it stays meaningful without carrying those dimensions
+/// around (see the `FaceEmbeddings` table docs for why pixels didn't).
 typedef DetectedFace = ({
-  int left,
-  int top,
-  int right,
-  int bottom,
+  double left,
+  double top,
+  double right,
+  double bottom,
   Float32List embedding,
 });
 
@@ -249,8 +252,31 @@ void _workerMain(_WorkerInit init) {
   });
 }
 
+/// The smallest face worth keeping, as a fraction of the image's **short**
+/// edge. Below this the crop is a smear of pixels: the embedding is noise, so
+/// clustering can't group it and every such face becomes its own one-photo
+/// "person" flooding the People grid. Measured against the short edge so the
+/// threshold means the same thing in portrait and landscape.
+const minFaceFraction = 0.05;
+
+/// Whether a `w`×`h` face box in an `imageWidth`×`imageHeight` image is big
+/// enough to embed — see [minFaceFraction]. Pure, so the threshold is testable
+/// without running the detector.
+bool faceIsLargeEnough({
+  required int w,
+  required int h,
+  required int imageWidth,
+  required int imageHeight,
+}) {
+  if (w < 2 || h < 2) return false;
+  final shortEdge = imageWidth < imageHeight ? imageWidth : imageHeight;
+  final min = shortEdge * minFaceFraction;
+  return w >= min && h >= min;
+}
+
 /// Crops [box] from [image], resizes to the model's 112×112 input, and returns
-/// the MobileFaceNet embedding. Null if the box is degenerate.
+/// the MobileFaceNet embedding with the box normalized to `[0, 1]`. Null if the
+/// box is degenerate or too small ([faceIsLargeEnough]).
 DetectedFace? _embedFace(
   img.Image image,
   Rect box,
@@ -261,7 +287,14 @@ DetectedFace? _embedFace(
   final y = box.top.round().clamp(0, image.height - 1);
   final w = box.width.round().clamp(1, image.width - x);
   final h = box.height.round().clamp(1, image.height - y);
-  if (w < 2 || h < 2) return null;
+  if (!faceIsLargeEnough(
+    w: w,
+    h: h,
+    imageWidth: image.width,
+    imageHeight: image.height,
+  )) {
+    return null;
+  }
 
   final crop = img.copyResize(
     img.copyCrop(image, x: x, y: y, width: w, height: h),
@@ -287,11 +320,15 @@ DetectedFace? _embedFace(
   final output = List.generate(1, (_) => List.filled(embeddingSize, 0.0));
   embedder.run(input, output);
 
+  // Normalize against the image actually analyzed — the one place its true
+  // size is known, so nothing downstream has to reconstruct it.
+  final iw = image.width.toDouble();
+  final ih = image.height.toDouble();
   return (
-    left: x,
-    top: y,
-    right: x + w,
-    bottom: y + h,
+    left: x / iw,
+    top: y / ih,
+    right: (x + w) / iw,
+    bottom: (y + h) / ih,
     embedding: Float32List.fromList(output[0].cast<double>()),
   );
 }

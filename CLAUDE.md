@@ -379,14 +379,22 @@ Short form; full postmortems in `docs/postmortems/`.
   thumbnail** (`_ocrEdge`, via `analyzeFile(jpegPath, {ocrPath})`) for small-text
   recall — don't collapse them back to one image (it would move the face-box
   space off 512 and break avatars, or shrink OCR again). Both are still bounded
-  thumbnails, never the original. **`thumbnail(id, 512, 512)` preserves the
-  asset's aspect ratio — the returned image is *not* square** (a portrait comes
-  back ~384×512). Face boxes live in that non-square pixel space, so a face
-  avatar must decode the thumbnail's **real** width/height and scale uniformly
-  (`FaceAvatar` / `faceAvatarPlacement` via `faceThumbProvider`); the old code
-  assumed a 512² square + `BoxFit.fill`, which stretched avatars to ovals and
-  cropped off the face. Host tests use fake (undecodable) bytes, so this only
-  shows on-device — validate people avatars on a real device.
+  thumbnails, never the original. Host tests use fake (undecodable) bytes, so
+  avatar geometry only shows on-device — validate people avatars on a real device.
+- **`thumbnail(id, N, N)` is aspect-*fill*: the returned image's SHORT edge is
+  N, the long edge is larger.** A 4:3 photo requested at 512 comes back
+  **683×512**, at 1024 comes back 1365×1024 — it is not square, and it is *not*
+  bounded by N either. (An earlier version of this note claimed the opposite —
+  "a portrait comes back ~384×512", i.e. long edge N — and that error shipped:
+  face boxes were stored as thumbnail pixels and rescaled by `longEdge / 512`,
+  giving 2.67 where the truth was 2.0, so every People avatar cropped ~33% too
+  large and down-and-right of the face, with edge faces pushed clean out of the
+  circle.) **Never store a pixel coordinate whose reference dimensions you don't
+  also store** — face boxes are now normalized `[0, 1]` fractions at write time
+  in `ml_service._embedFace`, so no consumer has to reconstruct the size
+  (`FaceEmbeddings`, schema v7). Verify with the DB, not by reasoning about the
+  API: `SELECT MAX(right), MAX(bottom) FROM face_embeddings` exceeding the
+  requested edge is what proved it.
 - **Drift: a column can't reuse a builder name** (`text`, `integer`, `boolean`,
   `real`, `blob`, …). `TextColumn get text => text()()` recurses / conflicts with
   `Table.text` → "conflicting_field_and_method". Name it something else
@@ -643,6 +651,21 @@ Short form; full postmortems in `docs/postmortems/`.
   quietly hollowing out every consent test. No `ffmpeg`/`exiftool`/PIL on this
   machine — `sips` does the HEIC conversion and the video asset must be supplied
   by hand.
+- **`IndexingService.start()` must never drop a request, and consent flags must
+  land atomically before any pass is kicked.** `start()` used to `return` when
+  `_running`, and `ConsentNotifier.record()` persisted the three consent flags
+  one at a time, each self-kicking a pass. So on first run the pass kicked by
+  `search_enabled` read `faces_enabled` before it had been written, ran with
+  faces off, stamped `indexed_at` on every asset anyway (`_indexOne` stamps
+  regardless of which features ran), and `pendingMlIds` — unstamped rows only —
+  never offered them again. People stayed empty until the user toggled face
+  detection in Settings, which runs in isolation and wins. Now: `SettingsDao
+  .setConsent` writes all three in one transaction, `IndexingService
+  .applyConsent` is the single onboarding entry point, and `start()` sets
+  `_dirty` so a mid-pass request folds into the running pass. **A re-queue that
+  lands mid-pass is not enough on its own** — the rest of that round re-stamps
+  over it, so `_run()` also tracks the flags each round ran with and calls
+  `resetMlPending()` at the top of a round in which a feature switched on.
 - **`IndexingService` toggle methods kick a pass fire-and-forget, so `await
   start()` right after one returns immediately** (`start()` no-ops while
   `_running`). The Settings switch must not block on a full re-index, so

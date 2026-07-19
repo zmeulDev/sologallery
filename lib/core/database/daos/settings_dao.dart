@@ -104,6 +104,28 @@ class SettingsDao extends DatabaseAccessor<AppDatabase> with _$SettingsDaoMixin 
   Future<void> setFacesEnabled(bool enabled) =>
       put(_facesEnabledKey, enabled.toString());
 
+  /// Persists all three consent answers **and** the answered marker in one
+  /// transaction.
+  ///
+  /// Atomicity is the point. `IndexingService` reads these three flags together
+  /// at the top of a pass, and enabling one of them is itself what kicks a pass
+  /// off — so written one at a time, the pass started by the first write can
+  /// read the later flags before they exist and run with the user's answer
+  /// inverted. Faces lost exactly that race on first run. One transaction means
+  /// a pass sees either all three answers or none of them.
+  Future<void> setConsent({
+    required bool search,
+    required bool memories,
+    required bool faces,
+  }) {
+    return transaction(() async {
+      await setSearchEnabled(search);
+      await setMemoriesEnabled(memories);
+      await setFacesEnabled(faces);
+      await recordConsent();
+    });
+  }
+
   /// Whether the user has answered the *current* consent prompt. Onboarding
   /// holds the user on the consent step until this is true, so a
   /// [consentVersion] bump re-asks even a user who answered before.

@@ -23,11 +23,13 @@ void main() {
         text: '',
       );
 
-  FaceRecord face(List<double> emb) => (
-        left: 0,
-        top: 0,
-        right: 10,
-        bottom: 10,
+  // Boxes are fractions of the image, so these are plausible normalized values
+  // rather than pixels.
+  FaceRecord face(List<double> emb, {double left = 0.1, double top = 0.1}) => (
+        left: left,
+        top: top,
+        right: left + 0.2,
+        bottom: top + 0.2,
         embedding: Float32List.fromList(emb),
       );
 
@@ -158,5 +160,74 @@ void main() {
     await db.facesDao.insertFaces('a', [face([1, 0])]);
     await (db.delete(db.photoAssets)..where((t) => t.assetId.equals('a'))).go();
     expect(await db.select(db.faceEmbeddings).get(), isEmpty);
+  });
+
+  group('coverFace', () {
+    // Sets up a person whose curated cover is 'a' but who also has a face on a
+    // later-indexed asset 'b'.
+    Future<int> personAcrossTwoAssets() async {
+      await asset('a');
+      await asset('b', at: DateTime(2026, 7, 1));
+      await db.facesDao.insertFaces('a', [face([1, 0], left: 0.1)]);
+      final personId = await db.facesDao.createPerson(coverAssetId: 'a');
+      for (final f in await db.facesDao.unclusteredFaces()) {
+        await db.facesDao.assignPersonToFace(f.id, personId);
+      }
+      // 'b' is indexed afterwards — a higher face id than the cover's.
+      await db.facesDao.insertFaces('b', [face([1, 0], left: 0.7)]);
+      for (final f in await db.facesDao.unclusteredFaces()) {
+        await db.facesDao.assignPersonToFace(f.id, personId);
+      }
+      return personId;
+    }
+
+    // Ordering by newest face instead re-pointed the avatar at a different
+    // photo every time a pass added a face to this person, so the People grid
+    // visibly reshuffled while indexing ran.
+    test('uses the curated cover asset, not the newest face', () async {
+      final personId = await personAcrossTwoAssets();
+      final cover = await db.facesDao.coverFace(personId);
+      expect(cover!.assetId, 'a');
+      expect(cover.left, closeTo(0.1, 1e-9));
+    });
+
+    test('is stable as later faces are added to the person', () async {
+      final personId = await personAcrossTwoAssets();
+      final before = await db.facesDao.coverFace(personId);
+
+      await asset('c', at: DateTime(2026, 6, 1));
+      await db.facesDao.insertFaces('c', [face([1, 0], left: 0.4)]);
+      for (final f in await db.facesDao.unclusteredFaces()) {
+        await db.facesDao.assignPersonToFace(f.id, personId);
+      }
+
+      final after = await db.facesDao.coverFace(personId);
+      expect(after!.assetId, before!.assetId);
+      expect(after.left, closeTo(before.left, 1e-9));
+    });
+
+    test('falls back to the newest face when no cover is set', () async {
+      await asset('a');
+      await db.facesDao.insertFaces('a', [face([1, 0])]);
+      final personId = await db.facesDao.createPerson(); // no cover
+      for (final f in await db.facesDao.unclusteredFaces()) {
+        await db.facesDao.assignPersonToFace(f.id, personId);
+      }
+      expect((await db.facesDao.coverFace(personId))!.assetId, 'a');
+    });
+
+    test('falls back when the cover asset no longer holds a face', () async {
+      final personId = await personAcrossTwoAssets();
+      // The cover photo is deleted from the library; its face cascades away.
+      await (db.delete(db.photoAssets)..where((t) => t.assetId.equals('a')))
+          .go();
+      final cover = await db.facesDao.coverFace(personId);
+      expect(cover!.assetId, 'b');
+    });
+
+    test('returns null for a person with no faces', () async {
+      final personId = await db.facesDao.createPerson();
+      expect(await db.facesDao.coverFace(personId), isNull);
+    });
   });
 }

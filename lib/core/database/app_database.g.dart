@@ -2565,38 +2565,38 @@ class $FaceEmbeddingsTable extends FaceEmbeddings
   );
   static const VerificationMeta _leftMeta = const VerificationMeta('left');
   @override
-  late final GeneratedColumn<int> left = GeneratedColumn<int>(
+  late final GeneratedColumn<double> left = GeneratedColumn<double>(
     'left',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.double,
     requiredDuringInsert: true,
   );
   static const VerificationMeta _topMeta = const VerificationMeta('top');
   @override
-  late final GeneratedColumn<int> top = GeneratedColumn<int>(
+  late final GeneratedColumn<double> top = GeneratedColumn<double>(
     'top',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.double,
     requiredDuringInsert: true,
   );
   static const VerificationMeta _rightMeta = const VerificationMeta('right');
   @override
-  late final GeneratedColumn<int> right = GeneratedColumn<int>(
+  late final GeneratedColumn<double> right = GeneratedColumn<double>(
     'right',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.double,
     requiredDuringInsert: true,
   );
   static const VerificationMeta _bottomMeta = const VerificationMeta('bottom');
   @override
-  late final GeneratedColumn<int> bottom = GeneratedColumn<int>(
+  late final GeneratedColumn<double> bottom = GeneratedColumn<double>(
     'bottom',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.double,
     requiredDuringInsert: true,
   );
   @override
@@ -2705,19 +2705,19 @@ class $FaceEmbeddingsTable extends FaceEmbeddings
         data['${effectivePrefix}embedding'],
       )!,
       left: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
+        DriftSqlType.double,
         data['${effectivePrefix}left'],
       )!,
       top: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
+        DriftSqlType.double,
         data['${effectivePrefix}top'],
       )!,
       right: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
+        DriftSqlType.double,
         data['${effectivePrefix}right'],
       )!,
       bottom: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
+        DriftSqlType.double,
         data['${effectivePrefix}bottom'],
       )!,
     );
@@ -2738,10 +2738,12 @@ class FaceEmbedding extends DataClass implements Insertable<FaceEmbedding> {
 
   /// The face-embedding vector, `Float32List` bytes (little-endian).
   final Uint8List embedding;
-  final int left;
-  final int top;
-  final int right;
-  final int bottom;
+
+  /// Box edges as fractions of the image's width/height, in `[0, 1]`.
+  final double left;
+  final double top;
+  final double right;
+  final double bottom;
   const FaceEmbedding({
     required this.id,
     required this.assetId,
@@ -2761,10 +2763,10 @@ class FaceEmbedding extends DataClass implements Insertable<FaceEmbedding> {
       map['person_id'] = Variable<int>(personId);
     }
     map['embedding'] = Variable<Uint8List>(embedding);
-    map['left'] = Variable<int>(left);
-    map['top'] = Variable<int>(top);
-    map['right'] = Variable<int>(right);
-    map['bottom'] = Variable<int>(bottom);
+    map['left'] = Variable<double>(left);
+    map['top'] = Variable<double>(top);
+    map['right'] = Variable<double>(right);
+    map['bottom'] = Variable<double>(bottom);
     return map;
   }
 
@@ -2793,10 +2795,10 @@ class FaceEmbedding extends DataClass implements Insertable<FaceEmbedding> {
       assetId: serializer.fromJson<String>(json['assetId']),
       personId: serializer.fromJson<int?>(json['personId']),
       embedding: serializer.fromJson<Uint8List>(json['embedding']),
-      left: serializer.fromJson<int>(json['left']),
-      top: serializer.fromJson<int>(json['top']),
-      right: serializer.fromJson<int>(json['right']),
-      bottom: serializer.fromJson<int>(json['bottom']),
+      left: serializer.fromJson<double>(json['left']),
+      top: serializer.fromJson<double>(json['top']),
+      right: serializer.fromJson<double>(json['right']),
+      bottom: serializer.fromJson<double>(json['bottom']),
     );
   }
   @override
@@ -2807,10 +2809,10 @@ class FaceEmbedding extends DataClass implements Insertable<FaceEmbedding> {
       'assetId': serializer.toJson<String>(assetId),
       'personId': serializer.toJson<int?>(personId),
       'embedding': serializer.toJson<Uint8List>(embedding),
-      'left': serializer.toJson<int>(left),
-      'top': serializer.toJson<int>(top),
-      'right': serializer.toJson<int>(right),
-      'bottom': serializer.toJson<int>(bottom),
+      'left': serializer.toJson<double>(left),
+      'top': serializer.toJson<double>(top),
+      'right': serializer.toJson<double>(right),
+      'bottom': serializer.toJson<double>(bottom),
     };
   }
 
@@ -2819,10 +2821,10 @@ class FaceEmbedding extends DataClass implements Insertable<FaceEmbedding> {
     String? assetId,
     Value<int?> personId = const Value.absent(),
     Uint8List? embedding,
-    int? left,
-    int? top,
-    int? right,
-    int? bottom,
+    double? left,
+    double? top,
+    double? right,
+    double? bottom,
   }) => FaceEmbedding(
     id: id ?? this.id,
     assetId: assetId ?? this.assetId,
@@ -2891,10 +2893,10 @@ class FaceEmbeddingsCompanion extends UpdateCompanion<FaceEmbedding> {
   final Value<String> assetId;
   final Value<int?> personId;
   final Value<Uint8List> embedding;
-  final Value<int> left;
-  final Value<int> top;
-  final Value<int> right;
-  final Value<int> bottom;
+  final Value<double> left;
+  final Value<double> top;
+  final Value<double> right;
+  final Value<double> bottom;
   const FaceEmbeddingsCompanion({
     this.id = const Value.absent(),
     this.assetId = const Value.absent(),
@@ -2910,10 +2912,10 @@ class FaceEmbeddingsCompanion extends UpdateCompanion<FaceEmbedding> {
     required String assetId,
     this.personId = const Value.absent(),
     required Uint8List embedding,
-    required int left,
-    required int top,
-    required int right,
-    required int bottom,
+    required double left,
+    required double top,
+    required double right,
+    required double bottom,
   }) : assetId = Value(assetId),
        embedding = Value(embedding),
        left = Value(left),
@@ -2925,10 +2927,10 @@ class FaceEmbeddingsCompanion extends UpdateCompanion<FaceEmbedding> {
     Expression<String>? assetId,
     Expression<int>? personId,
     Expression<Uint8List>? embedding,
-    Expression<int>? left,
-    Expression<int>? top,
-    Expression<int>? right,
-    Expression<int>? bottom,
+    Expression<double>? left,
+    Expression<double>? top,
+    Expression<double>? right,
+    Expression<double>? bottom,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2947,10 +2949,10 @@ class FaceEmbeddingsCompanion extends UpdateCompanion<FaceEmbedding> {
     Value<String>? assetId,
     Value<int?>? personId,
     Value<Uint8List>? embedding,
-    Value<int>? left,
-    Value<int>? top,
-    Value<int>? right,
-    Value<int>? bottom,
+    Value<double>? left,
+    Value<double>? top,
+    Value<double>? right,
+    Value<double>? bottom,
   }) {
     return FaceEmbeddingsCompanion(
       id: id ?? this.id,
@@ -2980,16 +2982,16 @@ class FaceEmbeddingsCompanion extends UpdateCompanion<FaceEmbedding> {
       map['embedding'] = Variable<Uint8List>(embedding.value);
     }
     if (left.present) {
-      map['left'] = Variable<int>(left.value);
+      map['left'] = Variable<double>(left.value);
     }
     if (top.present) {
-      map['top'] = Variable<int>(top.value);
+      map['top'] = Variable<double>(top.value);
     }
     if (right.present) {
-      map['right'] = Variable<int>(right.value);
+      map['right'] = Variable<double>(right.value);
     }
     if (bottom.present) {
-      map['bottom'] = Variable<int>(bottom.value);
+      map['bottom'] = Variable<double>(bottom.value);
     }
     return map;
   }
@@ -6845,10 +6847,10 @@ typedef $$FaceEmbeddingsTableCreateCompanionBuilder =
       required String assetId,
       Value<int?> personId,
       required Uint8List embedding,
-      required int left,
-      required int top,
-      required int right,
-      required int bottom,
+      required double left,
+      required double top,
+      required double right,
+      required double bottom,
     });
 typedef $$FaceEmbeddingsTableUpdateCompanionBuilder =
     FaceEmbeddingsCompanion Function({
@@ -6856,10 +6858,10 @@ typedef $$FaceEmbeddingsTableUpdateCompanionBuilder =
       Value<String> assetId,
       Value<int?> personId,
       Value<Uint8List> embedding,
-      Value<int> left,
-      Value<int> top,
-      Value<int> right,
-      Value<int> bottom,
+      Value<double> left,
+      Value<double> top,
+      Value<double> right,
+      Value<double> bottom,
     });
 
 final class $$FaceEmbeddingsTableReferences
@@ -6924,22 +6926,22 @@ class $$FaceEmbeddingsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<int> get left => $composableBuilder(
+  ColumnFilters<double> get left => $composableBuilder(
     column: $table.left,
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<int> get top => $composableBuilder(
+  ColumnFilters<double> get top => $composableBuilder(
     column: $table.top,
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<int> get right => $composableBuilder(
+  ColumnFilters<double> get right => $composableBuilder(
     column: $table.right,
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<int> get bottom => $composableBuilder(
+  ColumnFilters<double> get bottom => $composableBuilder(
     column: $table.bottom,
     builder: (column) => ColumnFilters(column),
   );
@@ -7010,22 +7012,22 @@ class $$FaceEmbeddingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<int> get left => $composableBuilder(
+  ColumnOrderings<double> get left => $composableBuilder(
     column: $table.left,
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<int> get top => $composableBuilder(
+  ColumnOrderings<double> get top => $composableBuilder(
     column: $table.top,
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<int> get right => $composableBuilder(
+  ColumnOrderings<double> get right => $composableBuilder(
     column: $table.right,
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<int> get bottom => $composableBuilder(
+  ColumnOrderings<double> get bottom => $composableBuilder(
     column: $table.bottom,
     builder: (column) => ColumnOrderings(column),
   );
@@ -7092,16 +7094,16 @@ class $$FaceEmbeddingsTableAnnotationComposer
   GeneratedColumn<Uint8List> get embedding =>
       $composableBuilder(column: $table.embedding, builder: (column) => column);
 
-  GeneratedColumn<int> get left =>
+  GeneratedColumn<double> get left =>
       $composableBuilder(column: $table.left, builder: (column) => column);
 
-  GeneratedColumn<int> get top =>
+  GeneratedColumn<double> get top =>
       $composableBuilder(column: $table.top, builder: (column) => column);
 
-  GeneratedColumn<int> get right =>
+  GeneratedColumn<double> get right =>
       $composableBuilder(column: $table.right, builder: (column) => column);
 
-  GeneratedColumn<int> get bottom =>
+  GeneratedColumn<double> get bottom =>
       $composableBuilder(column: $table.bottom, builder: (column) => column);
 
   $$PhotoAssetsTableAnnotationComposer get assetId {
@@ -7185,10 +7187,10 @@ class $$FaceEmbeddingsTableTableManager
                 Value<String> assetId = const Value.absent(),
                 Value<int?> personId = const Value.absent(),
                 Value<Uint8List> embedding = const Value.absent(),
-                Value<int> left = const Value.absent(),
-                Value<int> top = const Value.absent(),
-                Value<int> right = const Value.absent(),
-                Value<int> bottom = const Value.absent(),
+                Value<double> left = const Value.absent(),
+                Value<double> top = const Value.absent(),
+                Value<double> right = const Value.absent(),
+                Value<double> bottom = const Value.absent(),
               }) => FaceEmbeddingsCompanion(
                 id: id,
                 assetId: assetId,
@@ -7205,10 +7207,10 @@ class $$FaceEmbeddingsTableTableManager
                 required String assetId,
                 Value<int?> personId = const Value.absent(),
                 required Uint8List embedding,
-                required int left,
-                required int top,
-                required int right,
-                required int bottom,
+                required double left,
+                required double top,
+                required double right,
+                required double bottom,
               }) => FaceEmbeddingsCompanion.insert(
                 id: id,
                 assetId: assetId,

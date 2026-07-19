@@ -1,3 +1,4 @@
+import 'dart:async' show Completer;
 import 'dart:io' show Directory;
 import 'dart:typed_data';
 
@@ -286,6 +287,102 @@ void main() {
             ),
           ],
         );
+
+    // Bug: on first run the user granted search + memories + faces, analysis
+    // completed, Memories appeared and People stayed empty — faces only showed
+    // up after toggling face detection off and on in Settings.
+    //
+    // The three answers used to be persisted one at a time, each kicking its
+    // own pass. The first kick won, and `start()` dropped the later ones
+    // because a pass was already running — so the pass that actually ran had
+    // read `faces_enabled` before it was written. It labelled everything,
+    // stamped `indexed_at` on every asset anyway, and `pendingMlIds` (unstamped
+    // rows only) never offered them again.
+    test('consent granted mid-pass still derives faces', () async {
+      // A pass is already in flight when the user answers the prompt.
+      await consentTo(search: true);
+      final gate = Completer<void>();
+      final firstCall = Completer<void>();
+      final worker = FakeMlWorker(
+        labels: const [('Dog', 0.9)],
+        faces: [
+          (
+            left: 0.2,
+            top: 0.2,
+            right: 0.5,
+            bottom: 0.5,
+            embedding: Float32List.fromList(List.filled(192, 0.1)),
+          ),
+        ],
+        beforeAnalyze: (i) async {
+          if (i == 0) {
+            firstCall.complete();
+            await gate.future;
+          }
+        },
+      );
+      final service = serviceFor(dogPhotos(), worker);
+      addTearDown(service.dispose);
+
+      final pass = service.start();
+      await firstCall.future; // pass is now inside the ML loop, faces off
+
+      await service.applyConsent(
+        searchEnabled: true,
+        memoriesEnabled: true,
+        facesEnabled: true,
+      );
+
+      gate.complete();
+      await pass;
+
+      // The in-flight pass folded the new answer in and looped again, so the
+      // faces the user consented to actually exist.
+      expect(await db.select(db.faceEmbeddings).get(), isNotEmpty);
+      expect(await db.select(db.persons).get(), isNotEmpty);
+      // And nothing is left stranded: no asset is stamped-but-unanalyzed.
+      expect(await db.indexDao.pendingMlIds(), isEmpty);
+    });
+
+    test('applyConsent persists all three answers and the answered marker',
+        () async {
+      final service = serviceFor(dogPhotos(), faceWorker());
+      addTearDown(service.dispose);
+
+      await service.applyConsent(
+        searchEnabled: true,
+        memoriesEnabled: false,
+        facesEnabled: true,
+      );
+
+      expect(await db.settingsDao.readSearchEnabled(), isTrue);
+      expect(await db.settingsDao.readMemoriesEnabled(), isFalse);
+      expect(await db.settingsDao.readFacesEnabled(), isTrue);
+      expect(await db.settingsDao.readConsentRecorded(), isTrue);
+    });
+
+    test('applyConsent deletes what an upgrading user declines', () async {
+      // Derive everything first, as a pre-consent build would have.
+      await consentTo(search: true, faces: true, memories: true);
+      final service = serviceFor(dogPhotos(), faceWorker());
+      addTearDown(service.dispose);
+      await service.start();
+      expect(await db.select(db.faceEmbeddings).get(), isNotEmpty);
+      expect(await db.select(db.photoLabels).get(), isNotEmpty);
+
+      await service.applyConsent(
+        searchEnabled: false,
+        memoriesEnabled: false,
+        facesEnabled: false,
+      );
+
+      expect(await db.select(db.faceEmbeddings).get(), isEmpty);
+      expect(await db.select(db.persons).get(), isEmpty);
+      expect(await db.select(db.photoLabels).get(), isEmpty);
+      expect(await db.memoriesDao.watchActive().first, isEmpty);
+      // The grid cache itself is not analysis, and must survive.
+      expect(await db.indexDao.allCachedIds(), isNotEmpty);
+    });
 
     test('with no consent at all, no ML runs and nothing is derived', () async {
       final worker = faceWorker();

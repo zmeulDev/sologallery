@@ -8,20 +8,17 @@ import '../../../core/theme/app_colors.dart';
 import '../../../services/thumbnail_provider.dart';
 import '../people_providers.dart';
 
-/// The indexing thumbnail plus its true decoded pixel size. Face boxes are
-/// stored in the **512-box** analysis image's coordinate space, and
-/// `photo_manager` preserves the asset's aspect ratio (the thumbnail is usually
-/// **not** square), so the real width/height are needed to crop without
-/// distorting the face.
+/// The avatar thumbnail plus its true decoded pixel size. Face boxes are stored
+/// as fractions of the image, so the real width/height turn them back into
+/// pixels — and `photo_manager` thumbnails are **not** square (a 4:3 photo
+/// requested at 1024 comes back 1365×1024), so both axes must come from the
+/// decode rather than from the size we asked for.
 typedef FaceThumb = ({Uint8List bytes, int width, int height});
 
-/// The edge the stored face-box coordinates were measured against (the ML
-/// analysis thumbnail).
-const _analysisEdge = 512.0;
-
-/// The edge we fetch for the avatar itself — larger than [_analysisEdge] so the
-/// zoomed-in face isn't upscaled to mush. The box is rescaled by the decoded
-/// ratio (see [FaceAvatar.build]).
+/// The edge we request for the avatar thumbnail — larger than the 512 analysis
+/// thumbnail so the zoomed-in face isn't upscaled to mush. Nothing depends on
+/// the two matching: the stored box is normalized, so it maps onto whatever
+/// size actually comes back.
 const _avatarEdge = 1024;
 
 final faceThumbProvider =
@@ -43,26 +40,36 @@ final faceThumbProvider =
 
 /// Placement of the face crop inside the avatar circle: the top-left offset and
 /// display size of the (uniformly-scaled, aspect-preserved) thumbnail so the
-/// detected face box sits centered and zoomed to [fill] past just fitting. Pure
-/// geometry over the image's real pixel [imageWidth]/[imageHeight] — unit
-/// testable without decoding.
+/// detected face box sits centered and zoomed to [fill] past just fitting.
+///
+/// The box arrives **normalized** (`[0, 1]` fractions of the image) and is
+/// resolved against the image's real decoded [imageWidth]/[imageHeight] here.
+/// Pure geometry — unit testable without decoding.
 ({double left, double top, double dispW, double dispH}) faceAvatarPlacement({
-  required int boxLeft,
-  required int boxTop,
-  required int boxRight,
-  required int boxBottom,
+  required double boxLeft,
+  required double boxTop,
+  required double boxRight,
+  required double boxBottom,
   required double imageWidth,
   required double imageHeight,
   required double size,
   double fill = 1.3,
 }) {
-  final boxW = (boxRight - boxLeft).toDouble().clamp(1.0, imageWidth);
-  final boxH = (boxBottom - boxTop).toDouble().clamp(1.0, imageHeight);
+  // Fractions → pixels in this image's own space. No scale factor to guess:
+  // whatever the thumbnail's dimensions turned out to be, they are the ones the
+  // fractions are relative to.
+  final l = boxLeft * imageWidth;
+  final r = boxRight * imageWidth;
+  final t = boxTop * imageHeight;
+  final b = boxBottom * imageHeight;
+
+  final boxW = (r - l).clamp(1.0, imageWidth);
+  final boxH = (b - t).clamp(1.0, imageHeight);
   // Uniform scale (same on both axes) → no distortion; zoom the box past just
   // fitting so the face hugs the circle.
   final scale = size * fill / (boxW > boxH ? boxW : boxH);
-  final cx = (boxLeft + boxRight) / 2 * scale;
-  final cy = (boxTop + boxBottom) / 2 * scale;
+  final cx = (l + r) / 2 * scale;
+  final cy = (t + b) / 2 * scale;
   return (
     left: size / 2 - cx,
     top: size / 2 - cy,
@@ -102,16 +109,11 @@ class FaceAvatar extends ConsumerWidget {
     final thumb = ref.watch(faceThumbProvider(cover.assetId)).value;
     if (thumb == null) return placeholder();
 
-    // The box was measured on a 512-box thumbnail; this avatar thumbnail is
-    // larger (same aspect), so rescale the box into its pixel space by the
-    // decoded ratio (robust to originals smaller than [_avatarEdge]).
-    final longEdge = thumb.width > thumb.height ? thumb.width : thumb.height;
-    final k = longEdge / _analysisEdge;
     final place = faceAvatarPlacement(
-      boxLeft: (cover.left * k).round(),
-      boxTop: (cover.top * k).round(),
-      boxRight: (cover.right * k).round(),
-      boxBottom: (cover.bottom * k).round(),
+      boxLeft: cover.left,
+      boxTop: cover.top,
+      boxRight: cover.right,
+      boxBottom: cover.bottom,
       imageWidth: thumb.width.toDouble(),
       imageHeight: thumb.height.toDouble(),
       size: size,
