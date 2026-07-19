@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.sologallery"
+    namespace = "com.zmeul.sologallery"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -15,11 +15,12 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.sologallery"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = maxOf(flutter.minSdkVersion, 23) // patrol requires >= 23
+        applicationId = "com.zmeul.sologallery"
+        // Android 15+ only (CLAUDE.md Stack → Targets): no compatibility code
+        // or permission fallbacks for older releases are written or tested, so
+        // the floor is declared rather than inherited. Well above patrol's
+        // own minimum of 23.
+        minSdk = 35
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -34,9 +35,17 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // TODO(release): replace with a real upload keystore before any
+            // Play submission. Signing with the debug key keeps
+            // `flutter run --release` and on-device release smokes working,
+            // but Play rejects debug-signed uploads. Wire via a gitignored
+            // android/key.properties — see docs/plans/publication-prep.md.
             signingConfig = signingConfigs.getByName("debug")
+            // Stated explicitly rather than inherited: the Flutter Gradle
+            // plugin turns both on by default today, so a plugin change could
+            // silently ship an unminified build.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

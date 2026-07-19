@@ -143,7 +143,7 @@ update immediately.
   JPEG, a video, a small PNG (see CLAUDE.md → Deterministic test assets).
 - Detail **zoom** shows a screen-capped preview, not the full original — a
   zoom-to-original pass is a later enhancement.
-- **App id** is still `com.example.sologallery` — change before any release.
+- **App id** is `com.zmeul.sologallery` (renamed for release). Release signing is still the debug key — see docs/plans/publication-prep.md.
 - **Phase 4 remaining** (videos ✅ done): search, then ML/indexing
   (google_mlkit_*, tflite_flutter — still deferred) + the ML schema tables.
 

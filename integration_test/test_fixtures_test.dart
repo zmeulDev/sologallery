@@ -1,12 +1,10 @@
-import 'dart:io' show File;
-
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:sologallery/services/ml_service.dart';
 
-/// Validates the bundled test fixtures against the **real** ML models, so other
+import 'support/fixture_file.dart';
+
+/// Validates the pushed test fixtures against the **real** ML models, so other
 /// on-device tests can rely on them instead of on whatever is in the
 /// developer's camera roll.
 ///
@@ -16,19 +14,16 @@ import 'package:sologallery/services/ml_service.dart';
 /// guaranteed to trip a detector trained on photographs, so that claim has to
 /// be checked on device rather than assumed.
 ///
+/// The fixture is pushed to the device, not bundled into the app — see
+/// support/fixture_file.dart and test_assets/README.md.
+///
 /// Run with: flutter test integration_test/test_fixtures_test.dart -d DEVICE_ID
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  test('the bundled synthetic face is detectable by the real detector',
+  test('the synthetic face fixture is detectable by the real detector',
       () async {
-    final bytes = await rootBundle.load('assets/test_fixtures/synthetic_face.jpg');
-    final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/fixture_face.jpg')
-      ..writeAsBytesSync(bytes.buffer.asUint8List());
-    addTearDown(() {
-      if (file.existsSync()) file.deleteSync();
-    });
+    final file = await fixtureFile('synthetic_face.jpg');
 
     final worker = MlWorkerController();
     addTearDown(worker.dispose);
@@ -52,13 +47,7 @@ void main() {
   }, timeout: const Timeout(Duration(minutes: 5)));
 
   test('declining consent suppresses the fixture face too', () async {
-    final bytes = await rootBundle.load('assets/test_fixtures/synthetic_face.jpg');
-    final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/fixture_face_declined.jpg')
-      ..writeAsBytesSync(bytes.buffer.asUint8List());
-    addTearDown(() {
-      if (file.existsSync()) file.deleteSync();
-    });
+    final file = await fixtureFile('synthetic_face.jpg');
 
     final worker = MlWorkerController();
     addTearDown(worker.dispose);

@@ -6,7 +6,7 @@ each check has an action, an expected result, and a box to tick. Fill the
 
 - **Device:** Pixel 9 Pro XL — id `46121FDAS008AA` (Android 17). Substitute your
   own id where you see `$DEV`.
-- **App id:** `com.example.sologallery`
+- **App id:** `com.zmeul.sologallery`
 - **Privacy contract:** after install the app makes **zero network calls**. Keep
   that in mind — nothing here should ever require connectivity.
 
@@ -317,7 +317,7 @@ add `INTERNET` (hot reload) — always verify the **release** merged manifest:
 - Detail **zoom** shows a screen-capped preview, not the full-resolution original.
 - **Patrol** permission-matrix + seeded delete/share smokes are skipped until
   `test_assets/` is populated.
-- **App id** is still `com.example.sologallery` (pre-release default).
+- **App id** is `com.zmeul.sologallery`. Release signing is still the debug key.
 
 ## Troubleshooting
 

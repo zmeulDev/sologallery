@@ -1,4 +1,4 @@
-package com.example.sologallery
+package com.zmeul.sologallery
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -30,13 +30,24 @@
          the merged manifest after any ML/tflite dep bump. -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" tools:node="remove" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
+    <!-- photo_manager declares the legacy storage read for API <=32. minSdk is
+         35, so no device this installs on can ever reach it — strip it rather
+         than let a dead storage permission show up in the Play listing for an
+         app whose whole pitch is that it takes nothing. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <!-- Auto Backup is off: with it on (the platform default) Android uploads
+         app_flutter/sologallery.sqlite — the photo index, including face
+         embeddings and OCR text — to the user's Google account, which would
+         break the zero-network / 100%-local guarantee (CLAUDE.md Absolute
+         rules). The two rule files exclude everything as a second line of
+         defence if backup is ever re-enabled. -->
     <application
-        android:label="sologallery"
+        android:label="SoloGallery"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"

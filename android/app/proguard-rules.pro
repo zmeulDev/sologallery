@@ -12,3 +12,25 @@
 -dontwarn com.google.mlkit.vision.text.devanagari.**
 -dontwarn com.google.mlkit.vision.text.japanese.**
 -dontwarn com.google.mlkit.vision.text.korean.**
+
+# ML Kit boots through `MlKitInitProvider`, which reflectively instantiates the
+# `*Registrar` classes named in each artifact's manifest metadata. R8 cannot see
+# those constructors being called, so it removes them and every ML Kit component
+# silently fails to register:
+#
+#   W ComponentDiscovery: Invalid component registrar.
+#   Could not instantiate com.google.mlkit.vision.face.internal.FaceRegistrar
+#   Caused by: java.lang.NoSuchMethodException: …FaceRegistrar.<init> []
+#
+# The app still starts — ComponentDiscovery only warns — so this is invisible
+# unless a *release* build is actually run on a device: labels, OCR, and faces
+# would all come back empty in production while every debug test passed. Keep
+# the no-arg constructors (the classes may still be renamed).
+-keep,allowobfuscation class * implements com.google.firebase.components.ComponentRegistrar
+-keepclassmembers class * implements com.google.firebase.components.ComponentRegistrar {
+    <init>();
+}
+-keep,allowobfuscation class com.google.mlkit.**.*Registrar
+-keepclassmembers class com.google.mlkit.**.*Registrar {
+    <init>();
+}

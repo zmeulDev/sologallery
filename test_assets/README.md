@@ -30,9 +30,20 @@ deleted after conversion.
 without faces — which is most small ones. (A probe over a real camera roll found
 faces in only 6 of 60 photos.)
 
-It is also bundled as a Flutter asset (`assets/test_fixtures/`, see
-`pubspec.yaml`) so tests can load it via `rootBundle` without seeding MediaStore
-and polluting a real photo library.
+It lives in `assets/test_fixtures/` but is **not** bundled into the app — a file
+called `synthetic_face.jpg` inside a shipped privacy-first photo app invites the
+wrong question. Push it to the app-private external directory before running the
+face tests (that path is **not** MediaStore-indexed, so it still never pollutes
+the real photo library):
+
+```bash
+adb shell mkdir -p /sdcard/Android/data/com.zmeul.sologallery/files
+adb push assets/test_fixtures/synthetic_face.jpg \
+  /sdcard/Android/data/com.zmeul.sologallery/files/
+```
+
+`integration_test/support/fixture_file.dart` resolves it and fails with this
+exact command if it is missing.
 
 **A drawn face is not automatically detectable.** The first version — flat
 shapes, hard edges — was not detected by ML Kit at all. What made it work was

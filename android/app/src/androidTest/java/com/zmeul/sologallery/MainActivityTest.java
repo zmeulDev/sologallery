@@ -1,4 +1,4 @@
-package com.example.sologallery;
+package com.zmeul.sologallery;
 
 import androidx.test.platform.app.InstrumentationRegistry;
 import org.junit.Test;

@@ -480,7 +480,11 @@ Short form; full postmortems in `docs/postmortems/`.
   ```bash
   adb install -r build/app/outputs/flutter-apk/app-debug.apk
   for p in READ_MEDIA_IMAGES READ_MEDIA_VIDEO READ_MEDIA_VISUAL_USER_SELECTED; do
-    adb shell pm grant com.example.sologallery android.permission.$p; done
+    adb shell pm grant com.zmeul.sologallery android.permission.$p; done
+  # Face tests only: the fixture is pushed, not bundled (test_assets/README.md).
+  adb shell mkdir -p /sdcard/Android/data/com.zmeul.sologallery/files
+  adb push assets/test_fixtures/synthetic_face.jpg \
+    /sdcard/Android/data/com.zmeul.sologallery/files/
   flutter test integration_test/<one_file>.dart -d <device>   # repeat per file
   ```
   The grant survives `flutter test`'s own reinstall-over-existing, just not the
@@ -511,6 +515,26 @@ Short form; full postmortems in `docs/postmortems/`.
 - **Debug builds inject the `INTERNET` permission** (Dart VM service /
   hot reload) — expected. Verify the **release** merged manifest instead
   (Definition of Done #5): no `INTERNET`/`READ_PHONE_STATE`/`c2dm`.
+- **R8 silently breaks ML Kit, and only a *release build on a device* shows it.**
+  ML Kit boots via `MlKitInitProvider`, which reflectively instantiates the
+  `*Registrar` class each artifact names in its manifest metadata. R8 sees no
+  caller, strips the no-arg constructors, and every component fails to
+  register — logged only as `W ComponentDiscovery: Invalid component registrar
+  … NoSuchMethodException: …FaceRegistrar.<init> []`. **The app does not
+  crash**, so labels/OCR/faces would come back empty in production while every
+  debug test passed. `android/app/proguard-rules.pro` keeps the
+  `ComponentRegistrar` implementors' constructors. Re-run a release build on
+  device after any ML/R8/AGP bump and grep logcat for
+  `Invalid component registrar`.
+- **`run-as` does not work on release builds** (`run-as: package not debuggable`),
+  so the pull-the-DB oracle used for debug verification is unavailable there —
+  and `isDebuggable = true` on the release buildType does not restore it,
+  because the Flutter Gradle plugin forces it back off. For a release smoke,
+  filter logcat to the app's own pid (`adb logcat -d | awk -v p=$(adb shell
+  pidof <pkg>) '$3==p'`) and assert on codec/registrar activity instead. Beware
+  grepping unfiltered logcat for `vision`/`face`: unrelated system chatter
+  ("provisioning", "Surface") matches and inflates the count into false
+  evidence.
 - **Drift + widget tests (`FakeAsync`) — five traps.** (1) `await`ing a
   Drift **stream** `.first` (e.g. `dao.watchAll().first`) inside a
   `testWidgets` body **deadlocks** — the stream needs the fake clock pumped
@@ -586,8 +610,8 @@ Short form; full postmortems in `docs/postmortems/`.
   the database (an empty `app_flutter/` with no `.sqlite` is the tell). Tap the
   onboarding button at computed coordinates first (Flutter is invisible to
   `uiautomator`). After that, verify app state by pulling the DB —
-  `adb exec-out run-as com.example.sologallery cat
-  /data/data/com.example.sologallery/app_flutter/sologallery.sqlite > local.sqlite`
+  `adb exec-out run-as com.zmeul.sologallery cat
+  /data/data/com.zmeul.sologallery/app_flutter/sologallery.sqlite > local.sqlite`
   — and querying it locally; **`sqlite3` is not on the device**, and `run-as`
   returns error text rather than failing, so a pulled `-wal`/`-shm` of ~100 bytes
   means "no such file", not a real WAL. Pick observable side effects as tap
@@ -636,8 +660,15 @@ Short form; full postmortems in `docs/postmortems/`.
 
 ## Environment notes
 
-- **App id / namespace:** still the `flutter create` default
-  `com.example.sologallery` (both platforms). Change before any release.
+- **App id / namespace:** `com.zmeul.sologallery` (both platforms, and the
+  desktop scaffolding). Renamed off the `flutter create` default for release;
+  the Android package dirs live at `android/app/src/{main/kotlin,androidTest/java}/com/zmeul/sologallery/`,
+  and `pubspec.yaml`'s `patrol:` block carries the same id twice — `patrol test`
+  installs by it, so both must move together.
+- **Release signing is still the debug key.** `android/app/build.gradle.kts`
+  keeps the `flutter create` TODO; `android/key.properties` and any `.jks` are
+  gitignored but do not exist. The app builds and installs but **cannot be
+  uploaded to Play** until a real upload keystore is created.
 - **`patrol` CLI is not on PATH either:** `~/.pub-cache/bin/patrol`, and it
   shells out to `adb`, so export platform-tools first or it fails at teardown
   with `AdbExecutableNotFound`:

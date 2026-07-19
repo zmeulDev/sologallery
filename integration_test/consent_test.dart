@@ -1,14 +1,12 @@
-import 'dart:io' show File;
-
 import 'package:drift/native.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:sologallery/core/database/app_database.dart';
 import 'package:sologallery/services/indexing_service.dart';
 import 'package:sologallery/services/ml_service.dart';
 import 'package:sologallery/services/photo_library_service.dart';
+
+import 'support/fixture_file.dart';
 
 /// On-device proof that the consent gates hold against the **real** ML worker.
 ///
@@ -87,19 +85,12 @@ void main() {
   }, timeout: const Timeout(Duration(minutes: 10)));
 
   test('the real worker returns no faces when the job declines them', () async {
-    // The bundled fixture, not the camera roll: faces are sparse in a real
+    // The pushed fixture, not the camera roll: faces are sparse in a real
     // library (~1 in 10 photos), so sampling device assets made this test
     // pass-or-fail on whatever the developer happened to have photographed.
     // `test_fixtures_test.dart` separately proves this image *is* detectable,
     // which is what stops the empty expectations below from being vacuous.
-    final bytes =
-        await rootBundle.load('assets/test_fixtures/synthetic_face.jpg');
-    final tempDir = await getTemporaryDirectory();
-    final file = File('${tempDir.path}/consent_fixture.jpg')
-      ..writeAsBytesSync(bytes.buffer.asUint8List());
-    addTearDown(() {
-      if (file.existsSync()) file.deleteSync();
-    });
+    final file = await fixtureFile('synthetic_face.jpg');
 
     final worker = MlWorkerController();
     addTearDown(worker.dispose);
