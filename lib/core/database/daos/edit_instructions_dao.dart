@@ -18,12 +18,6 @@ class EditInstructionsDao extends DatabaseAccessor<AppDatabase>
         .getSingleOrNull();
   }
 
-  /// Watches the edit document for [assetId].
-  Stream<EditInstruction?> watchForAsset(String assetId) {
-    return (select(editInstructions)..where((e) => e.assetId.equals(assetId)))
-        .watchSingleOrNull();
-  }
-
   /// Inserts or replaces the edit document for [assetId].
   Future<void> upsert(String assetId, String instructionsJson,
       {DateTime? at}) {

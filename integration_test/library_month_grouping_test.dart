@@ -98,15 +98,15 @@ void main() {
     // Undated assets, if any, form the disjoint "Older" bucket.
     final olderCount = await db.indexDao.watchOlderCount().first;
     if (olderCount > 0) {
-      var offset = 0;
-      while (true) {
-        final page = await db.indexDao.olderAssets(limit: 90, offset: offset);
-        if (page.isEmpty) break;
-        for (final a in page) {
-          expect(seenIds.add(a.id), isTrue,
-              reason: 'Undated asset ${a.id} also appeared in a month section.');
-        }
-        offset += 90;
+      // The growing window is bounded by the count, so one read covers the
+      // whole bucket — there is no second page to miss.
+      final older = await db.indexDao.watchOlderAssets(limit: olderCount).first;
+      expect(older, hasLength(olderCount),
+          reason: 'Older window returned ${older.length} of $olderCount — the '
+              'disjointness check below would silently skip the remainder.');
+      for (final a in older) {
+        expect(seenIds.add(a.id), isTrue,
+            reason: 'Undated asset ${a.id} also appeared in a month section.');
       }
     }
   });

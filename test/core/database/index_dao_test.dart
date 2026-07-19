@@ -211,6 +211,14 @@ void main() {
     expect(favs.map((f) => f.assetId).toList(), ['a']); // z (dangling) dropped
   });
 
+  test('watchFavoritesInCache orders most-recently-favorited first', () async {
+    await seed(); // a, b, c cached
+    await db.favoritesDao.add('a', at: DateTime(2020, 1, 1));
+    await db.favoritesDao.add('b', at: DateTime(2024, 1, 1));
+    final favs = await db.indexDao.watchFavoritesInCache().first;
+    expect(favs.map((f) => f.assetId).toList(), ['b', 'a']);
+  });
+
   test('matches a label as a case-insensitive substring, newest first',
       () async {
     await seed();

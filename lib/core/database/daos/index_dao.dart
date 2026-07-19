@@ -284,19 +284,6 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
     return q.map((r) => r.read(photoAssets.assetId)!).watch();
   }
 
-  /// A page of undated asset refs for the "Older" full grid, newest-added first.
-  Future<List<AssetRef>> olderAssets({
-    required int limit,
-    required int offset,
-  }) async {
-    final q = select(photoAssets)
-      ..where((a) => a.isDated.equals(false))
-      ..orderBy([(a) => OrderingTerm.desc(a.createdAt)])
-      ..limit(limit, offset: offset);
-    final rows = await q.get();
-    return [for (final r in rows) AssetRef(id: r.assetId, createdAt: r.createdAt)];
-  }
-
   /// The "Older" full grid as a reactive growing window — newest-added [limit]
   /// undated asset refs, re-emitting on any cache change.
   Stream<List<AssetRef>> watchOlderAssets({required int limit}) {

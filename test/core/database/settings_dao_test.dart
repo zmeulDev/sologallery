@@ -66,7 +66,6 @@ void main() {
 
       await db.settingsDao.recordConsent();
       expect(await db.settingsDao.readConsentRecorded(), isTrue);
-      expect(await db.settingsDao.watchConsentRecorded().first, isTrue);
       expect(await db.settingsDao.readFacesEnabled(), isFalse);
     });
   });

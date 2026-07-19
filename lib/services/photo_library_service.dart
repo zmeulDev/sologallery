@@ -105,16 +105,11 @@ class AssetDetail {
   final double? latitude;
   final double? longitude;
   final String? title;
-
-  bool get hasGps => latitude != null && longitude != null;
 }
 
 /// The single wrapper around `photo_manager`. All permission handling, asset
 /// and album queries, and thumbnail requests go through here — UI and other
 /// layers never import `photo_manager` directly (see docs/spec.md#architecture).
-///
-/// Permission flow lands in Phase 2; asset/thumbnail queries are added on top of
-/// this in the same phase.
 class PhotoLibraryService {
   PhotoLibraryService();
 

@@ -104,11 +104,9 @@ class SettingsDao extends DatabaseAccessor<AppDatabase> with _$SettingsDaoMixin 
   Future<void> setFacesEnabled(bool enabled) =>
       put(_facesEnabledKey, enabled.toString());
 
-  /// Whether the user has answered the *current* consent prompt, reactive.
-  /// Onboarding holds the user on the consent step until this is true, so a
+  /// Whether the user has answered the *current* consent prompt. Onboarding
+  /// holds the user on the consent step until this is true, so a
   /// [consentVersion] bump re-asks even a user who answered before.
-  Stream<bool> watchConsentRecorded() => watch(_consentKey).map(_isCurrent);
-
   Future<bool> readConsentRecorded() async => _isCurrent(await read(_consentKey));
 
   /// Marks the current consent prompt as answered (whatever the answers were).

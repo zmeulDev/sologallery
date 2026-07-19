@@ -35,11 +35,6 @@ void main() {
       expect(const YearMonth(2026, 12).end, DateTime(2027));
     });
 
-    test('previous crosses the year boundary', () {
-      expect(const YearMonth(2026, 1).previous, const YearMonth(2025, 12));
-      expect(const YearMonth(2026, 7).previous, const YearMonth(2026, 6));
-    });
-
     test('ordering compares year then month', () {
       expect(const YearMonth(2026, 7).compareTo(const YearMonth(2026, 6)),
           greaterThan(0));
@@ -48,35 +43,5 @@ void main() {
       expect(const YearMonth(2026, 7).compareTo(const YearMonth(2026, 7)), 0);
     });
 
-    group('descendingRange', () {
-      test('descends inclusive across a year boundary', () {
-        final range = YearMonth.descendingRange(
-          const YearMonth(2026, 2),
-          const YearMonth(2025, 11),
-        );
-        expect(range, const [
-          YearMonth(2026, 2),
-          YearMonth(2026, 1),
-          YearMonth(2025, 12),
-          YearMonth(2025, 11),
-        ]);
-      });
-
-      test('single month when newest == oldest', () {
-        expect(
-          YearMonth.descendingRange(
-              const YearMonth(2026, 7), const YearMonth(2026, 7)),
-          const [YearMonth(2026, 7)],
-        );
-      });
-
-      test('degrades to just newest when oldest is after newest', () {
-        expect(
-          YearMonth.descendingRange(
-              const YearMonth(2026, 1), const YearMonth(2026, 5)),
-          const [YearMonth(2026, 1)],
-        );
-      });
-    });
   });
 }

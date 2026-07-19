@@ -34,23 +34,6 @@ class YearMonth implements Comparable<YearMonth> {
   DateTime get end =>
       month == 12 ? DateTime(year + 1) : DateTime(year, month + 1);
 
-  /// The month immediately before this one.
-  YearMonth get previous =>
-      month == 1 ? YearMonth(year - 1, 12) : YearMonth(year, month - 1);
-
-  /// Every calendar month from [newest] down to [oldest], inclusive, in
-  /// descending order. If [oldest] is after [newest], returns just [newest].
-  static List<YearMonth> descendingRange(YearMonth newest, YearMonth oldest) {
-    if (newest.compareTo(oldest) < 0) return [newest];
-    final months = <YearMonth>[];
-    var current = newest;
-    while (current.compareTo(oldest) >= 0) {
-      months.add(current);
-      current = current.previous;
-    }
-    return months;
-  }
-
   @override
   int compareTo(YearMonth other) =>
       year != other.year ? year.compareTo(other.year) : month.compareTo(other.month);
