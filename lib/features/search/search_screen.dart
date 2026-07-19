@@ -13,6 +13,7 @@ import '../../core/database/daos/faces_dao.dart' show PersonSummary;
 import '../../services/indexing_service.dart';
 import '../../widgets/filter_pill.dart';
 import '../../widgets/month_section_header.dart';
+import '../folders/folders_providers.dart';
 import '../library/month_grid_screen.dart' show CenteredNote;
 import '../people/people_providers.dart';
 import '../people/widgets/face_avatar.dart';
@@ -223,25 +224,43 @@ class _AlbumsResult extends StatelessWidget {
           padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: MonthSectionHeader(label: 'Albums'),
         ),
-        for (final album in albums) _AlbumRow(album: album),
+        for (final album in albums)
+          _CoverRow(
+            coverAssetId: album.coverAssetId,
+            name: album.name,
+            count: album.entryCount,
+            onTap: () => context.push('/album/${album.id}'),
+          ),
       ],
     );
   }
 }
 
-class _AlbumRow extends StatelessWidget {
-  const _AlbumRow({required this.album});
+/// A compact collection row — cover · name · photo count — shared by the album
+/// results and the idle Folders section so both read as one list idiom.
+class _CoverRow extends StatelessWidget {
+  const _CoverRow({
+    required this.coverAssetId,
+    required this.name,
+    required this.count,
+    required this.onTap,
+  });
 
-  final AlbumSummary album;
+  /// Null renders a flat placeholder tile (an empty album, or a folder whose
+  /// cover couldn't be resolved).
+  final String? coverAssetId;
+  final String name;
+  final int count;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<AppColors>()!;
     final styles = Theme.of(context).extension<AppTextStyles>()!;
     final scheme = Theme.of(context).colorScheme;
-    final cover = album.coverAssetId;
+    final cover = coverAssetId;
     return InkWell(
-      onTap: () => context.push('/album/${album.id}'),
+      onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
@@ -259,7 +278,7 @@ class _AlbumRow extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                album.name,
+                name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: styles.body.copyWith(color: scheme.onSurface),
@@ -267,7 +286,7 @@ class _AlbumRow extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Text(
-              album.entryCount == 1 ? '1 photo' : '${album.entryCount} photos',
+              count == 1 ? '1 photo' : '$count photos',
               style: styles.caption.copyWith(color: colors.textSecondary),
             ),
           ],
@@ -296,17 +315,41 @@ class _IndexingNote extends StatelessWidget {
   }
 }
 
-/// The idle state: a People strip (when clusters exist) above the search prompt.
+/// The idle state: browse entry points — a People strip (when clusters exist)
+/// above the device's folders. Scrolls, since the folder list is unbounded.
+/// Falls back to the search prompt when there's nothing to browse yet (no face
+/// clusters, and folders still loading or genuinely absent).
 class _IdleView extends ConsumerWidget {
   const _IdleView();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final people = ref.watch(personSummariesProvider).value ?? const [];
-    return Column(
+    final folders = ref.watch(deviceFoldersProvider).value ?? const [];
+
+    if (people.isEmpty && folders.isEmpty) return const _IdleHint();
+
+    return ListView(
       children: [
         if (people.isNotEmpty) _PeopleStrip(people: people),
-        const Expanded(child: _IdleHint()),
+        if (folders.isNotEmpty) ...[
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: MonthSectionHeader(label: 'Folders'),
+          ),
+          for (final folder in folders)
+            _CoverRow(
+              coverAssetId: folder.coverAssetId,
+              name: folder.name,
+              count: folder.count,
+              onTap: () => context.push(
+                Uri(
+                  path: '/folder',
+                  queryParameters: {'id': folder.id, 'name': folder.name},
+                ).toString(),
+              ),
+            ),
+        ],
       ],
     );
   }

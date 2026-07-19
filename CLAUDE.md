@@ -465,6 +465,25 @@ Short form; full postmortems in `docs/postmortems/`.
   `PhotoLibraryService._androidWindow`/`_darwinFilter`). Host fakes can't catch
   this — `integration_test/library_month_grouping_test.dart` asserts the axes
   agree on-device.
+- **On-device integration runs wipe the photo permission — grant it between
+  install and run, one file at a time.** `flutter test integration_test/…`
+  **uninstalls** the app when the run ends (`dumpsys package` afterwards reports
+  "package not found"), and `patrol test` does the same. Any plain
+  `integration_test` file asserting `access.canReadLibrary` then fails on the
+  *next* invocation, and passing two files to one `flutter test` call fails the
+  second (the first file's teardown already uninstalled). There is no native
+  dialog to drive from a plain `integration_test`, so pre-grant it:
+  ```bash
+  adb install -r build/app/outputs/flutter-apk/app-debug.apk
+  for p in READ_MEDIA_IMAGES READ_MEDIA_VIDEO READ_MEDIA_VISUAL_USER_SELECTED; do
+    adb shell pm grant com.example.sologallery android.permission.$p; done
+  flutter test integration_test/<one_file>.dart -d <device>   # repeat per file
+  ```
+  The grant survives `flutter test`'s own reinstall-over-existing, just not the
+  teardown uninstall. `patrol test` files don't need this — they drive the real
+  dialog via `$.platform.mobile.grantPermissionWhenInUse()`. Symptom of a missed
+  grant is a *silent* one: `PhotoManager` returns **empty** lists (zero folders,
+  zero assets) rather than throwing, so an under-asserted test passes vacuously.
 - **Flutter is invisible to `uiautomator`/adb UI dumps** unless an
   accessibility service is active (semantics tree built lazily). For
   on-device verification, tap at computed coordinates and read

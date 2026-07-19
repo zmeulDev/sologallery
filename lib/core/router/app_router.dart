@@ -6,6 +6,7 @@ import '../../features/albums/album_detail_screen.dart';
 import '../../features/albums/albums_screen.dart';
 import '../../features/detail/detail_screen.dart';
 import '../../features/detail/photo_viewer_args.dart';
+import '../../features/folders/folder_detail_screen.dart';
 import '../../features/library/library_screen.dart';
 import '../../features/library/month_grid_screen.dart';
 import '../../features/library/older_grid_screen.dart';
@@ -89,6 +90,24 @@ final routerProvider = Provider<GoRouter>((ref) {
           final id = int.tryParse(state.pathParameters['id'] ?? '');
           if (id == null) return const _InvalidAlbum();
           return AlbumDetailScreen(albumId: id);
+        },
+      ),
+      GoRoute(
+        // Query parameters, not a path segment: an iOS folder id is a
+        // PHAssetCollection local identifier and may contain `/`, which no
+        // amount of encoding makes safe in a `:id` segment. `name` only titles
+        // the app bar, so a deep link may omit it.
+        path: '/folder',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final id = state.uri.queryParameters['id'];
+          if (id == null || id.isEmpty) {
+            return const _NotFound(message: 'That folder couldn\'t be found.');
+          }
+          return FolderDetailScreen(
+            folderId: id,
+            folderName: state.uri.queryParameters['name'],
+          );
         },
       ),
       GoRoute(

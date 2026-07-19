@@ -40,6 +40,33 @@ class AssetRef {
   final DateTime createdAt;
 }
 
+/// A pure, plugin-free projection of a `photo_manager` [AssetPathEntity] — one
+/// of the folders/collections the device already groups the library into
+/// (Android: a MediaStore bucket such as Camera or Screenshots; iOS: a photo
+/// album). Surfaced by the Search screen's Folders section; the plugin type
+/// never leaves this service (the architecture rule).
+class DeviceFolder {
+  const DeviceFolder({
+    required this.id,
+    required this.name,
+    required this.count,
+    this.coverAssetId,
+  });
+
+  /// Android: `MediaStore.Images.Media.BUCKET_ID`. iOS/macOS: the
+  /// `PHAssetCollection` local identifier (may contain `/`, so it is routed as
+  /// a query parameter rather than a path segment).
+  final String id;
+  final String name;
+
+  /// Total assets in the folder — the statistic shown next to its name.
+  final int count;
+
+  /// The newest asset in the folder, used as the row's cover thumbnail. Null
+  /// only if the folder's first page came back empty.
+  final String? coverAssetId;
+}
+
 /// A pure, plugin-free projection of a single asset's metadata, shown in the
 /// detail viewer's EXIF sheet. Only fields `photo_manager` exposes natively —
 /// no camera make/model/ISO (that would need to parse the original file). Any
@@ -313,6 +340,87 @@ class PhotoLibraryService {
     }
     matches.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return matches;
+  }
+
+  // --- Device folders ------------------------------------------------------
+
+  /// Resolved folder paths keyed by [DeviceFolder.id], filled by
+  /// [deviceFolders]. `photo_manager` has no cheap "path from id" that accepts
+  /// the Android [AdvancedCustomFilter] this service relies on
+  /// ([AssetPathEntity.fromId] takes a [FilterOptionGroup] only), so
+  /// [folderAssets] pages against the cached entity instead of re-listing every
+  /// folder for each page.
+  final Map<String, AssetPathEntity> _pathCache = {};
+
+  /// Lists every folder/collection the device groups the library into, with its
+  /// asset count and a cover asset — the Search screen's Folders section.
+  /// Sorted by [DeviceFolder.count] descending (name ascending to break ties);
+  /// empty folders are dropped.
+  ///
+  /// Uses the same capture-date filter split as the grids ([_darwinFilter] /
+  /// [_androidWindow] with no window), so each folder's cover is its newest
+  /// asset. On Android the unbounded window is just an ordering — assets with no
+  /// `DATE_TAKEN` still belong to the folder and sort last (SQLite orders NULLs
+  /// last on `DESC`), so they never become the cover.
+  Future<List<DeviceFolder>> deviceFolders() async {
+    final paths = await PhotoManager.getAssetPathList(
+      hasAll: false, // Skip the synthetic "Recent"/all-photos album.
+      onlyAll: false,
+      type: RequestType.common,
+      filterOption: _isDarwin ? _darwinFilter() : _androidWindow(),
+    );
+
+    final folders = <DeviceFolder>[];
+    for (final path in paths) {
+      // On iOS `albumType` 2 is a *folder of albums* — a container that holds no
+      // assets of its own. Android is always 1.
+      if (_isDarwin && path.albumType != 1) continue;
+
+      final count = await path.assetCountAsync;
+      if (count == 0) continue;
+
+      final first = await path.getAssetListPaged(page: 0, size: 1);
+      _pathCache[path.id] = path;
+      folders.add(
+        DeviceFolder(
+          id: path.id,
+          name: path.name,
+          count: count,
+          coverAssetId: first.isEmpty ? null : first.first.id,
+        ),
+      );
+    }
+
+    folders.sort((a, b) {
+      final byCount = b.count.compareTo(a.count);
+      return byCount != 0 ? byCount : a.name.compareTo(b.name);
+    });
+    _log.fine('Listed ${folders.length} device folder(s)');
+    return folders;
+  }
+
+  /// A page of asset references from the folder [folderId], newest first —
+  /// the folder detail grid. Returns an empty page once exhausted, or if the
+  /// folder no longer exists (e.g. its last photo was deleted).
+  Future<List<AssetRef>> folderAssets({
+    required String folderId,
+    required int page,
+    required int pageSize,
+  }) async {
+    var path = _pathCache[folderId];
+    if (path == null) {
+      // Cold start (deep link / restore) — refill the cache, then retry once.
+      await deviceFolders();
+      path = _pathCache[folderId];
+    }
+    if (path == null) {
+      _log.warning('No device folder for id $folderId');
+      return const [];
+    }
+    final assets = await path.getAssetListPaged(page: page, size: pageSize);
+    return [
+      for (final a in assets) AssetRef(id: a.id, createdAt: a.createDateTime),
+    ];
   }
 
   // --- Indexing ------------------------------------------------------------

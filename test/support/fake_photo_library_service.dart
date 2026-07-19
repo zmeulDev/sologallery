@@ -23,10 +23,14 @@ class FakePhotoLibraryService extends PhotoLibraryService {
     Map<String, AssetDetail>? details,
     Map<String, Duration>? videoDurations,
     this.deleteResultOverride,
+    List<DeviceFolder>? folders,
+    Map<String, List<AssetRef>>? folderAssetsById,
   })  : assets = List.of(assets ?? const []),
         undatedAssets = List.of(undatedAssets ?? const []),
         details = details ?? const {},
-        videoDurations = videoDurations ?? const {} {
+        videoDurations = videoDurations ?? const {},
+        folders = List.of(folders ?? const []),
+        folderAssetsById = folderAssetsById ?? const {} {
     // Keep the newest-first ordering the real service guarantees.
     this.assets.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     this.undatedAssets.sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -55,6 +59,18 @@ class FakePhotoLibraryService extends PhotoLibraryService {
   /// When set, [deleteAssets] returns this instead of the requested ids (used
   /// to simulate the user cancelling the OS trash dialog with an empty result).
   final List<String>? deleteResultOverride;
+
+  /// Device folders returned by [deviceFolders], in any order — the override
+  /// applies the real service's sort and empty-folder filter.
+  final List<DeviceFolder> folders;
+
+  /// Per-folder assets (newest first) paged by [folderAssets]. A folder absent
+  /// here pages empty, mirroring a folder that no longer resolves.
+  final Map<String, List<AssetRef>> folderAssetsById;
+
+  /// Makes [folderAssets] throw, so the folder screen's error branch can be
+  /// exercised (an [AsyncNotifierProvider] has no `overrideWithValue`).
+  bool failFolderAssets = false;
 
   int requestCount = 0;
   int openSettingsCount = 0;
@@ -171,6 +187,31 @@ class FakePhotoLibraryService extends PhotoLibraryService {
     ];
     matches.sort((x, y) => y.createdAt.compareTo(x.createdAt));
     return matches;
+  }
+
+  @override
+  Future<List<DeviceFolder>> deviceFolders() async {
+    final visible = [
+      for (final f in folders)
+        if (f.count > 0) f,
+    ]..sort((a, b) {
+        final byCount = b.count.compareTo(a.count);
+        return byCount != 0 ? byCount : a.name.compareTo(b.name);
+      });
+    return visible;
+  }
+
+  @override
+  Future<List<AssetRef>> folderAssets({
+    required String folderId,
+    required int page,
+    required int pageSize,
+  }) async {
+    if (failFolderAssets) throw StateError('folder unavailable');
+    final source = folderAssetsById[folderId] ?? const <AssetRef>[];
+    final start = page * pageSize;
+    if (start >= source.length) return const [];
+    return source.sublist(start, (start + pageSize).clamp(0, source.length));
   }
 
   @override

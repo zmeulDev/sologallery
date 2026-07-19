@@ -24,8 +24,9 @@ void main() {
     List<AssetRef> assets = const [],
     List<AlbumSummary> albums = const [],
     List<Favorite> favorites = const [],
+    List<DeviceFolder> folders = const [],
   }) async {
-    final fake = FakePhotoLibraryService(assets: assets);
+    final fake = FakePhotoLibraryService(assets: assets, folders: folders);
     // Content search reads the DB; give it an empty in-memory one.
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
@@ -36,6 +37,12 @@ void main() {
         GoRoute(
           path: '/album/:id',
           builder: (_, _) => const Scaffold(body: Text('album-detail')),
+        ),
+        GoRoute(
+          path: '/folder',
+          builder: (_, state) => Scaffold(
+            body: Text('folder-detail:${state.uri.queryParameters['id']}'),
+          ),
         ),
       ],
     );
@@ -138,6 +145,60 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.text('album-detail'), findsOneWidget);
+    await settle(tester);
+  });
+
+  testWidgets('the idle state lists device folders with their photo counts',
+      (tester) async {
+    await pump(
+      tester,
+      folders: const [
+        DeviceFolder(id: 'cam', name: 'Camera', count: 1204),
+        DeviceFolder(id: 'shots', name: 'Screenshots', count: 318),
+        DeviceFolder(id: 'one', name: 'Scans', count: 1),
+      ],
+    );
+
+    expect(find.text('FOLDERS'), findsOneWidget);
+    expect(find.text('Camera'), findsOneWidget);
+    expect(find.text('1204 photos'), findsOneWidget);
+    expect(find.text('318 photos'), findsOneWidget);
+    expect(find.text('1 photo'), findsOneWidget); // singular, not "1 photos"
+    // Browsing replaces the prompt once there's something to browse.
+    expect(find.textContaining('Search your library by date'), findsNothing);
+    await settle(tester);
+  });
+
+  testWidgets('tapping a folder opens its detail grid', (tester) async {
+    await pump(
+      tester,
+      folders: const [DeviceFolder(id: 'cam', name: 'Camera', count: 12)],
+    );
+
+    await tester.tap(find.text('Camera'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('folder-detail:cam'), findsOneWidget);
+    await settle(tester);
+  });
+
+  testWidgets('a folder id needing escaping still routes correctly',
+      (tester) async {
+    // iOS folder ids are PHAssetCollection local identifiers and contain "/",
+    // which is why the route carries them as a query parameter.
+    await pump(
+      tester,
+      folders: const [
+        DeviceFolder(id: 'ABC123/L0/040', name: 'Recents', count: 5),
+      ],
+    );
+
+    await tester.tap(find.text('Recents'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('folder-detail:ABC123/L0/040'), findsOneWidget);
     await settle(tester);
   });
 
