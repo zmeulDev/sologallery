@@ -47,8 +47,8 @@ void main() {
     await $.pumpAndSettle();
     expect($(AssetThumbnail), findsWidgets);
 
-    // Library app bar → Search.
-    await $.tester.tap(find.byIcon(Icons.search));
+    // Bottom nav → Search.
+    await $.tester.tap(find.byTooltip('Search'));
     await settleSearch($);
     expect(find.byType(TextField), findsOneWidget,
         reason: 'The search field should be on screen — navigation failed.');

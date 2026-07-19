@@ -45,7 +45,18 @@ abstract class MlWorker {
   /// labels and faces. When [ocrPath] is given, OCR runs on that (larger)
   /// image instead, recovering small text the face/label thumbnail misses;
   /// otherwise OCR uses [jpegPath].
-  Future<ImageAnalysis> analyzeFile(String jpegPath, {String? ocrPath});
+  ///
+  /// [content] and [faces] are the user's consent flags (both opt-in, off by
+  /// default). When one is false the corresponding model never runs and its
+  /// result comes back empty — the caller must not have to filter it out
+  /// afterwards. With both false there is nothing to do; callers should skip
+  /// the call entirely rather than pay the thumbnail write.
+  Future<ImageAnalysis> analyzeFile(
+    String jpegPath, {
+    String? ocrPath,
+    bool content = true,
+    bool faces = true,
+  });
 
   /// Tears down the worker isolate and its models.
   void dispose();
@@ -126,12 +137,17 @@ class MlWorkerController implements MlWorker {
   }
 
   @override
-  Future<ImageAnalysis> analyzeFile(String jpegPath, {String? ocrPath}) async {
+  Future<ImageAnalysis> analyzeFile(
+    String jpegPath, {
+    String? ocrPath,
+    bool content = true,
+    bool faces = true,
+  }) async {
     await _start();
     final id = _seq++;
     final completer = Completer<ImageAnalysis>();
     _pending[id] = completer;
-    _commands!.send(_AnalyzeJob(id, jpegPath, ocrPath));
+    _commands!.send(_AnalyzeJob(id, jpegPath, ocrPath, content, faces));
     return completer.future;
   }
 
@@ -155,13 +171,13 @@ void _workerMain(_WorkerInit init) {
   // Must run before any plugin (ML Kit) call, or platform-channel calls hang.
   BackgroundIsolateBinaryMessenger.ensureInitialized(init.token);
 
-  final labeler = ImageLabeler(
-    options: ImageLabelerOptions(confidenceThreshold: 0.6),
-  );
-  final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
-  final faceDetector = FaceDetector(options: FaceDetectorOptions());
-  final embedder = Interpreter.fromBuffer(init.modelBytes);
-  final embeddingSize = embedder.getOutputTensor(0).shape.last;
+  // Every model is opt-in, so each is built on the first job that actually asks
+  // for it — a user who declined a feature never pays its model load.
+  ImageLabeler? labeler;
+  TextRecognizer? recognizer;
+  FaceDetector? faceDetector;
+  Interpreter? embedder;
+  var embeddingSize = 0;
 
   final commands = ReceivePort();
   init.sendPort.send(commands.sendPort);
@@ -170,24 +186,50 @@ void _workerMain(_WorkerInit init) {
     if (msg is _AnalyzeJob) {
       try {
         final input = InputImage.fromFilePath(msg.path);
-        final labels = await labeler.processImage(input);
-        // OCR on the higher-res image when supplied (small-text recall); labels
-        // and faces stay on the 512 thumbnail (bounded memory, stable box space).
-        final ocrInput = msg.ocrPath != null
-            ? InputImage.fromFilePath(msg.ocrPath!)
-            : input;
-        final recognized = await recognizer.processImage(ocrInput);
-        final text = recognized.text.replaceAll(RegExp(r'\s+'), ' ').trim();
-        final detected = await faceDetector.processImage(input);
+
+        var labels = const <ImageLabel>[];
+        var text = '';
+        if (msg.content) {
+          labels = await (labeler ??= ImageLabeler(
+            options: ImageLabelerOptions(confidenceThreshold: 0.6),
+          )).processImage(input);
+          // OCR on the higher-res image when supplied (small-text recall);
+          // labels and faces stay on the 512 thumbnail (bounded memory, stable
+          // box space).
+          final ocrInput = msg.ocrPath != null
+              ? InputImage.fromFilePath(msg.ocrPath!)
+              : input;
+          final recognized = await (recognizer ??= TextRecognizer(
+            script: TextRecognitionScript.latin,
+          )).processImage(ocrInput);
+          text = recognized.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+        }
 
         final faces = <DetectedFace>[];
-        if (detected.isNotEmpty) {
-          final decoded = img.decodeImage(File(msg.path).readAsBytesSync());
-          if (decoded != null) {
-            for (final face in detected) {
-              final f =
-                  _embedFace(decoded, face.boundingBox, embedder, embeddingSize);
-              if (f != null) faces.add(f);
+        if (msg.faces) {
+          final detector =
+              faceDetector ??= FaceDetector(options: FaceDetectorOptions());
+          final interpreter = embedder ??= Interpreter.fromBuffer(
+            init.modelBytes,
+          );
+          if (embeddingSize == 0) {
+            embeddingSize = interpreter.getOutputTensor(0).shape.last;
+          }
+          final detected = await detector.processImage(input);
+          // Decoding the whole thumbnail is the expensive part, so it only
+          // happens when there is actually a face to crop out of it.
+          if (detected.isNotEmpty) {
+            final decoded = img.decodeImage(File(msg.path).readAsBytesSync());
+            if (decoded != null) {
+              for (final face in detected) {
+                final f = _embedFace(
+                  decoded,
+                  face.boundingBox,
+                  interpreter,
+                  embeddingSize,
+                );
+                if (f != null) faces.add(f);
+              }
             }
           }
         }
@@ -263,12 +305,18 @@ class _WorkerInit {
 }
 
 class _AnalyzeJob {
-  const _AnalyzeJob(this.id, this.path, this.ocrPath);
+  const _AnalyzeJob(this.id, this.path, this.ocrPath, this.content, this.faces);
   final int id;
   final String path;
 
   /// Optional higher-res image for OCR only; null falls back to [path].
   final String? ocrPath;
+
+  /// Whether to run labeling + OCR for this job (user consent).
+  final bool content;
+
+  /// Whether to run face detection + embedding for this job (user consent).
+  final bool faces;
 }
 
 class _AnalyzeResult {

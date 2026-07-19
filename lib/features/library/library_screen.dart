@@ -11,6 +11,7 @@ import '../../widgets/asset_thumbnail.dart';
 import '../../widgets/limited_access_banner.dart';
 import '../../widgets/month_section_header.dart';
 import '../detail/photo_viewer_args.dart';
+import '../memories/widgets/memories_carousel.dart';
 import 'library_providers.dart';
 
 /// Home gallery: photos grouped by month, newest first, read from the
@@ -33,9 +34,9 @@ class LibraryScreen extends ConsumerWidget {
         title: const Text('Library'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.search),
-            tooltip: 'Search',
-            onPressed: () => context.push('/search'),
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: () => context.push('/settings'),
           ),
         ],
       ),
@@ -83,14 +84,19 @@ class _MonthList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final showOlder = olderCount > 0;
+    // Index 0 is the memories carousel; month sections shift down by one. The
+    // carousel collapses to zero height when there are no memories, so no
+    // special-casing is needed here.
     return ListView.builder(
       padding: const EdgeInsets.only(top: 4, bottom: 24),
-      itemCount: counts.length + (showOlder ? 1 : 0),
+      itemCount: 1 + counts.length + (showOlder ? 1 : 0),
       itemBuilder: (context, i) {
-        if (i >= counts.length) {
+        if (i == 0) return const MemoriesCarousel();
+        final index = i - 1;
+        if (index >= counts.length) {
           return _OlderSection(count: olderCount);
         }
-        return _MonthSection(entry: counts[i]);
+        return _MonthSection(entry: counts[index]);
       },
     );
   }

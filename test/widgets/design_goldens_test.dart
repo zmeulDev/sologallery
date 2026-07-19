@@ -3,10 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sologallery/core/database/daos/albums_dao.dart' show AlbumSummary;
 import 'package:sologallery/core/theme/app_theme.dart';
+import 'package:sologallery/core/database/daos/memories_dao.dart'
+    show MemorySummary;
 import 'package:sologallery/features/albums/widgets/album_card.dart';
+import 'package:sologallery/features/memories/widgets/memory_card.dart';
 import 'package:sologallery/features/settings/widgets/theme_mode_picker.dart';
 import 'package:sologallery/services/permission_provider.dart';
 import 'package:sologallery/widgets/asset_thumbnail.dart';
+import 'package:sologallery/widgets/consent_switch.dart';
+import 'package:sologallery/widgets/dot_nav_bar.dart';
 import 'package:sologallery/widgets/filter_pill.dart';
 import 'package:sologallery/widgets/limited_access_banner.dart';
 import 'package:sologallery/widgets/month_section_header.dart';
@@ -90,11 +95,38 @@ void main() {
     ),
   );
 
+  // The nav bar's dot sits under the active destination; Search (index 1) is
+  // selected so the golden pins both the destination order and the dot offset.
+  goldenTest(
+    'DotNavBar — Search selected',
+    fileName: 'dot_nav_bar',
+    builder: () => themedGroup(
+      DotNavBar(currentIndex: 1, onTap: (_) {}),
+    ),
+  );
+
   goldenTest(
     'ThemeModePicker — system selected',
     fileName: 'theme_mode_picker',
     builder: () => themedGroup(
       ThemeModePicker(mode: ThemeMode.system, onChanged: (_) {}),
+    ),
+  );
+
+  // The consent switch is the only switch in the app; its active track is the
+  // pill-active token, so this golden is what keeps consent from drifting into
+  // a second accent color.
+  goldenTest(
+    'ConsentSwitch — on and off',
+    fileName: 'consent_switch',
+    builder: () => themedGroup(
+      Row(
+        children: [
+          ConsentSwitch(value: true, onChanged: (_) {}, semanticLabel: 'On'),
+          const SizedBox(width: 12),
+          ConsentSwitch(value: false, onChanged: (_) {}, semanticLabel: 'Off'),
+        ],
+      ),
     ),
   );
 
@@ -134,6 +166,46 @@ void main() {
                   entryCount: 0,
                   coverAssetId: null,
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  // Same null-bytes fake: the placeholder cover isolates the card's own
+  // treatment — the segment row, the scrim, and the overlaid title.
+  goldenTest(
+    'MemoryCard — titled and untitled cover',
+    fileName: 'memory_card',
+    builder: () => themedGroup(
+      ProviderScope(
+        overrides: [
+          photoLibraryServiceProvider
+              .overrideWithValue(FakePhotoLibraryService()),
+        ],
+        child: const Row(
+          children: [
+            MemoryCard(
+              memory: MemorySummary(
+                id: 1,
+                kind: 'trip',
+                title: 'Early June',
+                subtitle: '2025',
+                coverAssetId: 'x',
+                assetCount: 24,
+              ),
+            ),
+            SizedBox(width: 10),
+            MemoryCard(
+              memory: MemorySummary(
+                id: 2,
+                kind: 'onThisDay',
+                title: 'On this day',
+                subtitle: '2024',
+                coverAssetId: null,
+                assetCount: 6,
               ),
             ),
           ],

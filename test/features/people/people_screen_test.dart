@@ -6,12 +6,14 @@ import 'package:sologallery/core/database/daos/faces_dao.dart' show PersonSummar
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/people/people_providers.dart';
 import 'package:sologallery/features/people/people_screen.dart';
+import 'package:sologallery/features/settings/consent_provider.dart';
 
 void main() {
   Future<void> pump(
     WidgetTester tester,
-    List<PersonSummary> people,
-  ) async {
+    List<PersonSummary> people, {
+    bool facesEnabled = true,
+  }) async {
     final router = GoRouter(
       initialLocation: '/people',
       routes: [
@@ -27,6 +29,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          // Face detection is opt-in; these cases are about the screen once the
+          // user has turned it on.
+          facesEnabledProvider.overrideWith((ref) => Stream.value(facesEnabled)),
           personSummariesProvider.overrideWith((ref) => Stream.value(people)),
           // Avatars resolve to the placeholder — no DB/thumbnail needed here.
           personCoverProvider.overrideWith((ref, id) async => null),
@@ -41,6 +46,15 @@ void main() {
   testWidgets('empty state when there are no people', (tester) async {
     await pump(tester, const []);
     expect(find.textContaining('No people yet'), findsOneWidget);
+  });
+
+  testWidgets('with face detection off, says so instead of "no people yet"',
+      (tester) async {
+    await pump(tester, const [], facesEnabled: false);
+
+    expect(find.textContaining('Face detection is off'), findsOneWidget);
+    // The indexing note would imply people are still coming. They aren't.
+    expect(find.textContaining('No people yet'), findsNothing);
   });
 
   testWidgets('renders a named and an unnamed person with counts',

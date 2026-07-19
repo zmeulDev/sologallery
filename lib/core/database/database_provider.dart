@@ -5,6 +5,7 @@ import 'daos/albums_dao.dart';
 import 'daos/faces_dao.dart';
 import 'daos/favorites_dao.dart';
 import 'daos/index_dao.dart';
+import 'daos/memories_dao.dart';
 import 'daos/settings_dao.dart';
 
 /// App-wide [AppDatabase], kept alive for the whole app lifetime (not
@@ -36,6 +37,11 @@ final indexDaoProvider = Provider<IndexDao>(
 /// [FacesDao] over the app database (face embeddings + person clusters).
 final facesDaoProvider = Provider<FacesDao>(
   (ref) => ref.watch(databaseProvider).facesDao,
+);
+
+/// [MemoriesDao] over the app database (auto-curated memory collections).
+final memoriesDaoProvider = Provider<MemoriesDao>(
+  (ref) => ref.watch(databaseProvider).memoriesDao,
 );
 
 /// [SettingsDao] over the app database (key/value app preferences).

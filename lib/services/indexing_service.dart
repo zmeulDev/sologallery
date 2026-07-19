@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io' show Directory, File;
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,8 +9,11 @@ import 'package:path_provider/path_provider.dart';
 
 import '../core/database/daos/faces_dao.dart';
 import '../core/database/daos/index_dao.dart';
+import '../core/database/daos/memories_dao.dart';
 import '../core/database/daos/settings_dao.dart';
 import '../core/database/database_provider.dart';
+import '../features/memories/domain/memory_builder.dart';
+import '../features/memories/domain/planned_memory.dart';
 import '../features/people/domain/face_clustering.dart';
 import 'ml_service.dart';
 import 'permission_provider.dart';
@@ -47,12 +51,14 @@ class IndexingService {
   IndexingService({
     required this.dao,
     required this.faces,
+    required this.memories,
     required this.settings,
     required this.photos,
     required this.worker,
     this.tempDir,
     this.resweepDebounce = const Duration(seconds: 2),
     this.reclusterThreshold = 20,
+    this.memoryRefreshThreshold = 50,
   });
 
   static final _log = Logger('SoloGallery.ml');
@@ -64,6 +70,7 @@ class IndexingService {
 
   final IndexDao dao;
   final FacesDao faces;
+  final MemoriesDao memories;
   final SettingsDao settings;
   final PhotoLibraryService photos;
   final MlWorker worker;
@@ -74,6 +81,15 @@ class IndexingService {
   /// New faces since the last global re-cluster before one is triggered. Small
   /// in tests.
   final int reclusterThreshold;
+
+  /// `app_settings` keys for the memory-regeneration baseline: the local date
+  /// memories were last generated on, and the cache size at that moment.
+  static const _memoriesDateKey = 'memories_generated_on';
+  static const _memoriesCountKey = 'memories_asset_baseline';
+
+  /// New cached assets since the last regeneration before one is forced
+  /// mid-day. Small in tests.
+  final int memoryRefreshThreshold;
 
   /// Where transient ML thumbnails are written; resolved lazily on device.
   Directory? tempDir;
@@ -171,14 +187,88 @@ class IndexingService {
         await Future<void>.delayed(const Duration(milliseconds: 50));
       }
       _cancelled = false;
-      await dao.clearIndex(); // cascades labels/OCR/faces
+      await dao.clearIndex(); // cascades labels/OCR/faces (and memory entries)
       await faces.clearPersons();
+      // The cascade empties each memory's entries but leaves the rows behind;
+      // drop them so the carousel doesn't hold stale titles, and clear the
+      // baselines so the next pass regenerates immediately.
+      await memories.clearMemories();
+      await settings.put(_memoriesDateKey, '');
+      await settings.put(_memoriesCountKey, '0');
       _setSwept(false);
       _emit(const IndexingStatus.idle());
       _log.info('Rebuilding index from scratch');
       await start();
     } finally {
       _rebuilding = false;
+    }
+  }
+
+  // --- Consent toggles ------------------------------------------------------
+  //
+  // Both live here rather than in the UI because withdrawing consent has to
+  // delete the derived data, and enabling has to arrange for it to be derived —
+  // and this service owns the baseline keys, the DAOs, and the pass lifecycle.
+
+  /// Enables or disables content search (ML labels + OCR text).
+  ///
+  /// Disabling deletes every label and OCR row — consent withdrawn means the
+  /// inferences go, not just the search box. Enabling re-queues the whole cache
+  /// for analysis (assets indexed while it was off are stamped `indexed_at`, so
+  /// they would otherwise never be revisited).
+  Future<void> setSearchEnabled(bool enabled) async {
+    await settings.setSearchEnabled(enabled);
+    if (enabled) {
+      await dao.resetMlPending();
+      unawaited(start());
+    } else {
+      await dao.clearContent();
+      // Theme memories were built from those labels; replan without them.
+      await settings.put(_memoriesDateKey, '');
+      _log.info('Content search disabled — cleared labels and OCR text');
+    }
+  }
+
+  /// Enables or disables auto-curated Memories.
+  ///
+  /// Disabling drops every memory row (consent withdrawn = data gone). Enabling
+  /// clears the regeneration baseline so the next pass rebuilds immediately
+  /// rather than waiting for the once-a-day trigger; memories are planned from
+  /// already-cached data, so no re-analysis is needed.
+  Future<void> setMemoriesEnabled(bool enabled) async {
+    await settings.setMemoriesEnabled(enabled);
+    if (enabled) {
+      await settings.put(_memoriesDateKey, '');
+      await settings.put(_memoriesCountKey, '0');
+      unawaited(start());
+    } else {
+      await memories.clearMemories();
+      await settings.put(_memoriesDateKey, '');
+      await settings.put(_memoriesCountKey, '0');
+      _log.info('Memories disabled — cleared curated memories');
+    }
+  }
+
+  /// Enables or disables face detection / People.
+  ///
+  /// Disabling deletes every face embedding *and* person cluster. Enabling has
+  /// to backfill: assets indexed while the feature was off have `indexed_at`
+  /// set, so [IndexDao.pendingMlIds] would skip them forever — [resetMlPending]
+  /// re-queues the whole cache (labels/OCR survive, `upsertIndexed` replaces
+  /// them in place).
+  Future<void> setFacesEnabled(bool enabled) async {
+    await settings.setFacesEnabled(enabled);
+    if (enabled) {
+      await dao.resetMlPending();
+      unawaited(start());
+    } else {
+      await faces.clearFaces();
+      await faces.clearPersons();
+      await settings.put(_reclusterBaselineKey, '0');
+      // Person-kind memories were built from those clusters; drop the baseline
+      // so the next pass replans without them.
+      await settings.put(_memoriesDateKey, '');
+      _log.info('Face detection disabled — cleared faces and persons');
     }
   }
 
@@ -218,38 +308,64 @@ class IndexingService {
   }
 
   Future<void> _run() async {
+    // Read the consent flags once per pass, not per asset: every derived
+    // feature is opt-in and off until the user says otherwise (SettingsDao).
+    final searchEnabled = await settings.readSearchEnabled();
+    final facesEnabled = await settings.readFacesEnabled();
+    final memoriesEnabled = await settings.readMemoriesEnabled();
+    // Labels/OCR and faces are the only things ML produces. With both declined
+    // there is no analysis to do at all — the pass degrades to the metadata
+    // sweep that fills the grid, and the worker isolate never spawns.
+    final needsMl = searchEnabled || facesEnabled;
+
     do {
       _dirty = false;
       await _sweepMetadata();
       if (_cancelled) return;
 
-      final todo = await dao.pendingMlIds();
-      if (todo.isEmpty) {
-        _emit(const IndexingStatus.idle());
-        continue;
-      }
+      final todo = needsMl ? await dao.pendingMlIds() : const <String>[];
+      if (todo.isNotEmpty) {
+        _log.info('Indexing ${todo.length} new asset(s)');
+        var done = 0;
+        _emit(IndexingStatus(remaining: todo.length, total: todo.length));
 
-      _log.info('Indexing ${todo.length} new asset(s)');
-      var done = 0;
-      _emit(IndexingStatus(remaining: todo.length, total: todo.length));
+        for (final id in todo) {
+          if (_cancelled) return;
+          while (_paused && !_cancelled) {
+            await Future<void>.delayed(const Duration(milliseconds: 200));
+          }
+          if (_cancelled) return;
 
-      for (final id in todo) {
-        if (_cancelled) return;
-        while (_paused && !_cancelled) {
-          await Future<void>.delayed(const Duration(milliseconds: 200));
+          await _indexOne(
+            id,
+            searchEnabled: searchEnabled,
+            facesEnabled: facesEnabled,
+          );
+          done++;
+          _emit(
+            IndexingStatus(remaining: todo.length - done, total: todo.length),
+          );
+          await Future<void>.delayed(Duration.zero); // keep the UI isolate smooth
         }
-        if (_cancelled) return;
-
-        await _indexOne(id);
-        done++;
-        _emit(IndexingStatus(remaining: todo.length - done, total: todo.length));
-        await Future<void>.delayed(Duration.zero); // keep the UI isolate smooth
+        if (facesEnabled) {
+          await _clusterNewFaces();
+          if (_cancelled) return;
+          await _maybeGlobalRecluster();
+          if (_cancelled) return;
+        }
+        _log.info('Indexing pass complete (${todo.length} asset(s))');
       }
-      await _clusterNewFaces();
-      if (_cancelled) return;
-      await _maybeGlobalRecluster();
+
+      // Outside the `todo` branch on purpose: on a typical launch there is no
+      // ML work pending, but memories still need their once-a-day refresh.
+      if (memoriesEnabled) {
+        await _maybeRegenerateMemories(
+          searchEnabled: searchEnabled,
+          facesEnabled: facesEnabled,
+        );
+        if (_cancelled) return;
+      }
       _emit(const IndexingStatus.idle());
-      _log.info('Indexing pass complete (${todo.length} asset(s))');
     } while (_dirty && !_cancelled);
   }
 
@@ -354,7 +470,118 @@ class IndexingService {
     );
   }
 
-  Future<void> _indexOne(String id) async {
+  /// Rebuilds the auto-curated memories, at most once a day (or sooner once
+  /// [memoryRefreshThreshold] new photos have landed). Baselines persist in
+  /// `app_settings`, mirroring [_maybeGlobalRecluster].
+  ///
+  /// DB reads + a pure planning pass, no ML. Runs on the indexing loop, so it
+  /// inherits the app's pause/resume gating for free.
+  Future<void> _maybeRegenerateMemories({
+    required bool searchEnabled,
+    required bool facesEnabled,
+  }) async {
+    final now = DateTime.now();
+    final todayKey = '${now.year}-${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+
+    final total = await memories.cachedAssetCount();
+    final lastDate = await settings.read(_memoriesDateKey);
+    final baseline =
+        int.tryParse(await settings.read(_memoriesCountKey) ?? '') ?? 0;
+
+    final newDay = lastDate != todayKey;
+    final enoughNew = total - baseline >= memoryRefreshThreshold;
+    if (!newDay && !enoughNew) return;
+    if (total == 0) return;
+
+    final plan = await _planMemories(
+      now,
+      searchEnabled: searchEnabled,
+      facesEnabled: facesEnabled,
+    );
+    if (_cancelled) return;
+
+    await memories.applyPlan(plan);
+    await settings.put(_memoriesDateKey, todayKey);
+    await settings.put(_memoriesCountKey, total.toString());
+    _log.info('Regenerated ${plan.length} memory/memories');
+  }
+
+  /// Gathers the builder's inputs and plans. The planning itself runs via
+  /// [Isolate.run]: trip clustering scans up to 20k records, and the Absolute
+  /// rule is that heavy work never lands on the UI isolate. [MemoryBuilder] is
+  /// pure with sendable inputs, so this is free.
+  Future<List<PlannedMemory>> _planMemories(
+    DateTime now, {
+    required bool searchEnabled,
+    required bool facesEnabled,
+  }) async {
+    final onThisDay = await memories.onThisDay(now.month, now.day);
+    final recentDated = await memories.recentDatedProjection();
+
+    // Theme memories ("Dogs", "Food") are built from ML labels, so they only
+    // exist when the user consented to content analysis.
+    final labels = <LabelCandidate>[];
+    for (final tally in searchEnabled ? await memories.topLabels() : const []) {
+      if (!MemoryBuilder.isPresentableLabel(tally.label)) continue;
+      if (tally.assetCount < MemoryBuilder.minThemeAssets) continue;
+      labels.add(
+        (
+          label: tally.label,
+          assets: await memories.assetsForLabel(tally.label),
+        ),
+      );
+    }
+
+    // Person memories are built from face clusters, so they only exist when the
+    // user consented to face detection. Memories-on/faces-off still yields
+    // on-this-day and theme memories.
+    final people = <PersonCandidate>[];
+    final summaries = facesEnabled
+        ? await faces.watchPersonSummaries().first
+        : const <PersonSummary>[];
+    for (final p in summaries.take(_personCandidateLimit)) {
+      // Unnamed clusters have no title to show, so they can't be a memory.
+      final name = p.displayName;
+      if (name == null || name.isEmpty) continue;
+      if (p.faceCount < _minPersonFaces) continue;
+      final assets = await faces.assetsForPerson(p.id);
+      people.add(
+        (
+          personId: p.id,
+          name: name,
+          coverAssetId: p.coverAssetId,
+          assets: [
+            for (final a in assets) (assetId: a.id, createdAt: a.createdAt),
+          ],
+        ),
+      );
+    }
+
+    return Isolate.run(
+      () => MemoryBuilder.build(
+        today: now,
+        onThisDay: onThisDay,
+        recentDated: recentDated,
+        labels: labels,
+        people: people,
+      ),
+    );
+  }
+
+  /// How many of the most-photographed people are even considered — bounds the
+  /// per-person asset queries above.
+  static const _personCandidateLimit = 10;
+
+  /// A person needs at least this many detected faces before their cluster is
+  /// trustworthy enough to headline a memory.
+  static const _minPersonFaces = 15;
+
+  Future<void> _indexOne(
+    String id, {
+    required bool searchEnabled,
+    required bool facesEnabled,
+  }) async {
     try {
       final meta = await photos.assetIndexMeta(id);
       if (meta == null) return; // unresolvable — retried next pass
@@ -362,17 +589,26 @@ class IndexingService {
       var labels = const <Label>[];
       var text = '';
       var detectedFaces = const <DetectedFace>[];
-      final bytes = await photos.thumbnail(id, 512, 512);
+      // No consented feature needs pixels, so don't even render a thumbnail.
+      final bytes = (searchEnabled || facesEnabled)
+          ? await photos.thumbnail(id, 512, 512)
+          : null;
       if (bytes != null) {
         final file = await _writeTemp('sg_idx', id, bytes);
         // A larger thumbnail for OCR only — recovers small text the 512 misses.
         // Labels/faces stay on the 512 file (bounded memory, stable box space).
-        final ocrBytes = await photos.thumbnail(id, _ocrEdge, _ocrEdge);
+        final ocrBytes = searchEnabled
+            ? await photos.thumbnail(id, _ocrEdge, _ocrEdge)
+            : null;
         final ocrFile =
             ocrBytes != null ? await _writeTemp('sg_ocr', id, ocrBytes) : null;
         try {
-          final analysis =
-              await worker.analyzeFile(file.path, ocrPath: ocrFile?.path);
+          final analysis = await worker.analyzeFile(
+            file.path,
+            ocrPath: ocrFile?.path,
+            content: searchEnabled,
+            faces: facesEnabled,
+          );
           labels = analysis.labels;
           text = analysis.text;
           detectedFaces = analysis.faces;
@@ -391,17 +627,20 @@ class IndexingService {
         labels: labels,
         text: text,
       );
-      // FaceRecord is structurally identical to DetectedFace.
-      await faces.insertFaces(id, [
-        for (final f in detectedFaces)
-          (
-            left: f.left,
-            top: f.top,
-            right: f.right,
-            bottom: f.bottom,
-            embedding: f.embedding,
-          ),
-      ]);
+      // FaceRecord is structurally identical to DetectedFace. Nothing to insert
+      // when face detection is off — the worker returns no faces either.
+      if (facesEnabled) {
+        await faces.insertFaces(id, [
+          for (final f in detectedFaces)
+            (
+              left: f.left,
+              top: f.top,
+              right: f.right,
+              bottom: f.bottom,
+              embedding: f.embedding,
+            ),
+        ]);
+      }
     } catch (e, st) {
       _log.warning('Indexing failed for $id', e, st);
     }
@@ -427,6 +666,7 @@ final indexingServiceProvider = Provider<IndexingService>((ref) {
   final service = IndexingService(
     dao: ref.watch(indexDaoProvider),
     faces: ref.watch(facesDaoProvider),
+    memories: ref.watch(memoriesDaoProvider),
     settings: ref.watch(settingsDaoProvider),
     photos: ref.watch(photoLibraryServiceProvider),
     worker: ref.watch(mlWorkerProvider),

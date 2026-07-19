@@ -16,11 +16,12 @@ import '../../widgets/month_section_header.dart';
 import '../folders/folders_providers.dart';
 import '../library/month_grid_screen.dart' show CenteredNote;
 import '../people/people_providers.dart';
+import '../settings/consent_provider.dart';
 import '../people/widgets/face_avatar.dart';
 import 'domain/search_date.dart';
 import 'search_providers.dart';
 
-/// Metadata search (`/search`, pushed from the Library app bar). Searches the
+/// Metadata search (`/search`, the second bottom-nav tab). Searches the
 /// library by capture date ("June 2026", "2026"), media type, favorites, and
 /// album name — the metadata available before ML indexing lands.
 class SearchScreen extends ConsumerStatefulWidget {
@@ -32,12 +33,14 @@ class SearchScreen extends ConsumerStatefulWidget {
 
 class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _controller = TextEditingController();
+  final _focusNode = FocusNode();
   Timer? _debounce;
 
   @override
   void dispose() {
     _debounce?.cancel();
     _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -61,6 +64,17 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final colors = Theme.of(context).extension<AppColors>()!;
     final styles = Theme.of(context).extension<AppTextStyles>()!;
 
+    // Focus follows the tab: typing starts as soon as Search is selected, and
+    // the keyboard leaves with the tab rather than lingering over the branch
+    // the user switched to.
+    ref.listen<bool>(searchTabActiveProvider, (_, active) {
+      if (active) {
+        _focusNode.requestFocus();
+      } else {
+        _focusNode.unfocus();
+      }
+    });
+
     final query = ref.watch(searchQueryProvider);
     final type = ref.watch(searchTypeProvider);
     final favoritesOnly = ref.watch(searchFavoritesOnlyProvider);
@@ -71,16 +85,26 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        // The field spans the full title area so taps anywhere in the bar focus
+        // it, while its *text* is inset to 16 — the same left edge as the filter
+        // pills and results below. Leaving both at 0 hung the query and hint 16
+        // px left of every other element on the screen.
         titleSpacing: 0,
         title: TextField(
           controller: _controller,
-          autofocus: true,
+          focusNode: _focusNode,
           textInputAction: TextInputAction.search,
           onChanged: _onChanged,
           style: styles.body.copyWith(color: Theme.of(context).colorScheme.onSurface),
           decoration: InputDecoration(
             border: InputBorder.none,
-            hintText: 'Search by date or album',
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+            // The hint only promises content matching when the user has
+            // actually enabled it — otherwise typing "dog" would silently
+            // return nothing after the field invited it.
+            hintText: ref.watch(searchEnabledProvider).value ?? false
+                ? 'Search photos, text, dates, albums'
+                : 'Search by date or album',
             hintStyle: styles.body.copyWith(color: colors.textMuted),
           ),
         ),
@@ -398,18 +422,24 @@ class _PeopleStrip extends StatelessWidget {
 }
 
 /// The starting prompt, shown before any query or facet is set.
-class _IdleHint extends StatelessWidget {
+class _IdleHint extends ConsumerWidget {
   const _IdleHint();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).extension<AppColors>()!;
     final styles = Theme.of(context).extension<AppTextStyles>()!;
+    final searchOn = ref.watch(searchEnabledProvider).value ?? false;
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 40),
         child: Text(
-          'Search your library by date, album name, or media type.',
+          searchOn
+              ? 'Search your library by what is in a photo, text it contains, '
+                  'date, album name, or media type.'
+              : 'Search your library by date, album name, or media type. '
+                  'Turn on content search in Settings to search by what is in '
+                  'a photo.',
           textAlign: TextAlign.center,
           style: styles.body.copyWith(color: colors.textSecondary),
         ),

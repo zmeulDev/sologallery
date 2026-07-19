@@ -9,13 +9,13 @@ analytics, no network calls after install.
 
 - Cross-platform (Android + iOS); robust consent + native permission
   handling for photo library access
-- **App bar:** search
+- **App bar:** settings (on Library)
 - **Main view:** gallery grouped by month — first 6 photos per month,
   newest first, plus a per-month "view all" button
 - **Detail view (on tap):** full-screen viewer with horizontal swipe;
   actions: favorite, delete, share, add to existing album; dedicated
   button to reveal EXIF metadata
-- **Bottom nav:** Home Gallery · Saved · Albums · Settings
+- **Bottom nav:** Home Gallery · Search · Saved · Albums
 
 ---
 
@@ -239,6 +239,7 @@ lib/
     database/                   # Drift DB, tables, DAOs
   features/
     library/ saved/ search/ albums/ detail/ people/ onboarding/ settings/
+    memories/                   # auto-curated memories: builder, carousel, player
     # edit/ (non-destructive editor) is spec'd but not built yet
   services/
     photo_library_service.dart  # photo_manager wrapper
@@ -248,6 +249,7 @@ lib/
     indexing_service.dart       # background indexing orchestration
   widgets/
     app_shell.dart              # bottom nav shell (StatefulShellRoute)
+    dot_nav_bar.dart            # nav destinations + dot indicator (golden-tested)
 test/                           # unit + widget + golden (mirrors lib/)
 integration_test/               # on-device tests (patrol)
 test_assets/                    # seeded device assets (Test strategy)
@@ -292,10 +294,12 @@ docs/
 | Screen | Route |
 |---|---|
 | Library | `/` |
+| Search | `/search` |
 | Saved | `/saved` |
 | Albums | `/albums` |
 | Detail | `/photo/:id` |
 | Album detail | `/album/:id` |
+| Memory player | `/memory/:id` |
 | Settings | `/settings` |
 
 ---
@@ -488,6 +492,22 @@ Short form; full postmortems in `docs/postmortems/`.
   accessibility service is active (semantics tree built lazily). For
   on-device verification, tap at computed coordinates and read
   `adb logcat`; assert screen/state correctness in widget tests.
+  **In practice, don't drive the UI by coordinates at all — write a `patrol`
+  test instead.** Enabling a stock accessibility service
+  (`settings put secure enabled_accessibility_services …accessibilitymenu/…`)
+  does *not* populate the tree either (the dump stays a single bare node), so
+  there is no adb route to finding a button. Coordinate taps also fail silently
+  in two distinct ways worth recognising: right after `am start` the activity
+  can reject input entirely — logcat shows
+  `InputDispatcher: Not sending touch gesture … NO_INPUT_CHANNEL` and *every*
+  tap is swallowed, so a whole coordinate sweep proves nothing (relaunch via
+  `monkey -p <pkg> -c android.intent.category.LAUNCHER 1` and re-check for that
+  line before trusting a negative result); and a blind sweep can *succeed* at
+  something you didn't intend — one run silently hit "Continue" on the consent
+  step and recorded consent, which only showed up later in the pulled DB.
+  Patrol's Flutter finders (`$('text')`, `$(Switch).at(n)`,
+  `find.byTooltip(...)`) make all of this a non-issue and double as the
+  end-to-end verification artifact.
 - **Debug builds inject the `INTERNET` permission** (Dart VM service /
   hot reload) — expected. Verify the **release** merged manifest instead
   (Definition of Done #5): no `INTERNET`/`READ_PHONE_STATE`/`c2dm`.
@@ -549,6 +569,62 @@ Short form; full postmortems in `docs/postmortems/`.
   (Settings) lazily builds — assert off-screen sections/rows only after
   `tester.binding.setSurfaceSize(tall)` (reset with `setSurfaceSize(null)`), else
   `find.text` on a below-the-fold row returns nothing.
+- **Bottom-nav taps in widget tests need the shell's entry transition to finish.**
+  `pumpApp` + a 50 ms pump leaves the shell route mid-slide — the whole nav bar
+  sits ~176 px right of its final position, so `tap(find.byTooltip(...))` on a
+  right-hand destination derives an offset outside the 800×600 test surface and
+  silently misses (only a `warnIfMissed` warning, then the *next* expect fails).
+  Pump ~500 ms (still bounded — spinners forbid `pumpAndSettle`) before tapping.
+  Also, `StatefulShellRoute.indexedStack` keeps a visited branch in the tree but
+  **offstage**, so asserting on a backgrounded tab's widgets needs
+  `find.byType(X, skipOffstage: false)`. Branches are built lazily on first
+  visit, not eagerly.
+- **On-device manual verification: `pm grant` does not get you past onboarding, and
+  the app DB is the only readable state.** `PhotoManager` reports the permission
+  as *not yet requested* until the in-app request flow actually runs, so an
+  `adb shell pm grant`-ed install still lands on `/onboarding` and never opens
+  the database (an empty `app_flutter/` with no `.sqlite` is the tell). Tap the
+  onboarding button at computed coordinates first (Flutter is invisible to
+  `uiautomator`). After that, verify app state by pulling the DB —
+  `adb exec-out run-as com.example.sologallery cat
+  /data/data/com.example.sologallery/app_flutter/sologallery.sqlite > local.sqlite`
+  — and querying it locally; **`sqlite3` is not on the device**, and `run-as`
+  returns error text rather than failing, so a pulled `-wal`/`-shm` of ~100 bytes
+  means "no such file", not a real WAL. Pick observable side effects as tap
+  oracles: a DB write that only the target screen performs (Memories'
+  `seen_at` stamp on player open) proves navigation happened without a
+  screenshot, and re-tapping a *different* element afterwards proves the screen
+  was popped back. Also: `timeout` is not installed on macOS — don't wrap
+  `flutter run` in it.
+- **A device-only assertion needs a positive control, or it passes vacuously.**
+  `consent_test.dart` asserts the ML worker returns *no* faces when consent is
+  declined — trivially true on a library with no faces in it. The first version
+  scanned 5 assets, found none, and could not tell "the gate works" from "there
+  was nothing to find" (a probe showed only 6 of 60 real camera-roll photos
+  contain a detectable face). Pair every "derives nothing" assertion with a
+  same-run positive case proving the pipeline *would* have produced something,
+  and fail loudly when the control can't be established. Same shape as the
+  missed-permission trap above: `PhotoManager` returns empty rather than
+  throwing, so under-asserted device tests go green for the wrong reason.
+- **Use the bundled fixtures, not the camera roll — and note that a *drawn* face
+  is not detectable by default.** `tool/gen_test_assets.dart` generates
+  `test_assets/` (see its README); `assets/test_fixtures/synthetic_face.jpg` is
+  also bundled via `pubspec.yaml` so tests can `rootBundle.load` it without
+  seeding MediaStore and polluting a real photo library. ML Kit did **not**
+  detect the first synthetic face (flat shapes, hard edges). What made it work:
+  correct proportions (eyes on the horizontal midline ~one eye-width apart),
+  directional shading, and a final `gaussianBlur` so nothing has vector-sharp
+  edges. `integration_test/test_fixtures_test.dart` re-asserts detectability on
+  device, so an ML Kit bump that stops recognizing it fails loudly instead of
+  quietly hollowing out every consent test. No `ffmpeg`/`exiftool`/PIL on this
+  machine — `sips` does the HEIC conversion and the video asset must be supplied
+  by hand.
+- **`IndexingService` toggle methods kick a pass fire-and-forget, so `await
+  start()` right after one returns immediately** (`start()` no-ops while
+  `_running`). The Settings switch must not block on a full re-index, so
+  `setFacesEnabled(true)` calls `unawaited(start())`; a test that then awaits
+  `start()` asserts against an unfinished pass and sees empty tables. Poll for
+  the outcome with a deadline instead.
 - **`package_info_plus` has no host-platform channel** — `PackageInfo.fromPlatform()`
   throws in `flutter test`, so the `appVersionProvider` FutureProvider resolves to
   `AsyncError` (the About row shows `—`, no crash). Override it in widget tests
@@ -562,6 +638,12 @@ Short form; full postmortems in `docs/postmortems/`.
 
 - **App id / namespace:** still the `flutter create` default
   `com.example.sologallery` (both platforms). Change before any release.
+- **`patrol` CLI is not on PATH either:** `~/.pub-cache/bin/patrol`, and it
+  shells out to `adb`, so export platform-tools first or it fails at teardown
+  with `AdbExecutableNotFound`:
+  `PATH="$HOME/Library/Android/sdk/platform-tools:$PATH" ~/.pub-cache/bin/patrol test -t <file> -d <device>`.
+  Patrol files must run under `patrol test`; `flutter test integration_test/<patrol file>`
+  dies with "Binding is already initialized to IntegrationTestWidgetsFlutterBinding".
 - **adb not on PATH:** `~/Library/Android/sdk/platform-tools/adb`.
   Direct `./gradlew` calls need
   `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`

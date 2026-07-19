@@ -29,13 +29,31 @@ class FakeMlWorker implements MlWorker {
   /// 512 image) — lets tests assert the higher-res OCR pass was wired up.
   final List<String?> ocrCalls = [];
 
+  /// The consent flags passed with each call — let tests assert the user's
+  /// choices actually reach the worker.
+  final List<bool> faceRequests = [];
+  final List<bool> contentRequests = [];
+
   var disposed = false;
 
   @override
-  Future<ImageAnalysis> analyzeFile(String jpegPath, {String? ocrPath}) async {
+  Future<ImageAnalysis> analyzeFile(
+    String jpegPath, {
+    String? ocrPath,
+    bool content = true,
+    bool faces = true,
+  }) async {
     calls.add(jpegPath);
     ocrCalls.add(ocrPath);
-    return (labels: labels, text: text, faces: faces);
+    faceRequests.add(faces);
+    contentRequests.add(content);
+    // Mirrors the real worker's contract: no consent, no result — so a caller
+    // that forgets to gate its insert still can't smuggle derived data through.
+    return (
+      labels: content ? labels : const <Label>[],
+      text: content ? text : '',
+      faces: faces ? this.faces : const <DetectedFace>[],
+    );
   }
 
   @override

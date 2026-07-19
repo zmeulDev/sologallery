@@ -83,6 +83,22 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
   /// `photo_asset`) via `FacesDao.clearPersons`.
   Future<int> clearIndex() => delete(photoAssets).go();
 
+  /// Deletes every derived label and OCR text, leaving the `photo_asset` cache
+  /// (and so face embeddings) intact. Used when the user withdraws
+  /// content-search consent — there is no asset wipe to cascade from.
+  Future<void> clearContent() async {
+    await delete(photoLabels).go();
+    await delete(photoTexts).go();
+  }
+
+  /// Marks every cached asset as awaiting ML analysis again, without deleting
+  /// the labels/OCR text already derived (`upsertIndexed` replaces those in
+  /// place). Backs enabling face detection after the library was already
+  /// indexed: those assets have `indexed_at` set, so [pendingMlIds] would
+  /// otherwise never return them and their faces would never be computed.
+  Future<int> resetMlPending() => update(photoAssets)
+      .write(const PhotoAssetsCompanion(indexedAt: Value(null)));
+
   /// Ids awaiting ML analysis (`indexed_at IS NULL`), newest first so recent
   /// photos are labelled first. Replaces the old indexed/library set-diff.
   Future<List<String>> pendingMlIds() {

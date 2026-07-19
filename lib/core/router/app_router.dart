@@ -10,11 +10,13 @@ import '../../features/folders/folder_detail_screen.dart';
 import '../../features/library/library_screen.dart';
 import '../../features/library/month_grid_screen.dart';
 import '../../features/library/older_grid_screen.dart';
+import '../../features/memories/memory_player_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/people/people_screen.dart';
 import '../../features/people/person_detail_screen.dart';
 import '../../features/saved/saved_screen.dart';
 import '../../features/search/search_screen.dart';
+import '../../features/settings/consent_provider.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
@@ -25,14 +27,18 @@ final _rootNavigatorKey = GlobalKey<NavigatorState>();
 /// App-wide [GoRouter], kept alive for the app's lifetime. Routing structure
 /// is documented in docs/spec.md#routing.
 ///
-/// A [redirect] gates the whole app on photo-library access: without it the
-/// user is held on `/onboarding`. It re-runs whenever [permissionProvider]
+/// A [redirect] gates the whole app on photo-library access **and** on the
+/// on-device analysis consent prompt: without either the user is held on
+/// `/onboarding`. It re-runs whenever [permissionProvider] or [consentProvider]
 /// changes (via the [ValueNotifier] refresh bridge), so granting access in the
-/// onboarding flow — or revoking it in system settings mid-session — moves the
-/// user to the right place automatically.
+/// onboarding flow, answering the consent step, or revoking access in system
+/// settings mid-session all move the user to the right place automatically.
 final routerProvider = Provider<GoRouter>((ref) {
-  final refresh = ValueNotifier<PhotoAccess>(ref.read(permissionProvider));
-  ref.listen<PhotoAccess>(permissionProvider, (_, next) => refresh.value = next);
+  // The value is only a change signal — the redirect reads both providers
+  // itself — so consent changes just bump the counter.
+  final refresh = ValueNotifier<int>(0);
+  ref.listen<PhotoAccess>(permissionProvider, (_, _) => refresh.value++);
+  ref.listen<ConsentState>(consentProvider, (_, _) => refresh.value++);
   ref.onDispose(refresh.dispose);
 
   return GoRouter(
@@ -43,6 +49,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       final canRead = ref.read(permissionProvider).canReadLibrary;
       final onOnboarding = state.matchedLocation == '/onboarding';
       if (!canRead) return onOnboarding ? null : '/onboarding';
+      // Access granted but the consent step is still owed — the onboarding
+      // screen shows it. `unresolved` deliberately doesn't redirect (see
+      // ConsentNotifier), so an existing user never flashes past it.
+      if (ref.read(consentProvider) == ConsentState.needed) {
+        return onOnboarding ? null : '/onboarding';
+      }
       if (onOnboarding) return '/';
       return null;
     },
@@ -63,9 +75,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const OlderGridScreen(),
       ),
       GoRoute(
-        path: '/search',
+        path: '/settings',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const SearchScreen(),
+        builder: (context, state) => const SettingsScreen(),
       ),
       GoRoute(
         path: '/people',
@@ -120,6 +132,15 @@ final routerProvider = Provider<GoRouter>((ref) {
               PhotoViewerArgs([state.pathParameters['id']!], 0),
         ),
       ),
+      GoRoute(
+        // Full-screen like the detail viewer, so it sits outside the shell —
+        // the nav bar would break the story.
+        path: '/memory/:id',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => MemoryPlayerScreen(
+          memoryId: int.parse(state.pathParameters['id']!),
+        ),
+      ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             AppShell(navigationShell: navigationShell),
@@ -129,6 +150,14 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/',
                 builder: (context, state) => const LibraryScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/search',
+                builder: (context, state) => const SearchScreen(),
               ),
             ],
           ),
@@ -145,14 +174,6 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/albums',
                 builder: (context, state) => const AlbumsScreen(),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/settings',
-                builder: (context, state) => const SettingsScreen(),
               ),
             ],
           ),

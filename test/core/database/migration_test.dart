@@ -9,7 +9,7 @@ import 'generated_migrations/schema.dart';
 /// committed dump (`drift_schemas/`). We validate every path *to current* (not
 /// each intermediate step) because `onUpgrade`'s `createTable` calls use the
 /// live table definitions, so a stopped-at-vN run would reflect the current
-/// photo_assets shape, not vN's — only the end state (v4) is historically exact.
+/// photo_assets shape, not vN's — only the end state is historically exact.
 void main() {
   late SchemaVerifier verifier;
 
@@ -25,38 +25,46 @@ void main() {
     await verifier.migrateAndValidate(db, 1);
   });
 
-  test('upgrades v1 → v5 (fresh photo_asset in current shape + app_settings)',
+  test('upgrades v1 → v6 (fresh photo_asset in current shape + all later tables)',
       () async {
     final connection = await verifier.startAt(1);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 5);
+    await verifier.migrateAndValidate(db, 6);
   });
 
-  test('upgrades v2 → v5 (adds photo_text + alters photo_asset + app_settings)',
+  test('upgrades v2 → v6 (adds photo_text + alters photo_asset + settings/memories)',
       () async {
     final connection = await verifier.startAt(2);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 5);
+    await verifier.migrateAndValidate(db, 6);
   });
 
-  test('upgrades v3 → v5 (photo_asset.indexed_at nullable + is_dated + settings)',
+  test('upgrades v3 → v6 (photo_asset.indexed_at nullable + is_dated + rest)',
       () async {
     final connection = await verifier.startAt(3);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 5);
+    await verifier.migrateAndValidate(db, 6);
   });
 
-  test('upgrades v4 → v5 (adds app_settings)', () async {
+  test('upgrades v4 → v6 (adds app_settings + memories)', () async {
     final connection = await verifier.startAt(4);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 5);
+    await verifier.migrateAndValidate(db, 6);
+  });
+
+  test('upgrades v5 → v6 (adds memories + memory_entries)', () async {
+    final connection = await verifier.startAt(5);
+    final db = AppDatabase(connection);
+    addTearDown(db.close);
+
+    await verifier.migrateAndValidate(db, 6);
   });
 }

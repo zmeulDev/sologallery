@@ -4,6 +4,7 @@ import '../../core/database/app_database.dart' show Person;
 import '../../core/database/daos/faces_dao.dart' show PersonSummary;
 import '../../core/database/database_provider.dart';
 import '../../services/photo_library_service.dart' show AssetRef;
+import '../settings/consent_provider.dart';
 
 /// A person's cover face: the asset to crop and the box within its 512-thumb.
 typedef CoverFace = ({
@@ -16,10 +17,17 @@ typedef CoverFace = ({
 
 /// Clustered people with a face count, most-photographed first. A DB stream so
 /// the list grows as indexing/clustering progresses.
+///
+/// Empty unless the user turned face detection on (opt-in; see
+/// [ConsentNotifier]) — disabling deletes the clusters anyway, but gating here
+/// means every people surface goes quiet the instant consent is withdrawn,
+/// without each one re-checking the flag.
 final personSummariesProvider =
-    StreamProvider.autoDispose<List<PersonSummary>>(
-  (ref) => ref.watch(facesDaoProvider).watchPersonSummaries(),
-);
+    StreamProvider.autoDispose<List<PersonSummary>>((ref) {
+  final enabled = ref.watch(facesEnabledProvider).value ?? false;
+  if (!enabled) return Stream.value(const []);
+  return ref.watch(facesDaoProvider).watchPersonSummaries();
+});
 
 /// A single person by id — drives the detail app-bar title/rename.
 final personProvider = StreamProvider.autoDispose.family<Person?, int>(

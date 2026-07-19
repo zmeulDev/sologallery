@@ -24,6 +24,23 @@ final searchQueryProvider =
   SearchQueryNotifier.new,
 );
 
+/// Whether the Search tab is the selected bottom-nav branch. Written by
+/// `AppShell`, read by [SearchScreen] to take and release focus on the query
+/// field — `StatefulShellRoute.indexedStack` builds every branch eagerly, so
+/// an `autofocus` field would grab focus at boot on the Library tab. Kept
+/// alive (no `autoDispose`) because it is shell-lifetime state.
+class SearchTabActiveNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void set(bool value) => state = value;
+}
+
+final searchTabActiveProvider =
+    NotifierProvider<SearchTabActiveNotifier, bool>(
+  SearchTabActiveNotifier.new,
+);
+
 /// The media-type facet (default: everything).
 class SearchTypeNotifier extends Notifier<MediaTypeFilter> {
   @override

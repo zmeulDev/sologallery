@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -117,5 +119,81 @@ void main() {
     expect(find.text('Select more photos'), findsNothing);
     expect(find.text('Open system settings'), findsNothing);
     await disposeTree(tester);
+  });
+
+  group('on-device analysis', () {
+    testWidgets('every toggle starts off, People hidden, Analysis reads Off',
+        (tester) async {
+      await pump(tester);
+
+      expect(find.text('ON-DEVICE ANALYSIS'), findsOneWidget);
+      expect(find.text('Content search'), findsOneWidget);
+      expect(find.text('Memories'), findsOneWidget);
+      expect(find.text('Face detection'), findsOneWidget);
+      final switches = tester.widgetList<Switch>(find.byType(Switch)).toList();
+      expect(switches, hasLength(3));
+      expect(switches.every((s) => s.value == false), isTrue);
+      // A People count with face detection off would read as a bug.
+      expect(find.text('People'), findsNothing);
+      // "Up to date" would imply analysis ran; nothing is consented, so none did.
+      expect(find.text('Off'), findsOneWidget);
+
+      await disposeTree(tester);
+    });
+
+    testWidgets('reflects stored settings and shows People when faces are on',
+        (tester) async {
+      await db.settingsDao.setSearchEnabled(true);
+      await db.settingsDao.setMemoriesEnabled(true);
+      await db.settingsDao.setFacesEnabled(true);
+
+      await pump(tester);
+
+      final switches = tester.widgetList<Switch>(find.byType(Switch)).toList();
+      expect(switches.every((s) => s.value == true), isTrue);
+      expect(find.text('People'), findsOneWidget);
+
+      await disposeTree(tester);
+    });
+
+    testWidgets('toggling Content search on persists the choice',
+        (tester) async {
+      await pump(tester);
+
+      await tester.tap(find.byType(Switch).first);
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(await db.settingsDao.readSearchEnabled(), isTrue);
+      expect(await db.settingsDao.readMemoriesEnabled(), isFalse);
+      expect(await db.settingsDao.readFacesEnabled(), isFalse);
+
+      await disposeTree(tester);
+    });
+
+    testWidgets('turning face detection off deletes the faces already found',
+        (tester) async {
+      await db.settingsDao.setFacesEnabled(true);
+      await seedCache();
+      await db.facesDao.insertFaces('p1', [
+        (
+          left: 0,
+          top: 0,
+          right: 10,
+          bottom: 10,
+          embedding: Float32List.fromList(List.filled(192, 0.1)),
+        ),
+      ]);
+      await db.facesDao.createPerson(coverAssetId: 'p1');
+
+      await pump(tester);
+      // Second switch is Face detection.
+      await tester.tap(find.byType(Switch).last);
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(await db.select(db.faceEmbeddings).get(), isEmpty);
+      expect(await db.select(db.persons).get(), isEmpty);
+
+      await disposeTree(tester);
+    });
   });
 }

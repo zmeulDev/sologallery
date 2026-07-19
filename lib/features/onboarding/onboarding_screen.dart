@@ -5,11 +5,20 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
+import '../../widgets/consent_switch.dart';
+import '../settings/consent_provider.dart';
 
-/// First-run gate. The router sends the user here whenever the app lacks
-/// library access (see `app_router.dart` redirect). It leads with the app's
-/// one promise — photos never leave the device — then asks for access. When
-/// access is granted the redirect moves the user on to the Library.
+/// First-run gate, in two steps. The router sends the user here whenever the app
+/// lacks library access *or* still owes the analysis-consent question (see
+/// `app_router.dart` redirect).
+///
+/// Step 1 leads with the app's one promise — photos never leave the device —
+/// then asks for access. Step 2 asks which on-device features to turn on; both
+/// are off until chosen. When both are settled the redirect moves the user on to
+/// the Library.
+///
+/// The step is derived from [permissionProvider] + [consentProvider] rather than
+/// held locally, so access revoked mid-flow correctly falls back to step 1.
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -34,14 +43,36 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     }
   }
 
+  /// The step-2 answers. All start off: consent is a choice the user makes,
+  /// not one they have to undo.
+  bool _search = false;
+  bool _memories = false;
+  bool _faces = false;
+
   Future<void> _requestAccess() async {
     await ref.read(permissionProvider.notifier).request();
     if (mounted) setState(() => _attempted = true);
   }
 
+  Future<void> _recordConsent() {
+    return ref.read(consentProvider.notifier).record(
+          search: _search,
+          memories: _memories,
+          faces: _faces,
+        );
+  }
+
   @override
   Widget build(BuildContext context) {
     final access = ref.watch(permissionProvider);
+    if (access.canReadLibrary &&
+        ref.watch(consentProvider) == ConsentState.needed) {
+      return _buildConsentStep(context);
+    }
+    return _buildAccessStep(context, access);
+  }
+
+  Widget _buildAccessStep(BuildContext context, PhotoAccess access) {
     final colors = Theme.of(context).extension<AppColors>()!;
     final text = Theme.of(context).extension<AppTextStyles>()!;
     final scheme = Theme.of(context).colorScheme;
@@ -121,6 +152,155 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// Step 2: which on-device features to turn on. Deliberately the same
+  /// skeleton as step 1 — same eyebrow, headline scale, row rhythm, and pill
+  /// CTA — so it reads as the rest of one promise rather than a bolted-on
+  /// permission wall. The rows are [_Assurance]'s anatomy with the leading dot
+  /// traded for a trailing switch: same voice, but now the user answers.
+  Widget _buildConsentStep(BuildContext context) {
+    final colors = Theme.of(context).extension<AppColors>()!;
+    final text = Theme.of(context).extension<AppTextStyles>()!;
+    final scheme = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'SoloGallery',
+                style: text.sectionLabel.copyWith(color: colors.textSecondary),
+              ),
+              // Scrollable rather than Spacer-padded: three switch rows plus
+              // the headline overflow a short screen at large font scales, and
+              // a RenderFlex overflow is a hard failure on device.
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 32),
+                      Text(
+                        'What should stay\non the shelf?',
+                        style: TextStyle(
+                          fontSize: 34,
+                          height: 1.08,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.4,
+                          color: scheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Text(
+                        'SoloGallery can look through your photos to make them '
+                        'easier to find. It all happens on this device — and '
+                        'none of it starts until you say so.',
+                        style: text.body.copyWith(color: colors.textSecondary),
+                      ),
+                      const SizedBox(height: 32),
+                      _ConsentToggle(
+                        label: 'CONTENT SEARCH',
+                        detail: 'Find photos by what is in them, and by text '
+                            'they contain',
+                        value: _search,
+                        onChanged: (v) => setState(() => _search = v),
+                      ),
+                      _ConsentToggle(
+                        label: 'MEMORIES',
+                        detail: 'Occasional highlights built from photos you '
+                            'already have',
+                        value: _memories,
+                        onChanged: (v) => setState(() => _memories = v),
+                      ),
+                      _ConsentToggle(
+                        label: 'FACE DETECTION',
+                        detail: "Groups photos by who's in them. Faces never "
+                            'leave this device.',
+                        value: _faces,
+                        onChanged: (v) => setState(() => _faces = v),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
+                ),
+              ),
+              _PrimaryButton(
+                label: 'Continue',
+                busy: _busy,
+                onPressed: _busy ? null : () => _run(_recordConsent),
+              ),
+              const SizedBox(height: 14),
+              Center(
+                child: Text(
+                  'Your photos open next either way.',
+                  textAlign: TextAlign.center,
+                  style: text.caption.copyWith(color: colors.textMuted),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A consent row: [_Assurance]'s tracked-uppercase label over a plain-language
+/// detail, with a switch where the hairline dot would be. The switch is the
+/// row's only marker — a dot as well would be two signals for one row.
+class _ConsentToggle extends StatelessWidget {
+  const _ConsentToggle({
+    required this.label,
+    required this.detail,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String detail;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppColors>()!;
+    final text = Theme.of(context).extension<AppTextStyles>()!;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: text.sectionLabel.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  detail,
+                  style: text.caption.copyWith(color: colors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          ConsentSwitch(
+            value: value,
+            onChanged: onChanged,
+            semanticLabel: label,
+          ),
+        ],
       ),
     );
   }

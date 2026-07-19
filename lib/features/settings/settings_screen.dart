@@ -7,6 +7,8 @@ import '../../core/theme/app_text_styles.dart';
 import '../../services/indexing_service.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
+import '../../widgets/consent_switch.dart';
+import 'consent_provider.dart';
 import 'settings_providers.dart';
 import 'theme_mode_provider.dart';
 import 'widgets/theme_mode_picker.dart';
@@ -27,6 +29,7 @@ class SettingsScreen extends ConsumerWidget {
         children: const [
           _PhotoAccessGroup(),
           _LibraryGroup(),
+          _OnDeviceGroup(),
           _IndexGroup(),
           _AppearanceGroup(),
           _AboutGroup(),
@@ -91,15 +94,24 @@ class _LibraryGroup extends ConsumerWidget {
     final totals = ref.watch(libraryTotalsProvider);
     final people = ref.watch(peopleCountProvider);
     final status = ref.watch(indexingStatusProvider);
+    // With face detection off there are no clusters to count, and a bare "0"
+    // reads as a bug rather than a choice — the row goes away instead.
+    final facesOn = ref.watch(facesEnabledProvider).value ?? false;
 
     final images = totals.whenOrNull(
       data: (t) => (t.photos - t.videos).toString(),
     );
     final videos = totals.whenOrNull(data: (t) => t.videos.toString());
     final peopleCount = people.whenOrNull(data: (n) => n.toString());
-    final analysis = status.whenOrNull(
-      data: (s) => s.isIndexing ? 'Analyzing… ${s.remaining} left' : 'Up to date',
-    );
+    // "Up to date" would imply analysis happened. With nothing consented none
+    // runs at all, so the row has to say that rather than imply a finished job.
+    final searchOn = ref.watch(searchEnabledProvider).value ?? false;
+    final analysis = (!searchOn && !facesOn)
+        ? 'Off'
+        : status.whenOrNull(
+            data: (s) =>
+                s.isIndexing ? 'Analyzing… ${s.remaining} left' : 'Up to date',
+          );
 
     return _Group(
       label: 'Library',
@@ -107,8 +119,53 @@ class _LibraryGroup extends ConsumerWidget {
         children: [
           _InfoRow(label: 'Photos', value: images ?? '—'),
           _InfoRow(label: 'Videos', value: videos ?? '—'),
-          _InfoRow(label: 'People', value: peopleCount ?? '—'),
+          if (facesOn) _InfoRow(label: 'People', value: peopleCount ?? '—'),
           _InfoRow(label: 'Analysis', value: analysis ?? '—'),
+        ],
+      ),
+    );
+  }
+}
+
+// --- On-device analysis ----------------------------------------------------
+
+/// The consent toggles, mirroring what onboarding asked. Turning one off
+/// deletes what it derived; the side effects live on [IndexingService] so both
+/// entry points share one implementation.
+class _OnDeviceGroup extends ConsumerWidget {
+  const _OnDeviceGroup();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final search = ref.watch(searchEnabledProvider).value ?? false;
+    final memories = ref.watch(memoriesEnabledProvider).value ?? false;
+    final faces = ref.watch(facesEnabledProvider).value ?? false;
+    final indexing = ref.read(indexingServiceProvider);
+
+    return _Group(
+      label: 'On-device analysis',
+      child: _Card(
+        children: [
+          _SwitchRow(
+            label: 'Content search',
+            caption: 'Find photos by what is in them, and by text they '
+                'contain. Turning this off deletes what was found.',
+            value: search,
+            onChanged: indexing.setSearchEnabled,
+          ),
+          _SwitchRow(
+            label: 'Memories',
+            caption: 'Occasional highlights built from photos you already have.',
+            value: memories,
+            onChanged: indexing.setMemoriesEnabled,
+          ),
+          _SwitchRow(
+            label: 'Face detection',
+            caption: "Groups photos by who's in them. Turning this off deletes "
+                'the faces already found.',
+            value: faces,
+            onChanged: indexing.setFacesEnabled,
+          ),
         ],
       ),
     );
@@ -137,13 +194,23 @@ class _IndexGroup extends ConsumerWidget {
   }
 
   Future<void> _confirmRebuild(BuildContext context, WidgetRef ref) async {
+    // Name only what is actually switched on — promising to re-run "labels,
+    // text, and people" when the user declined them describes work that will
+    // not happen.
+    final enabled = [
+      if (ref.read(searchEnabledProvider).value ?? false) 'labels and text',
+      if (ref.read(facesEnabledProvider).value ?? false) 'people',
+    ];
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Rebuild index?'),
-        content: const Text(
-          'Re-scans your whole library and re-runs on-device analysis — labels, '
-          'text, and people. Your photos are never changed.',
+        content: Text(
+          enabled.isEmpty
+              ? 'Re-scans your whole library. No on-device analysis is turned '
+                  'on, so nothing is analyzed. Your photos are never changed.'
+              : 'Re-scans your whole library and re-runs on-device analysis — '
+                  '${enabled.join(' and ')}. Your photos are never changed.',
         ),
         actions: [
           TextButton(
@@ -322,6 +389,59 @@ class _CaptionRow extends StatelessWidget {
       child: Text(
         text,
         style: styles.caption.copyWith(color: colors.textMuted),
+      ),
+    );
+  }
+}
+
+/// A toggle row: [_ActionRow]'s anatomy with a switch where the chevron sits,
+/// so the trailing element always says what the row does — chevron navigates,
+/// switch toggles.
+class _SwitchRow extends StatelessWidget {
+  const _SwitchRow({
+    required this.label,
+    required this.caption,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String caption;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final styles = Theme.of(context).extension<AppTextStyles>()!;
+    final colors = Theme.of(context).extension<AppColors>()!;
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: styles.body.copyWith(color: scheme.onSurface),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  caption,
+                  style: styles.caption.copyWith(color: colors.textMuted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          ConsentSwitch(
+            value: value,
+            onChanged: onChanged,
+            semanticLabel: label,
+          ),
+        ],
       ),
     );
   }

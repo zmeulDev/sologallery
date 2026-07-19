@@ -135,6 +135,12 @@ class FacesDao extends DatabaseAccessor<AppDatabase> with _$FacesDaoMixin {
   /// re-runs from scratch on the next indexing pass.
   Future<int> clearPersons() => delete(persons).go();
 
+  /// Deletes every stored face embedding, leaving the `photo_asset` cache (and
+  /// so labels and OCR text) intact. Used when the user withdraws face-detection
+  /// consent — unlike "Rebuild index" there is no asset wipe to cascade from, so
+  /// the embeddings have to go explicitly.
+  Future<int> clearFaces() => delete(faceEmbeddings).go();
+
   // --- Global re-cluster ---------------------------------------------------
 
   /// Every stored face with its current person + asset + embedding, ordered by

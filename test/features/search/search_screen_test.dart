@@ -60,7 +60,7 @@ void main() {
         child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
       ),
     );
-    // Bounded pumps only — the autofocused TextField never lets the tree settle.
+    // Bounded pumps only — a focused TextField's cursor blink never settles.
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
   }

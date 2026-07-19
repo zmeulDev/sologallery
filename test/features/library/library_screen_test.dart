@@ -6,6 +6,7 @@ import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/library/domain/year_month.dart';
 import 'package:sologallery/features/library/library_providers.dart';
 import 'package:sologallery/features/library/library_screen.dart';
+import 'package:sologallery/features/memories/memories_providers.dart';
 import 'package:sologallery/services/indexing_service.dart';
 import 'package:sologallery/services/permission_provider.dart';
 import 'package:sologallery/services/photo_library_service.dart';
@@ -50,6 +51,10 @@ void main() {
           path: '/older',
           builder: (_, _) => const Scaffold(body: Text('older-grid')),
         ),
+        GoRoute(
+          path: '/settings',
+          builder: (_, _) => const Scaffold(body: Text('settings')),
+        ),
       ],
     );
     await tester.pumpWidget(
@@ -57,6 +62,9 @@ void main() {
         overrides: [
           photoLibraryServiceProvider.overrideWithValue(fake),
           libraryCacheReadyProvider.overrideWithValue(AsyncData(cacheReady)),
+          // The carousel would otherwise reach the real database through
+          // memoriesDaoProvider; the carousel has its own test file.
+          memoriesProvider.overrideWithValue(const AsyncData([])),
           libraryMonthCountsProvider.overrideWithValue(AsyncData(counts)),
           monthPreviewsProvider.overrideWith(
             (ref, month) => Stream.value([
@@ -115,6 +123,14 @@ void main() {
     await tester.tap(find.text('View all 7'));
     await tester.pumpAndSettle();
     expect(find.text('month'), findsOneWidget);
+  });
+
+  testWidgets('tapping the app-bar gear opens Settings', (tester) async {
+    await pump(tester, access: PhotoAccess.granted);
+
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await tester.pumpAndSettle();
+    expect(find.text('settings'), findsOneWidget);
   });
 
   testWidgets('undated photos render a trailing Older section', (tester) async {

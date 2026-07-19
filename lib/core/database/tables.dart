@@ -165,6 +165,80 @@ class Persons extends Table {
   DateTimeColumn get createdAt => dateTime()();
 }
 
+/// An auto-curated "memory" — a titled collection the app generates from
+/// indexed metadata (date, ML labels, clustered people). Never user-authored:
+/// the background indexer rebuilds these from [PlannedMemory] plans.
+///
+/// [sourceKey] is the idempotence key (`otd:07-19:2024`, `trip:2025-06-01`,
+/// `theme:dog`, `person:3`). Regeneration upserts on it rather than wiping the
+/// table, so [seenAt] / [hidden] survive and the carousel never reshuffles
+/// under the user.
+///
+/// [coverAssetId] is `setNull` (not cascade) — deleting the cover photo must
+/// not delete the memory; a memory whose *entries* fall below its type's
+/// minimum is pruned by the next regeneration instead.
+class Memories extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  /// Stable regeneration key; see class docs.
+  TextColumn get sourceKey => text().unique()();
+
+  /// `MemoryKind.name`.
+  TextColumn get kind => text()();
+
+  TextColumn get title => text()();
+
+  TextColumn get subtitle => text().nullable()();
+
+  /// A `photo_manager` asset id used for the card cover.
+  TextColumn get coverAssetId => text()
+      .nullable()
+      .references(PhotoAssets, #assetId, onDelete: KeyAction.setNull)();
+
+  /// Carousel ordering weight, descending. Named `score` rather than `rank`
+  /// to stay clear of SQL's window-function name.
+  RealColumn get score => real()();
+
+  /// Optional display window — an "On this day" memory stops surfacing once
+  /// [periodEnd] has passed. NULL on both = always eligible.
+  DateTimeColumn get periodStart => dateTime().nullable()();
+
+  DateTimeColumn get periodEnd => dateTime().nullable()();
+
+  DateTimeColumn get generatedAt => dateTime()();
+
+  /// When the user first opened this memory (NULL = unseen).
+  DateTimeColumn get seenAt => dateTime().nullable()();
+
+  /// User-dismissed; excluded from the carousel but kept so regeneration
+  /// doesn't resurrect it.
+  BoolColumn get hidden => boolean().withDefault(const Constant(false))();
+}
+
+/// Ordered membership of a [Memories] row. Cascades from both sides: deleting
+/// the memory drops its entries, and deleting the underlying photo drops the
+/// entry (so memories self-heal as the library changes).
+@TableIndex(name: 'memory_entry_memory', columns: {#memoryId})
+class MemoryEntries extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  IntColumn get memoryId =>
+      integer().references(Memories, #id, onDelete: KeyAction.cascade)();
+
+  /// `photo_manager` asset id; cascades from [PhotoAssets].
+  TextColumn get assetId =>
+      text().references(PhotoAssets, #assetId, onDelete: KeyAction.cascade)();
+
+  /// Playback order within the memory, ascending (oldest first — a story
+  /// reads forward in time).
+  IntColumn get position => integer()();
+
+  @override
+  List<Set<Column>> get uniqueKeys => [
+        {memoryId, assetId},
+      ];
+}
+
 /// One detected face: its on-device embedding vector plus the bounding box (in
 /// the 512px indexing-thumbnail coordinate space, so avatars crop the cached
 /// thumbnail). [personId] is the cluster it was assigned to (null until

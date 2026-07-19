@@ -6,6 +6,7 @@ import '../../core/database/daos/faces_dao.dart' show PersonSummary;
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../library/month_grid_screen.dart' show CenteredNote;
+import '../settings/consent_provider.dart';
 import 'people_providers.dart';
 import 'widgets/face_avatar.dart';
 
@@ -17,6 +18,18 @@ class PeopleScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final people = ref.watch(personSummariesProvider);
+    // A deep link can land here with the feature off. Say so plainly and point
+    // at the fix, rather than the "still indexing" note — nothing is coming,
+    // and implying otherwise would be a lie.
+    if (!(ref.watch(facesEnabledProvider).value ?? false)) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('People')),
+        body: const CenteredNote(
+          'Face detection is off. Turn it on in Settings to group photos by '
+          'who\'s in them.',
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('People')),
       body: people.when(
