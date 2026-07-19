@@ -16,7 +16,10 @@ void main() {
   tearDown(() async => db.close());
 
   Future<void> pumpApp(WidgetTester tester) async {
-    // Grant access so the router redirect lands on the Library, not onboarding.
+    // Grant access *and* answer the analysis-consent prompt so the router
+    // redirect lands on the Library, not onboarding. Seeded through the real
+    // SettingsDao so these tests exercise the actual ConsentNotifier path.
+    await db.settingsDao.recordConsent();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -27,10 +30,12 @@ void main() {
         child: const SoloGalleryApp(),
       ),
     );
-    // Bounded pumps: the Saved/Albums branches (built eagerly by the indexed
-    // shell) show a spinner that animates forever, so pumpAndSettle would hang.
+    // Bounded pumps: the branches show a spinner that animates forever, so
+    // pumpAndSettle would hang. Long enough for the shell route's entry
+    // transition to finish — mid-slide the nav bar is offset and taps on the
+    // right-hand destinations land off-screen.
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 500));
   }
 
   // Dispose the tree + elapse time so the Drift stream store's dispose timer
@@ -47,9 +52,9 @@ void main() {
     await disposeTree(tester);
   });
 
-  testWidgets('renders all four nav destinations', (tester) async {
+  testWidgets('renders the four nav destinations in order', (tester) async {
     await pumpApp(tester);
-    for (final label in ['Library', 'Saved', 'Albums', 'Settings']) {
+    for (final label in ['Library', 'Search', 'Saved', 'Albums']) {
       // Each destination exposes a semantic label via Tooltip/Semantics.
       expect(find.byTooltip(label), findsOneWidget);
     }
@@ -66,6 +71,27 @@ void main() {
 
     expect(find.widgetWithText(AppBar, 'Albums'), findsOneWidget);
     expect(find.widgetWithText(AppBar, 'Library'), findsNothing);
+    await disposeTree(tester);
+  });
+
+  testWidgets('search field takes focus with the tab and releases it on leave',
+      (tester) async {
+    await pumpApp(tester);
+    // skipOffstage: false — once another tab is selected the Search branch
+    // stays in the tree (indexed shell) but goes offstage.
+    final field = find.byType(TextField, skipOffstage: false);
+
+    await tester.tap(find.byTooltip('Search'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(tester.widget<TextField>(field).focusNode?.hasFocus, isTrue);
+
+    // Leaving the tab releases focus so the keyboard doesn't linger.
+    await tester.tap(find.byTooltip('Saved'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(tester.widget<TextField>(field).focusNode?.hasFocus, isFalse);
+
     await disposeTree(tester);
   });
 }

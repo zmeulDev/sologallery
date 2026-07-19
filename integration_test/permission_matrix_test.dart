@@ -29,6 +29,12 @@ void main() {
     await $.platform.mobile.grantPermissionWhenInUse(); // "Allow all" on Android 14+
     await $.pumpAndSettle();
 
+    // Access alone no longer opens the Library: the analysis-consent step is
+    // owed first. Decline everything — the grid must not depend on it.
+    expect($('Continue'), findsOneWidget);
+    await $('Continue').tap();
+    await $.pumpAndSettle();
+
     // Redirected off onboarding into the Library.
     expect($('Allow photo access'), findsNothing);
     expect($('Library'), findsWidgets);

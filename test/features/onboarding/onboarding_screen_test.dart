@@ -1,6 +1,9 @@
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sologallery/core/database/app_database.dart';
+import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/onboarding/onboarding_screen.dart';
 import 'package:sologallery/services/permission_provider.dart';
@@ -9,6 +12,11 @@ import 'package:sologallery/services/photo_library_service.dart';
 import '../../support/fake_photo_library_service.dart';
 
 void main() {
+  late AppDatabase db;
+
+  setUp(() => db = AppDatabase(NativeDatabase.memory()));
+  tearDown(() => db.close());
+
   Future<FakePhotoLibraryService> pump(
     WidgetTester tester, {
     required PhotoAccess access,
@@ -17,7 +25,12 @@ void main() {
     final fake = FakePhotoLibraryService(access: access, grantResult: grantResult);
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [photoLibraryServiceProvider.overrideWithValue(fake)],
+        overrides: [
+          // Granting access advances the screen to the consent step, which
+          // reads the database — keep that in memory, never the real one.
+          databaseProvider.overrideWithValue(db),
+          photoLibraryServiceProvider.overrideWithValue(fake),
+        ],
         child: MaterialApp(
           theme: AppTheme.light,
           home: const OnboardingScreen(),
@@ -64,5 +77,105 @@ void main() {
     await tester.tap(find.text('Open Settings'));
     await tester.pumpAndSettle();
     expect(fake.openSettingsCount, 1);
+  });
+
+  group('consent step', () {
+    /// Pumps with [access] already sufficient to read, so the screen advances
+    /// to step 2.
+    Future<void> pumpConsentWith(
+      WidgetTester tester,
+      PhotoAccess access,
+    ) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            photoLibraryServiceProvider
+                .overrideWithValue(FakePhotoLibraryService(access: access)),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light,
+            home: const OnboardingScreen(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    testWidgets('limited access still owes the consent step', (tester) async {
+      // `limited` counts as canReadLibrary, so the user passes step 1 — but a
+      // partial library is still a library to analyze, so consent is owed.
+      await pumpConsentWith(tester, PhotoAccess.limited);
+
+      expect(find.text('What should stay\non the shelf?'), findsOneWidget);
+      expect(find.byType(Switch), findsNWidgets(3));
+      expect(find.text('Allow photo access'), findsNothing);
+    });
+
+    /// Pumps with access already granted, so the screen advances to step 2.
+    Future<void> pumpConsent(WidgetTester tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            photoLibraryServiceProvider.overrideWithValue(
+              FakePhotoLibraryService(access: PhotoAccess.granted),
+            ),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light,
+            home: const OnboardingScreen(),
+          ),
+        ),
+      );
+      // Bounded pumps — enough turns for the consent read to resolve.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    testWidgets('asks once access is granted, with every feature off',
+        (tester) async {
+      await pumpConsent(tester);
+
+      expect(find.text('What should stay\non the shelf?'), findsOneWidget);
+      expect(find.text('Continue'), findsOneWidget);
+      final switches = tester.widgetList<Switch>(find.byType(Switch)).toList();
+      expect(switches, hasLength(3));
+      expect(
+        switches.every((s) => s.value == false),
+        isTrue,
+        reason: 'consent is opt-in — nothing starts on',
+      );
+    });
+
+    testWidgets('Continue persists exactly what was switched on',
+        (tester) async {
+      await pumpConsent(tester);
+
+      // Turn Content search on (first row), leave Memories and Faces off.
+      await tester.tap(find.byType(Switch).first);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('Continue'));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(await db.settingsDao.readSearchEnabled(), isTrue);
+      expect(await db.settingsDao.readMemoriesEnabled(), isFalse);
+      expect(await db.settingsDao.readFacesEnabled(), isFalse);
+      expect(await db.settingsDao.readConsentRecorded(), isTrue);
+    });
+
+    testWidgets('Continue with nothing on still records the answer',
+        (tester) async {
+      await pumpConsent(tester);
+
+      await tester.tap(find.text('Continue'));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(await db.settingsDao.readConsentRecorded(), isTrue);
+      expect(await db.settingsDao.readSearchEnabled(), isFalse);
+      expect(await db.settingsDao.readMemoriesEnabled(), isFalse);
+      expect(await db.settingsDao.readFacesEnabled(), isFalse);
+    });
   });
 }

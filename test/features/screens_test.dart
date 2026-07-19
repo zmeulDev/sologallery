@@ -9,6 +9,7 @@ import 'package:sologallery/features/albums/albums_screen.dart';
 import 'package:sologallery/features/library/library_screen.dart';
 import 'package:sologallery/features/saved/saved_screen.dart';
 import 'package:sologallery/features/settings/settings_screen.dart';
+import 'package:sologallery/services/indexing_service.dart';
 import 'package:sologallery/services/permission_provider.dart';
 
 import '../support/fake_photo_library_service.dart';
@@ -26,6 +27,9 @@ void main() {
           databaseProvider.overrideWithValue(db),
           photoLibraryServiceProvider
               .overrideWithValue(FakePhotoLibraryService()),
+          // Mark the cache ready so LibraryScreen renders its grid branch and
+          // never instantiates the real ML worker via the indexing service.
+          libraryCacheReadyProvider.overrideWithValue(const AsyncData(true)),
         ],
         child: MaterialApp(theme: AppTheme.light, home: screen),
       ),
@@ -43,11 +47,13 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   }
 
-  testWidgets('LibraryScreen shows title and an (inert) search action',
+  testWidgets('LibraryScreen shows title and an (inert) settings action',
       (tester) async {
     await pumpScreen(tester, const LibraryScreen());
     expect(find.widgetWithText(AppBar, 'Library'), findsOneWidget);
-    expect(find.byIcon(Icons.search), findsOneWidget);
+    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+    // LibraryScreen now holds Drift .watch() streams (month counts / older).
+    await disposeTree(tester);
   });
 
   testWidgets('SavedScreen shows its title', (tester) async {
@@ -65,5 +71,7 @@ void main() {
   testWidgets('SettingsScreen shows its title', (tester) async {
     await pumpScreen(tester, const SettingsScreen());
     expect(find.widgetWithText(AppBar, 'Settings'), findsOneWidget);
+    // SettingsScreen now holds Drift .watch() streams (settings/stats/people).
+    await disposeTree(tester);
   });
 }

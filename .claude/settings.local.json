@@ -4,7 +4,29 @@
       "Bash(rm *)",
       "Bash(flutter --version)",
       "Bash(dart --version)",
-      "Bash(~/Library/Android/sdk/platform-tools/adb devices *)"
+      "Bash(~/Library/Android/sdk/platform-tools/adb devices *)",
+      "Bash(md5 -q android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png)",
+      "Bash(xcodebuild -showsdks)",
+      "Bash(xcodebuild -version)",
+      "Bash(git status *)",
+      "Bash(sqlite3 -header -column live.sqlite \"SELECT MIN\\(left\\) mnl, MAX\\(right\\) mxr, MIN\\(top\\) mnt, MAX\\(bottom\\) mxb, MIN\\(right-left\\) mnw, MAX\\(right-left\\) mxw, MIN\\(bottom-top\\) mnh, MAX\\(bottom-top\\) mxh FROM face_embeddings;\")",
+      "Bash(sqlite3 -header -column live.sqlite \"SELECT f.person_id, f.asset_id, f.left, f.top, f.right, f.bottom, \\(f.right-f.left\\) w, \\(f.bottom-f.top\\) h FROM face_embeddings f JOIN \\(SELECT person_id, MAX\\(id\\) mid FROM face_embeddings GROUP BY person_id\\) x ON f.id=x.mid ORDER BY f.person_id LIMIT 15;\")",
+      "Bash(sqlite3 live.sqlite \"SELECT COUNT\\(*\\) FROM persons p WHERE NOT EXISTS \\(SELECT 1 FROM face_embeddings f WHERE f.person_id=p.id\\);\")",
+      "Bash(sqlite3 -header -column live.sqlite \"SELECT cnt, COUNT\\(*\\) persons FROM \\(SELECT person_id, COUNT\\(*\\) cnt FROM face_embeddings GROUP BY person_id\\) GROUP BY cnt ORDER BY cnt;\")",
+      "Bash(sqlite3 -header -column live.sqlite \"SELECT asset_id, MAX\\(right\\) max_r, MAX\\(bottom\\) max_b, COUNT\\(*\\) faces FROM face_embeddings GROUP BY asset_id HAVING max_r>512 OR max_b>512 ORDER BY max_r DESC LIMIT 20;\")",
+      "Bash(sqlite3 live.sqlite \"SELECT COUNT\\(*\\) FROM \\(SELECT asset_id FROM face_embeddings GROUP BY asset_id HAVING MAX\\(right\\)>512 OR MAX\\(bottom\\)>512\\);\")",
+      "Bash(sqlite3 live.sqlite \"SELECT COUNT\\(DISTINCT asset_id\\) FROM face_embeddings;\")",
+      "Bash(dart run *)",
+      "Bash(flutter analyze *)",
+      "Bash(flutter test *)",
+      "Bash(python3 -)",
+      "Bash(./tool/check.sh)",
+      "Bash(flutter build *)",
+      "Bash(sqlite3 -header -column p.sqlite \"SELECT ROUND\\(MIN\\(left\\),4\\) mnl, ROUND\\(MAX\\(right\\),4\\) mxr, ROUND\\(MIN\\(top\\),4\\) mnt, ROUND\\(MAX\\(bottom\\),4\\) mxb, ROUND\\(MIN\\(right-left\\),4\\) mnw, ROUND\\(MAX\\(right-left\\),4\\) mxw FROM face_embeddings;\")",
+      "Bash(sqlite3 p.sqlite \"SELECT COUNT\\(*\\) FROM face_embeddings WHERE left<0 OR top<0 OR right>1.0001 OR bottom>1.0001;\")",
+      "Bash(sqlite3 p.sqlite \"SELECT ROUND\\(MIN\\(MIN\\(right-left, bottom-top\\)\\),4\\) FROM face_embeddings;\")",
+      "Bash(sqlite3 -header -column p.sqlite \"SELECT cnt, COUNT\\(*\\) persons FROM \\(SELECT person_id, COUNT\\(*\\) cnt FROM face_embeddings GROUP BY person_id\\) GROUP BY cnt ORDER BY cnt;\")",
+      "Bash(sqlite3 p.sqlite \"SELECT COUNT\\(*\\) FROM persons p WHERE EXISTS \\(SELECT 1 FROM face_embeddings f WHERE f.person_id=p.id AND f.asset_id=p.cover_asset_id\\);\")"
     ]
   }
 }

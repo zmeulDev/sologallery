@@ -16,13 +16,38 @@
          during playback) is left in place. -->
     <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
+    <!-- google_mlkit_image_labeling pulls Play-Services / Firebase-IID
+         transitively, which inject a Firebase Cloud Messaging (push) permission
+         and receiver. The bundled labeling model runs fully on-device with no
+         network, so strip both to keep the release build network-free (Absolute
+         rules / Definition of Done #5). Re-verify the merged manifest after any
+         ML Kit dep bump. -->
+    <uses-permission android:name="com.google.android.c2dm.permission.RECEIVE" tools:node="remove" />
+    <!-- The face-detection / tflite dependency chain (Play-Services / gms) also
+         injects READ_PHONE_STATE and WRITE_EXTERNAL_STORAGE. Neither is needed —
+         all ML is on-device and originals are never written — and READ_PHONE_STATE
+         fails the privacy check (Absolute rules / DoD #5). Strip both. Re-verify
+         the merged manifest after any ML/tflite dep bump. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
+    <!-- photo_manager declares the legacy storage read for API <=32. minSdk is
+         35, so no device this installs on can ever reach it — strip it rather
+         than let a dead storage permission show up in the Play listing for an
+         app whose whole pitch is that it takes nothing. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <!-- Auto Backup is off: with it on (the platform default) Android uploads
+         app_flutter/sologallery.sqlite — the photo index, including face
+         embeddings and OCR text — to the user's Google account, which would
+         break the zero-network / 100%-local guarantee (CLAUDE.md Absolute
+         rules). The two rule files exclude everything as a second line of
+         defence if backup is ever re-enabled. -->
     <application
-        android:label="sologallery"
+        android:label="SoloGallery"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -45,6 +70,12 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Strip the Firebase Cloud Messaging receiver pulled in transitively by
+             ML Kit (see the c2dm permission note above) — push messaging is
+             never used; on-device labeling needs no network component. -->
+        <receiver
+            android:name="com.google.firebase.iid.FirebaseInstanceIdReceiver"
+            tools:node="remove" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

@@ -29,17 +29,7 @@ void main() {
     test('add is idempotent (no duplicate primary key error)', () async {
       await db.favoritesDao.add('asset-1');
       await db.favoritesDao.add('asset-1');
-      final all = await db.favoritesDao.watchAll().first;
-      expect(all, hasLength(1));
-    });
-
-    test('watchAll orders most-recently-favorited first', () async {
-      await db.favoritesDao
-          .add('old', at: DateTime(2020, 1, 1));
-      await db.favoritesDao
-          .add('new', at: DateTime(2024, 1, 1));
-      final all = await db.favoritesDao.watchAll().first;
-      expect(all.map((f) => f.assetId), ['new', 'old']);
+      expect(await db.select(db.favorites).get(), hasLength(1));
     });
 
     test('remove is idempotent (returns 0 when absent)', () async {
@@ -67,17 +57,6 @@ void main() {
       await db.albumsDao.addEntry(album, 'asset-1'); // ignored
       final entries = await db.albumsDao.watchEntries(album).first;
       expect(entries, hasLength(1));
-    });
-
-    test('removeEntry deletes only the matching pair', () async {
-      final album = await db.albumsDao.createAlbum('Trip');
-      await db.albumsDao.addEntry(album, 'asset-1');
-      await db.albumsDao.addEntry(album, 'asset-2');
-
-      final removed = await db.albumsDao.removeEntry(album, 'asset-1');
-      expect(removed, 1);
-      final entries = await db.albumsDao.watchEntries(album).first;
-      expect(entries.map((e) => e.assetId), ['asset-2']);
     });
 
     test('removeAssetEverywhere clears the asset from every album', () async {

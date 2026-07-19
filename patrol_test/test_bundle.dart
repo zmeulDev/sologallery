@@ -9,7 +9,7 @@ import 'package:patrol/src/platform/contracts/contracts.dart';
 import 'package:test_api/src/backend/invoker.dart';
 
 // START: GENERATED TEST IMPORTS
-import '../integration_test/detail_actions_test.dart' as integration_test__detail_actions_test;
+import '../integration_test/consent_flow_test.dart' as integration_test__consent_flow_test;
 // END: GENERATED TEST IMPORTS
 
 Future<void> main() async {
@@ -72,7 +72,7 @@ Future<void> main() async {
   });
 
 // START: GENERATED TEST GROUPS
-  group('integration_test.detail_actions_test', integration_test__detail_actions_test.main);
+  group('integration_test.consent_flow_test', integration_test__consent_flow_test.main);
 // END: GENERATED TEST GROUPS
 
   final dartTestGroup = await testExplorationCompleter.future;

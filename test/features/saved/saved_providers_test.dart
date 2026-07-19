@@ -21,8 +21,22 @@ void main() {
   setUp(() => db = AppDatabase(NativeDatabase.memory()));
   tearDown(() async => db.close());
 
+  /// Caches lean photo_asset rows for [ids] so the favorites→cache join resolves.
+  Future<void> cache(List<String> ids) => db.indexDao.upsertMetadata([
+        for (final id in ids)
+          (
+            id: id,
+            createdAt: DateTime(2024),
+            isVideo: false,
+            width: 1,
+            height: 1,
+            isDated: true,
+          ),
+      ]);
+
   test('savedFavoritesProvider yields favorites newest-favorited first',
       () async {
+    await cache(['old', 'new']);
     await db.favoritesDao.add('old', at: DateTime(2020, 1, 1));
     await db.favoritesDao.add('new', at: DateTime(2024, 1, 1));
 
@@ -33,5 +47,15 @@ void main() {
   test('savedFavoritesProvider is empty with no favorites', () async {
     final rows = await makeContainer().read(savedFavoritesProvider.future);
     expect(rows, isEmpty);
+  });
+
+  test('savedFavoritesProvider drops a favorite whose asset is not cached',
+      () async {
+    await cache(['kept']); // 'gone' is favorited but never cached (deleted)
+    await db.favoritesDao.add('kept', at: DateTime(2024, 1, 2));
+    await db.favoritesDao.add('gone', at: DateTime(2024, 1, 3));
+
+    final rows = await makeContainer().read(savedFavoritesProvider.future);
+    expect(rows.map((f) => f.assetId).toList(), ['kept']);
   });
 }

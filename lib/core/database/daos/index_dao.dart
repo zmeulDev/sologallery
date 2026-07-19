@@ -1,0 +1,380 @@
+import 'package:drift/drift.dart';
+
+import '../../../features/library/domain/year_month.dart';
+import '../../../features/search/domain/search_date.dart';
+import '../../../services/photo_library_service.dart' show AssetRef;
+import '../app_database.dart';
+import '../tables.dart';
+
+part 'index_dao.g.dart';
+
+/// The lean metadata the fast sweep caches per asset (no ML). [isDated] is false
+/// only for Android undated assets (see [PhotoAssets.isDated]).
+typedef SweptAsset = ({
+  String id,
+  DateTime createdAt,
+  bool isVideo,
+  int width,
+  int height,
+  bool isDated,
+});
+
+/// Data-access for the ML index: the [PhotoAssets] cache (metadata sweep +
+/// indexing cursor), the [PhotoLabels] image labels, and the [PhotoTexts] OCR
+/// text. Pure data layer — no UI, no ML. The background [IndexingService] sweeps
+/// metadata and writes ML rows here; the Library/Saved grids and Search read.
+@DriftAccessor(tables: [PhotoAssets, PhotoLabels, PhotoTexts, Favorites])
+class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
+  IndexDao(super.db);
+
+  // --- Metadata sweep ------------------------------------------------------
+
+  /// Upserts lean metadata for [rows] (the fast sweep). New rows land with
+  /// `indexedAt = NULL` (ML pending); existing rows keep their `indexedAt` and
+  /// only refresh metadata — the [DoUpdate] deliberately omits `indexedAt` so an
+  /// already-ML'd row is not reset to pending.
+  Future<void> upsertMetadata(List<SweptAsset> rows) async {
+    await batch((b) {
+      for (final r in rows) {
+        b.insert(
+          photoAssets,
+          PhotoAssetsCompanion.insert(
+            assetId: r.id,
+            createdAt: r.createdAt,
+            isVideo: r.isVideo,
+            width: r.width,
+            height: r.height,
+            isDated: Value(r.isDated),
+          ),
+          onConflict: DoUpdate(
+            (_) => PhotoAssetsCompanion(
+              createdAt: Value(r.createdAt),
+              isVideo: Value(r.isVideo),
+              width: Value(r.width),
+              height: Value(r.height),
+              isDated: Value(r.isDated),
+            ),
+          ),
+        );
+      }
+    });
+  }
+
+  /// Every cached asset id — the sweep subtracts the live library from this to
+  /// find rows to prune (deleted assets / a shrunken limited-access subset).
+  Future<Set<String>> allCachedIds() async {
+    final rows =
+        await (selectOnly(photoAssets)..addColumns([photoAssets.assetId]))
+            .map((r) => r.read(photoAssets.assetId)!)
+            .get();
+    return rows.toSet();
+  }
+
+  /// Deletes cached rows for [ids] (pruned assets). Cascades remove their
+  /// labels/OCR text/faces. No-op on an empty list.
+  Future<int> deleteAssets(List<String> ids) async {
+    if (ids.isEmpty) return 0;
+    return (delete(photoAssets)..where((a) => a.assetId.isIn(ids))).go();
+  }
+
+  /// Wipes the whole `photo_asset` cache — cascades to labels, OCR text, and
+  /// face embeddings. Backs Settings' "Rebuild index"; the caller re-sweeps
+  /// afterwards. Persons are cleared separately (they are not FK-referenced by
+  /// `photo_asset`) via `FacesDao.clearPersons`.
+  Future<int> clearIndex() => delete(photoAssets).go();
+
+  /// Deletes every derived label and OCR text, leaving the `photo_asset` cache
+  /// (and so face embeddings) intact. Used when the user withdraws
+  /// content-search consent — there is no asset wipe to cascade from.
+  Future<void> clearContent() async {
+    await delete(photoLabels).go();
+    await delete(photoTexts).go();
+  }
+
+  /// Marks every cached asset as awaiting ML analysis again, without deleting
+  /// the labels/OCR text already derived (`upsertIndexed` replaces those in
+  /// place). Backs enabling face detection after the library was already
+  /// indexed: those assets have `indexed_at` set, so [pendingMlIds] would
+  /// otherwise never return them and their faces would never be computed.
+  Future<int> resetMlPending() => update(photoAssets)
+      .write(const PhotoAssetsCompanion(indexedAt: Value(null)));
+
+  /// Ids awaiting ML analysis (`indexed_at IS NULL`), newest first so recent
+  /// photos are labelled first. Replaces the old indexed/library set-diff.
+  Future<List<String>> pendingMlIds() {
+    final q = selectOnly(photoAssets)
+      ..addColumns([photoAssets.assetId])
+      ..where(photoAssets.indexedAt.isNull())
+      ..orderBy([OrderingTerm.desc(photoAssets.createdAt)]);
+    return q.map((r) => r.read(photoAssets.assetId)!).get();
+  }
+
+  /// Cached-library totals for the Settings stats section, reactive: total
+  /// photos+videos and how many of those are videos.
+  Stream<({int photos, int videos})> watchLibraryTotals() {
+    final total = photoAssets.assetId.count();
+    final videos =
+        photoAssets.assetId.count(filter: photoAssets.isVideo.equals(true));
+    final q = selectOnly(photoAssets)..addColumns([total, videos]);
+    return q
+        .map((r) => (photos: r.read(total) ?? 0, videos: r.read(videos) ?? 0))
+        .watchSingle();
+  }
+
+  // --- ML results ----------------------------------------------------------
+
+  /// Records that [assetId] has been ML-indexed: stamps `indexedAt`, refreshes
+  /// its metadata (preserving `is_dated` from the sweep via [DoUpdate]), and
+  /// replaces its label set + OCR text atomically.
+  Future<void> upsertIndexed({
+    required String assetId,
+    required DateTime createdAt,
+    required bool isVideo,
+    required int width,
+    required int height,
+    required List<(String label, double confidence)> labels,
+    required String text,
+  }) async {
+    await transaction(() async {
+      final now = DateTime.now();
+      await into(photoAssets).insert(
+        PhotoAssetsCompanion.insert(
+          assetId: assetId,
+          createdAt: createdAt,
+          isVideo: isVideo,
+          width: width,
+          height: height,
+          indexedAt: Value(now),
+        ),
+        onConflict: DoUpdate(
+          (_) => PhotoAssetsCompanion(
+            createdAt: Value(createdAt),
+            isVideo: Value(isVideo),
+            width: Value(width),
+            height: Value(height),
+            indexedAt: Value(now),
+          ),
+        ),
+      );
+      await (delete(photoLabels)..where((l) => l.assetId.equals(assetId))).go();
+      for (final (label, confidence) in labels) {
+        await into(photoLabels).insert(
+          PhotoLabelsCompanion.insert(
+            assetId: assetId,
+            label: label,
+            confidence: confidence,
+          ),
+        );
+      }
+      await (delete(photoTexts)..where((t) => t.assetId.equals(assetId))).go();
+      if (text.isNotEmpty) {
+        await into(photoTexts).insert(
+          PhotoTextsCompanion.insert(assetId: assetId, content: text),
+        );
+      }
+    });
+  }
+
+  // --- Library grid (cache-backed) -----------------------------------------
+
+  /// Non-empty calendar months over *dated* assets with their exact counts,
+  /// newest first — one grouped query backing the Library home. Reactive: emits
+  /// on every cache change (sweep, ML stamp, prune).
+  Stream<List<({YearMonth month, int count})>> watchMonthCounts() {
+    // Group by the *local* calendar month (`'localtime'`), matching
+    // [YearMonth.fromDate] and [monthAssets]'s local `[start, end)` window.
+    // Drift's `.month`/`.year` extract in UTC, which mis-buckets assets near a
+    // month boundary in a non-UTC timezone. `created_at` is stored as unix
+    // seconds (default int storage), so `'unixepoch'` applies. Key is
+    // `YYYY-MM`, whose lexical order is chronological.
+    final key = CustomExpression<String>(
+      "STRFTIME('%Y-%m', created_at, 'unixepoch', 'localtime')",
+      precedence: Precedence.primary,
+    );
+    final count = photoAssets.assetId.count();
+    final q = selectOnly(photoAssets)
+      ..addColumns([key, count])
+      ..where(photoAssets.isDated.equals(true))
+      ..groupBy([key])
+      ..orderBy([OrderingTerm.desc(key)]);
+    return q.map((r) {
+      final parts = r.read(key)!.split('-');
+      return (
+        month: YearMonth(int.parse(parts[0]), int.parse(parts[1])),
+        count: r.read(count)!,
+      );
+    }).watch();
+  }
+
+  /// Up to [limit] newest preview ids for a dated [month], reactive — re-emits
+  /// as the sweep/ML/prune change the cache so the home section stays live.
+  Stream<List<String>> watchMonthPreviews(YearMonth month, {int limit = 6}) {
+    final q = selectOnly(photoAssets)
+      ..addColumns([photoAssets.assetId])
+      ..where(_datedInMonth(month))
+      ..orderBy([OrderingTerm.desc(photoAssets.createdAt)])
+      ..limit(limit);
+    return q.map((r) => r.read(photoAssets.assetId)!).watch();
+  }
+
+  /// A page of dated asset refs for one [month]'s full grid, newest first.
+  Future<List<AssetRef>> monthAssets(
+    YearMonth month, {
+    required int limit,
+    required int offset,
+  }) async {
+    final q = select(photoAssets)
+      ..where((a) =>
+          a.isDated.equals(true) &
+          a.createdAt.isBiggerOrEqualValue(month.start) &
+          a.createdAt.isSmallerThanValue(month.end))
+      ..orderBy([(a) => OrderingTerm.desc(a.createdAt)])
+      ..limit(limit, offset: offset);
+    final rows = await q.get();
+    return [for (final r in rows) AssetRef(id: r.assetId, createdAt: r.createdAt)];
+  }
+
+  /// The dated [month]'s full grid as a reactive growing window: the newest
+  /// [limit] asset refs, re-emitting on any cache change. The paginator grows
+  /// [limit] (offset stays 0) so a single live subscription covers all loaded
+  /// pages.
+  Stream<List<AssetRef>> watchMonthAssets(
+    YearMonth month, {
+    required int limit,
+  }) {
+    final q = select(photoAssets)
+      ..where((a) =>
+          a.isDated.equals(true) &
+          a.createdAt.isBiggerOrEqualValue(month.start) &
+          a.createdAt.isSmallerThanValue(month.end))
+      ..orderBy([(a) => OrderingTerm.desc(a.createdAt)])
+      ..limit(limit);
+    return q.watch().map(
+          (rows) =>
+              [for (final r in rows) AssetRef(id: r.assetId, createdAt: r.createdAt)],
+        );
+  }
+
+  Expression<bool> _datedInMonth(YearMonth month) =>
+      photoAssets.isDated.equals(true) &
+      photoAssets.createdAt.isBiggerOrEqualValue(month.start) &
+      photoAssets.createdAt.isSmallerThanValue(month.end);
+
+  // --- "Older" bucket (undated; Android only) ------------------------------
+
+  /// Count of undated assets, reactive. Zero (and empty grid) on iOS.
+  Stream<int> watchOlderCount() {
+    final count = photoAssets.assetId.count();
+    final q = selectOnly(photoAssets)
+      ..addColumns([count])
+      ..where(photoAssets.isDated.equals(false));
+    return q
+        .map((r) => r.read(count) ?? 0)
+        .watch()
+        .map((rows) => rows.isEmpty ? 0 : rows.first);
+  }
+
+  /// Up to [limit] newest-added preview ids for the "Older" section, reactive.
+  Stream<List<String>> watchOlderPreviews({int limit = 6}) {
+    final q = selectOnly(photoAssets)
+      ..addColumns([photoAssets.assetId])
+      ..where(photoAssets.isDated.equals(false))
+      ..orderBy([OrderingTerm.desc(photoAssets.createdAt)])
+      ..limit(limit);
+    return q.map((r) => r.read(photoAssets.assetId)!).watch();
+  }
+
+  /// The "Older" full grid as a reactive growing window — newest-added [limit]
+  /// undated asset refs, re-emitting on any cache change.
+  Stream<List<AssetRef>> watchOlderAssets({required int limit}) {
+    final q = select(photoAssets)
+      ..where((a) => a.isDated.equals(false))
+      ..orderBy([(a) => OrderingTerm.desc(a.createdAt)])
+      ..limit(limit);
+    return q.watch().map(
+          (rows) =>
+              [for (final r in rows) AssetRef(id: r.assetId, createdAt: r.createdAt)],
+        );
+  }
+
+  // --- Saved ---------------------------------------------------------------
+
+  /// Favorites whose asset is still in the cache, most-recently-favorited first.
+  /// The inner join drops dangling favorites (asset deleted / pruned) so the
+  /// Saved grid never shows a broken thumbnail.
+  Stream<List<Favorite>> watchFavoritesInCache() {
+    final q = select(favorites).join([
+      innerJoin(
+        photoAssets,
+        photoAssets.assetId.equalsExp(favorites.assetId),
+      ),
+    ])
+      ..orderBy([OrderingTerm.desc(favorites.favoritedAt)]);
+    return q.watch().map(
+          (rows) => [for (final r in rows) r.readTable(favorites)],
+        );
+  }
+
+  // --- Search --------------------------------------------------------------
+
+  /// Assets whose ML labels **or** OCR text match [query] (case-insensitive
+  /// substring), newest first, refined by the same facets as metadata Search:
+  /// capture-date window `[min, max)`, media [type], and (when [favoritesOnly])
+  /// the favorites set. Paginated with [limit]/[offset]. One [AssetRef] per
+  /// asset — the base row is `photo_asset`, so no dedupe is needed.
+  Future<List<AssetRef>> searchContent({
+    required String query,
+    DateTime? min,
+    DateTime? max,
+    required MediaTypeFilter type,
+    required bool favoritesOnly,
+    required int limit,
+    required int offset,
+  }) async {
+    // SQLite LIKE is case-insensitive for ASCII; labels/text are plain words.
+    final pattern = '%$query%';
+    final labelMatch = existsQuery(
+      select(photoLabels)
+        ..where((l) =>
+            l.assetId.equalsExp(photoAssets.assetId) & l.label.like(pattern)),
+    );
+
+    final q = select(photoAssets).join([
+      leftOuterJoin(
+        photoTexts,
+        photoTexts.assetId.equalsExp(photoAssets.assetId),
+      ),
+      if (favoritesOnly)
+        innerJoin(favorites, favorites.assetId.equalsExp(photoAssets.assetId)),
+    ]);
+
+    q.where(labelMatch | photoTexts.content.like(pattern));
+    if (min != null) {
+      q.where(photoAssets.createdAt.isBiggerOrEqualValue(min));
+    }
+    if (max != null) {
+      q.where(photoAssets.createdAt.isSmallerThanValue(max));
+    }
+    switch (type) {
+      case MediaTypeFilter.all:
+        break;
+      case MediaTypeFilter.photos:
+        q.where(photoAssets.isVideo.equals(false));
+      case MediaTypeFilter.videos:
+        q.where(photoAssets.isVideo.equals(true));
+    }
+
+    q
+      ..orderBy([OrderingTerm.desc(photoAssets.createdAt)])
+      ..limit(limit, offset: offset);
+
+    final rows = await q.get();
+    return [
+      for (final r in rows)
+        AssetRef(
+          id: r.readTable(photoAssets).assetId,
+          createdAt: r.readTable(photoAssets).createdAt,
+        ),
+    ];
+  }
+}

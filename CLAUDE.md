@@ -9,13 +9,13 @@ analytics, no network calls after install.
 
 - Cross-platform (Android + iOS); robust consent + native permission
   handling for photo library access
-- **App bar:** search
+- **App bar:** settings (on Library)
 - **Main view:** gallery grouped by month — first 6 photos per month,
   newest first, plus a per-month "view all" button
 - **Detail view (on tap):** full-screen viewer with horizontal swipe;
   actions: favorite, delete, share, add to existing album; dedicated
   button to reveal EXIF metadata
-- **Bottom nav:** Home Gallery · Favourites · Albums · Settings
+- **Bottom nav:** Home Gallery · Search · Saved · Albums
 
 ---
 
@@ -146,9 +146,11 @@ flutter test                                  # all unit + widget tests
 flutter test integration_test -d <device-id>  # on-device integration
 adb logcat -s flutter:V SoloGallery:V         # runtime debugging
 adb shell dumpsys dropbox --print             # native crash inspection
-./gradlew :app:processReleaseManifest \
+(cd android && JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
+  ./gradlew :app:processReleaseManifest) \
   && grep -R "INTERNET\|READ_PHONE_STATE\|c2dm" \
      build/app/intermediates/merged_manifests/release/  # must return nothing
+     # gradlew lives in android/; the merged manifest lands under repo-root build/
 ```
 
 ---
@@ -236,14 +238,18 @@ lib/
     router/                     # GoRouter config
     database/                   # Drift DB, tables, DAOs
   features/
-    library/ saved/ search/ albums/ detail/ people/ edit/ settings/
+    library/ saved/ search/ albums/ detail/ people/ onboarding/ settings/
+    memories/                   # auto-curated memories: builder, carousel, player
+    # edit/ (non-destructive editor) is spec'd but not built yet
   services/
     photo_library_service.dart  # photo_manager wrapper
-    paged_assets_notifier.dart  # shared pagination base (Library, Saved)
+    paged_assets_notifier.dart  # one-shot pagination base (Search)
+    watched_assets_notifier.dart # reactive growing-window base (Library grids)
     ml_service.dart             # ML Kit + TFLite
     indexing_service.dart       # background indexing orchestration
   widgets/
     app_shell.dart              # bottom nav shell (StatefulShellRoute)
+    dot_nav_bar.dart            # nav destinations + dot indicator (golden-tested)
 test/                           # unit + widget + golden (mirrors lib/)
 integration_test/               # on-device tests (patrol)
 test_assets/                    # seeded device assets (Test strategy)
@@ -288,10 +294,12 @@ docs/
 | Screen | Route |
 |---|---|
 | Library | `/` |
+| Search | `/search` |
 | Saved | `/saved` |
 | Albums | `/albums` |
 | Detail | `/photo/:id` |
 | Album detail | `/album/:id` |
+| Memory player | `/memory/:id` |
 | Settings | `/settings` |
 
 ---
@@ -337,20 +345,84 @@ Short form; full postmortems in `docs/postmortems/`.
   `allSchemaEntities`). Pin `drift` to drift_dev's patch (currently
   `2.34.0`); re-check when bumping either.
 - **JVM-target mismatch under JDK 21.** Android Studio JBR (JDK 21)
-  compiles plugin Kotlin (e.g. `photo_manager`) to JVM 21 while their
-  Java stays 17 → "Inconsistent JVM-target compatibility". Fix: the
-  `subprojects` block in `android/build.gradle.kts` pins such modules'
-  Kotlin `jvmTarget` to 17. Keep it when adding Android plugins.
-  **But some plugins (e.g. `patrol`) already pin *both* their Java and
-  Kotlin to 1.8** (self-consistent). Forcing only their Kotlin to 17
-  re-breaks them (Kotlin 17 vs Java 1.8) — and it surfaces in a plain
-  `flutter build apk`/`flutter run` (patrol is a dev-dependency plugin, so
-  it compiles into debug builds) even when `patrol test` happens to build.
-  Fix: the Kotlin rule **skips a `selfConsistentModules` set (currently
-  `patrol`)**, leaving their config intact. Do *not* instead override raw
-  `JavaCompile` tasks to 17 — that strips the `android.jar` bootclasspath
-  ("package android.app does not exist"); and `afterEvaluate` on a
-  subproject from the root block throws "already evaluated".
+  compiles plugin Kotlin to JVM 21 while plugins pin their **Java** lower →
+  "Inconsistent JVM-target compatibility". Plugins disagree on the level
+  (`photo_manager` 17, `google_mlkit_commons` 11, `google_mlkit_image_labeling`
+  1.8), and their Java `compileOptions` are **finalized by AGP** — you can't
+  raise them from the root (`afterEvaluate` throws "sourceCompatibility has been
+  finalized"; a subproject `afterEvaluate` from the root can also throw "already
+  evaluated"). So the `subprojects` block in `android/build.gradle.kts` **matches
+  each `com.android.library` module's Kotlin `jvmTarget` to its own (read-lazily)
+  Java `targetCompatibility`** (1.8/11/17), rather than forcing a single value.
+  `patrol` self-pins both sides (1.8) and stays in the `selfConsistentModules`
+  skip set. Do *not* override raw `JavaCompile` tasks to 17 — that strips the
+  `android.jar` bootclasspath ("package android.app does not exist"). Re-check a
+  plain `flutter build apk` (not just `patrol test`) when adding Android plugins.
+- **ML Kit / tflite deps inject privacy permissions + a push receiver.** The
+  Play-Services / Firebase-IID / gms chain behind `google_mlkit_*` and
+  `tflite_flutter` merges into the **release** manifest:
+  `com.google.android.c2dm.permission.RECEIVE` + a
+  `com.google.firebase.iid.FirebaseInstanceIdReceiver` (image_labeling), and
+  `READ_PHONE_STATE` + `WRITE_EXTERNAL_STORAGE` (face_detection / tflite) — all
+  fail the network/privacy check (Absolute rules / DoD #5) though every model is
+  bundled and on-device. `android/app/src/main/AndroidManifest.xml` strips them
+  all with `tools:node="remove"` (permissions + the same-named `<receiver>` in
+  `<application>`). No `INTERNET` is added. **Re-verify the merged manifest after
+  any ML/tflite dep bump.** Feed ML a downsized JPEG **thumbnail** (not the
+  original) — bounds memory (HEIC OOM) and avoids HEIC-decode issues. The worker
+  isolate must call `BackgroundIsolateBinaryMessenger.ensureInitialized(token)`
+  **before** any ML Kit call or platform-channel calls hang; **tflite is FFI and
+  runs in the isolate with no messenger** (load the `.tflite` bytes on the main
+  isolate via `rootBundle` and pass them to the worker). Face boxes are stored in
+  the 512-thumb coordinate space so avatars crop the cached thumbnail. **Labels
+  and faces run on the 512 thumbnail; OCR runs on a separate larger (1024)
+  thumbnail** (`_ocrEdge`, via `analyzeFile(jpegPath, {ocrPath})`) for small-text
+  recall — don't collapse them back to one image (it would move the face-box
+  space off 512 and break avatars, or shrink OCR again). Both are still bounded
+  thumbnails, never the original. Host tests use fake (undecodable) bytes, so
+  avatar geometry only shows on-device — validate people avatars on a real device.
+- **`thumbnail(id, N, N)` is aspect-*fill*: the returned image's SHORT edge is
+  N, the long edge is larger.** A 4:3 photo requested at 512 comes back
+  **683×512**, at 1024 comes back 1365×1024 — it is not square, and it is *not*
+  bounded by N either. (An earlier version of this note claimed the opposite —
+  "a portrait comes back ~384×512", i.e. long edge N — and that error shipped:
+  face boxes were stored as thumbnail pixels and rescaled by `longEdge / 512`,
+  giving 2.67 where the truth was 2.0, so every People avatar cropped ~33% too
+  large and down-and-right of the face, with edge faces pushed clean out of the
+  circle.) **Never store a pixel coordinate whose reference dimensions you don't
+  also store** — face boxes are now normalized `[0, 1]` fractions at write time
+  in `ml_service._embedFace`, so no consumer has to reconstruct the size
+  (`FaceEmbeddings`, schema v7). Verify with the DB, not by reasoning about the
+  API: `SELECT MAX(right), MAX(bottom) FROM face_embeddings` exceeding the
+  requested edge is what proved it.
+- **Drift: a column can't reuse a builder name** (`text`, `integer`, `boolean`,
+  `real`, `blob`, …). `TextColumn get text => text()()` recurses / conflicts with
+  `Table.text` → "conflicting_field_and_method". Name it something else
+  (`content`) and map in the DAO.
+- **Drift: an aggregate in a joined select must be added to the selected
+  columns.** `select(t).join([...])..groupBy([...])` with
+  `expr.count()` read via `row.read(count)` throws "This result set does not have
+  a column for that expression" unless you `..addColumns([count])` on the query.
+- **Drift `column.year`/`.month` datetime extraction runs in UTC.** With the
+  default int (unix-seconds) DateTime storage, `photoAssets.createdAt.month`
+  emits `strftime('%m', …, 'unixepoch')` — **UTC**, no `'localtime'`. Grouping the
+  month grid by it mis-buckets assets near a month boundary in any non-UTC
+  timezone (a local-Aug-1 00:00 capture reads as July), disagreeing with
+  `YearMonth.fromDate` (local) and the `monthAssets` `[start,end)` window (local
+  DateTimes → same absolute instant). Group by a
+  `CustomExpression<String>("STRFTIME('%Y-%m', created_at, 'unixepoch', 'localtime')")`
+  instead (`YYYY-MM`, so lexical order = chronological). See
+  `IndexDao.watchMonthCounts`.
+- **Drift migrations: `m.createTable(current)` builds the *current* shape, so a
+  table whose columns change after introduction needs an `else if` guard and
+  to-current-only validation.** Once `photo_assets` changed in v4, the v1→v2
+  `createTable(photoAssets)` branch produced the v4 shape (nullable `indexed_at`
+  + `is_dated`), so the v4 `alterTable` must be `else if (from < 4)` (else a
+  v1→v4 run double-adds `is_dated`). And `SchemaVerifier.migrateAndValidate(db, k)`
+  for an **intermediate** k now fails — `createTable` reflects the live shape, not
+  vk's — so validate every path **to the current version** (v1→v4, v2→v4, v3→v4),
+  not each step. `TableMigration(t, newColumns: […])` recreates the table (relaxing
+  `NOT NULL`→nullable, adding defaulted columns) copying existing rows.
 - **`developer.log` does not reach `adb logcat`.** The `SoloGallery`
   logger routes through `dart:developer.log`, which goes to the Dart VM
   service, **not** the Android log — so `adb logcat -s flutter:V
@@ -388,13 +460,89 @@ Short form; full postmortems in `docs/postmortems/`.
 - **`build_runner` dropped `--delete-conflicting-outputs`** — removed and
   now the default; passing it only prints a warning. `tool/check.sh`
   runs plain `dart run build_runner build`.
+- **photo_manager Android: month windows must filter `DATE_TAKEN`, not
+  `DATE_ADDED`.** `FilterOptionGroup.createTimeCond` filters MediaStore
+  `DATE_ADDED` (when a file landed on the device), but ordering and the reported
+  `createDateTime` use `DATE_TAKEN` (capture date, fallback `DATE_ADDED` when
+  0). A photo captured in June but added in July then lands in July's
+  `createTimeCond` window while the grid groups/orders it under June → June
+  section vanishes and July shows June photos inside. Fix: window by capture
+  date with an `AdvancedCustomFilter` on `CustomColumns.android.dateTaken` (a
+  `DateColumnWhereCondition`; for `dateTaken` it emits **milliseconds**, other
+  date columns seconds). Undated assets (`datetaken` null/0) never match a
+  window — surface them in a separate "Older" bucket
+  (`WhereConditionItem.text('(datetaken IS NULL OR datetaken = 0)')`, ordered by
+  `date_added`). iOS's `creationDate` is consistent across filter/order/report,
+  so it keeps the classic `createTimeCond` path (see
+  `PhotoLibraryService._androidWindow`/`_darwinFilter`). Host fakes can't catch
+  this — `integration_test/library_month_grouping_test.dart` asserts the axes
+  agree on-device.
+- **On-device integration runs wipe the photo permission — grant it between
+  install and run, one file at a time.** `flutter test integration_test/…`
+  **uninstalls** the app when the run ends (`dumpsys package` afterwards reports
+  "package not found"), and `patrol test` does the same. Any plain
+  `integration_test` file asserting `access.canReadLibrary` then fails on the
+  *next* invocation, and passing two files to one `flutter test` call fails the
+  second (the first file's teardown already uninstalled). There is no native
+  dialog to drive from a plain `integration_test`, so pre-grant it:
+  ```bash
+  adb install -r build/app/outputs/flutter-apk/app-debug.apk
+  for p in READ_MEDIA_IMAGES READ_MEDIA_VIDEO READ_MEDIA_VISUAL_USER_SELECTED; do
+    adb shell pm grant com.zmeul.sologallery android.permission.$p; done
+  # Face tests only: the fixture is pushed, not bundled (test_assets/README.md).
+  adb shell mkdir -p /sdcard/Android/data/com.zmeul.sologallery/files
+  adb push assets/test_fixtures/synthetic_face.jpg \
+    /sdcard/Android/data/com.zmeul.sologallery/files/
+  flutter test integration_test/<one_file>.dart -d <device>   # repeat per file
+  ```
+  The grant survives `flutter test`'s own reinstall-over-existing, just not the
+  teardown uninstall. `patrol test` files don't need this — they drive the real
+  dialog via `$.platform.mobile.grantPermissionWhenInUse()`. Symptom of a missed
+  grant is a *silent* one: `PhotoManager` returns **empty** lists (zero folders,
+  zero assets) rather than throwing, so an under-asserted test passes vacuously.
 - **Flutter is invisible to `uiautomator`/adb UI dumps** unless an
   accessibility service is active (semantics tree built lazily). For
   on-device verification, tap at computed coordinates and read
   `adb logcat`; assert screen/state correctness in widget tests.
+  **In practice, don't drive the UI by coordinates at all — write a `patrol`
+  test instead.** Enabling a stock accessibility service
+  (`settings put secure enabled_accessibility_services …accessibilitymenu/…`)
+  does *not* populate the tree either (the dump stays a single bare node), so
+  there is no adb route to finding a button. Coordinate taps also fail silently
+  in two distinct ways worth recognising: right after `am start` the activity
+  can reject input entirely — logcat shows
+  `InputDispatcher: Not sending touch gesture … NO_INPUT_CHANNEL` and *every*
+  tap is swallowed, so a whole coordinate sweep proves nothing (relaunch via
+  `monkey -p <pkg> -c android.intent.category.LAUNCHER 1` and re-check for that
+  line before trusting a negative result); and a blind sweep can *succeed* at
+  something you didn't intend — one run silently hit "Continue" on the consent
+  step and recorded consent, which only showed up later in the pulled DB.
+  Patrol's Flutter finders (`$('text')`, `$(Switch).at(n)`,
+  `find.byTooltip(...)`) make all of this a non-issue and double as the
+  end-to-end verification artifact.
 - **Debug builds inject the `INTERNET` permission** (Dart VM service /
   hot reload) — expected. Verify the **release** merged manifest instead
   (Definition of Done #5): no `INTERNET`/`READ_PHONE_STATE`/`c2dm`.
+- **R8 silently breaks ML Kit, and only a *release build on a device* shows it.**
+  ML Kit boots via `MlKitInitProvider`, which reflectively instantiates the
+  `*Registrar` class each artifact names in its manifest metadata. R8 sees no
+  caller, strips the no-arg constructors, and every component fails to
+  register — logged only as `W ComponentDiscovery: Invalid component registrar
+  … NoSuchMethodException: …FaceRegistrar.<init> []`. **The app does not
+  crash**, so labels/OCR/faces would come back empty in production while every
+  debug test passed. `android/app/proguard-rules.pro` keeps the
+  `ComponentRegistrar` implementors' constructors. Re-run a release build on
+  device after any ML/R8/AGP bump and grep logcat for
+  `Invalid component registrar`.
+- **`run-as` does not work on release builds** (`run-as: package not debuggable`),
+  so the pull-the-DB oracle used for debug verification is unavailable there —
+  and `isDebuggable = true` on the release buildType does not restore it,
+  because the Flutter Gradle plugin forces it back off. For a release smoke,
+  filter logcat to the app's own pid (`adb logcat -d | awk -v p=$(adb shell
+  pidof <pkg>) '$3==p'`) and assert on codec/registrar activity instead. Beware
+  grepping unfiltered logcat for `vision`/`face`: unrelated system chatter
+  ("provisioning", "Surface") matches and inflates the count into false
+  evidence.
 - **Drift + widget tests (`FakeAsync`) — five traps.** (1) `await`ing a
   Drift **stream** `.first` (e.g. `dao.watchAll().first`) inside a
   `testWidgets` body **deadlocks** — the stream needs the fake clock pumped
@@ -421,13 +569,135 @@ Short form; full postmortems in `docs/postmortems/`.
   renders. Force the error state with
   `provider.overrideWithValue(AsyncError<T>(e, StackTrace.empty))` (riverpod
   3.x). `ProviderContainer` tests surface the error fine (real async).
+- **Riverpod 3 `ProviderContainer` tests — two traps.** (1) `await
+  container.read(someStreamProvider.future)` on an **autoDispose
+  `StreamProvider`** fails the test at teardown: disposing the element completes
+  the pending future with an error (`ElementWithFuture.dispose`). Don't await a
+  stream's `.future`; instead `container.listen(...)` to keep it alive and let
+  it emit, then read the derived sync provider. (2) After mutating a
+  `Notifier`/state provider, a downstream provider's recompute is **batched on
+  Riverpod's scheduler (a real Timer)** — a microtask (`await Future(() {})` /
+  `Duration.zero`) isn't enough. Await a real turn
+  (`await Future.delayed(const Duration(milliseconds: 10))`) before reading the
+  recomputed value.
+- **Testing Drift `.watch()` reactivity: await the initial emission before
+  mutating.** A `.watch()` query emits its current result on subscribe, then
+  again on change. If a test mutates the table *before* the initial query
+  resolves (both race on the DB executor), the two emissions coalesce and the
+  matcher sees only the post-mutation state — `emitsInOrder([before, after])`
+  fails with `after` at index 0. Collect emissions with a `listen` and put a
+  real `Future.delayed` between the initial read and the mutation (and between
+  mutation and assert). The reactive Library grids use a **growing-window
+  watch** (`WatchedAssetsNotifier`: `LIMIT` grows on `loadMore`, offset stays 0,
+  re-subscribing) — one live subscription stays correct across pages, unlike the
+  one-shot offset paging in `PagedAssetsNotifier` (still used by Search).
+- **A screen that consumes any Drift `.watch()` needs the dispose-tree teardown
+  in every widget test that builds it — including bare "shows its title" smokes.**
+  When a screen starts watching a stream (e.g. Settings' stats/theme, or Library
+  after the cache work), its existing `screens_test.dart`-style cases start
+  tripping the pending-timer invariant unless they end with
+  `pumpWidget(SizedBox()) + pump(1s)` (gotcha above). Grep the screen's test
+  files when you make a static screen reactive. Also: a scrolling `ListView`
+  (Settings) lazily builds — assert off-screen sections/rows only after
+  `tester.binding.setSurfaceSize(tall)` (reset with `setSurfaceSize(null)`), else
+  `find.text` on a below-the-fold row returns nothing.
+- **Bottom-nav taps in widget tests need the shell's entry transition to finish.**
+  `pumpApp` + a 50 ms pump leaves the shell route mid-slide — the whole nav bar
+  sits ~176 px right of its final position, so `tap(find.byTooltip(...))` on a
+  right-hand destination derives an offset outside the 800×600 test surface and
+  silently misses (only a `warnIfMissed` warning, then the *next* expect fails).
+  Pump ~500 ms (still bounded — spinners forbid `pumpAndSettle`) before tapping.
+  Also, `StatefulShellRoute.indexedStack` keeps a visited branch in the tree but
+  **offstage**, so asserting on a backgrounded tab's widgets needs
+  `find.byType(X, skipOffstage: false)`. Branches are built lazily on first
+  visit, not eagerly.
+- **On-device manual verification: `pm grant` does not get you past onboarding, and
+  the app DB is the only readable state.** `PhotoManager` reports the permission
+  as *not yet requested* until the in-app request flow actually runs, so an
+  `adb shell pm grant`-ed install still lands on `/onboarding` and never opens
+  the database (an empty `app_flutter/` with no `.sqlite` is the tell). Tap the
+  onboarding button at computed coordinates first (Flutter is invisible to
+  `uiautomator`). After that, verify app state by pulling the DB —
+  `adb exec-out run-as com.zmeul.sologallery cat
+  /data/data/com.zmeul.sologallery/app_flutter/sologallery.sqlite > local.sqlite`
+  — and querying it locally; **`sqlite3` is not on the device**, and `run-as`
+  returns error text rather than failing, so a pulled `-wal`/`-shm` of ~100 bytes
+  means "no such file", not a real WAL. Pick observable side effects as tap
+  oracles: a DB write that only the target screen performs (Memories'
+  `seen_at` stamp on player open) proves navigation happened without a
+  screenshot, and re-tapping a *different* element afterwards proves the screen
+  was popped back. Also: `timeout` is not installed on macOS — don't wrap
+  `flutter run` in it.
+- **A device-only assertion needs a positive control, or it passes vacuously.**
+  `consent_test.dart` asserts the ML worker returns *no* faces when consent is
+  declined — trivially true on a library with no faces in it. The first version
+  scanned 5 assets, found none, and could not tell "the gate works" from "there
+  was nothing to find" (a probe showed only 6 of 60 real camera-roll photos
+  contain a detectable face). Pair every "derives nothing" assertion with a
+  same-run positive case proving the pipeline *would* have produced something,
+  and fail loudly when the control can't be established. Same shape as the
+  missed-permission trap above: `PhotoManager` returns empty rather than
+  throwing, so under-asserted device tests go green for the wrong reason.
+- **Use the bundled fixtures, not the camera roll — and note that a *drawn* face
+  is not detectable by default.** `tool/gen_test_assets.dart` generates
+  `test_assets/` (see its README); `assets/test_fixtures/synthetic_face.jpg` is
+  also bundled via `pubspec.yaml` so tests can `rootBundle.load` it without
+  seeding MediaStore and polluting a real photo library. ML Kit did **not**
+  detect the first synthetic face (flat shapes, hard edges). What made it work:
+  correct proportions (eyes on the horizontal midline ~one eye-width apart),
+  directional shading, and a final `gaussianBlur` so nothing has vector-sharp
+  edges. `integration_test/test_fixtures_test.dart` re-asserts detectability on
+  device, so an ML Kit bump that stops recognizing it fails loudly instead of
+  quietly hollowing out every consent test. No `ffmpeg`/`exiftool`/PIL on this
+  machine — `sips` does the HEIC conversion and the video asset must be supplied
+  by hand.
+- **`IndexingService.start()` must never drop a request, and consent flags must
+  land atomically before any pass is kicked.** `start()` used to `return` when
+  `_running`, and `ConsentNotifier.record()` persisted the three consent flags
+  one at a time, each self-kicking a pass. So on first run the pass kicked by
+  `search_enabled` read `faces_enabled` before it had been written, ran with
+  faces off, stamped `indexed_at` on every asset anyway (`_indexOne` stamps
+  regardless of which features ran), and `pendingMlIds` — unstamped rows only —
+  never offered them again. People stayed empty until the user toggled face
+  detection in Settings, which runs in isolation and wins. Now: `SettingsDao
+  .setConsent` writes all three in one transaction, `IndexingService
+  .applyConsent` is the single onboarding entry point, and `start()` sets
+  `_dirty` so a mid-pass request folds into the running pass. **A re-queue that
+  lands mid-pass is not enough on its own** — the rest of that round re-stamps
+  over it, so `_run()` also tracks the flags each round ran with and calls
+  `resetMlPending()` at the top of a round in which a feature switched on.
+- **`IndexingService` toggle methods kick a pass fire-and-forget, so `await
+  start()` right after one returns immediately** (`start()` no-ops while
+  `_running`). The Settings switch must not block on a full re-index, so
+  `setFacesEnabled(true)` calls `unawaited(start())`; a test that then awaits
+  `start()` asserts against an unfinished pass and sees empty tables. Poll for
+  the outcome with a deadline instead.
+- **`package_info_plus` has no host-platform channel** — `PackageInfo.fromPlatform()`
+  throws in `flutter test`, so the `appVersionProvider` FutureProvider resolves to
+  `AsyncError` (the About row shows `—`, no crash). Override it in widget tests
+  (`appVersionProvider.overrideWith((ref) async => '1.0.0 (1)')`). Reads only the
+  Android `PackageManager` / iOS bundle — adds no network perms (release manifest
+  re-verified clean).
 
 ---
 
 ## Environment notes
 
-- **App id / namespace:** still the `flutter create` default
-  `com.example.sologallery` (both platforms). Change before any release.
+- **App id / namespace:** `com.zmeul.sologallery` (both platforms, and the
+  desktop scaffolding). Renamed off the `flutter create` default for release;
+  the Android package dirs live at `android/app/src/{main/kotlin,androidTest/java}/com/zmeul/sologallery/`,
+  and `pubspec.yaml`'s `patrol:` block carries the same id twice — `patrol test`
+  installs by it, so both must move together.
+- **Release signing is still the debug key.** `android/app/build.gradle.kts`
+  keeps the `flutter create` TODO; `android/key.properties` and any `.jks` are
+  gitignored but do not exist. The app builds and installs but **cannot be
+  uploaded to Play** until a real upload keystore is created.
+- **`patrol` CLI is not on PATH either:** `~/.pub-cache/bin/patrol`, and it
+  shells out to `adb`, so export platform-tools first or it fails at teardown
+  with `AdbExecutableNotFound`:
+  `PATH="$HOME/Library/Android/sdk/platform-tools:$PATH" ~/.pub-cache/bin/patrol test -t <file> -d <device>`.
+  Patrol files must run under `patrol test`; `flutter test integration_test/<patrol file>`
+  dies with "Binding is already initialized to IntegrationTestWidgetsFlutterBinding".
 - **adb not on PATH:** `~/Library/Android/sdk/platform-tools/adb`.
   Direct `./gradlew` calls need
   `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`

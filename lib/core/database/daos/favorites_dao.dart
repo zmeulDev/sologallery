@@ -11,13 +11,6 @@ class FavoritesDao extends DatabaseAccessor<AppDatabase>
     with _$FavoritesDaoMixin {
   FavoritesDao(super.db);
 
-  /// All favorites, most recently favorited first.
-  Stream<List<Favorite>> watchAll() {
-    return (select(favorites)
-          ..orderBy([(f) => OrderingTerm.desc(f.favoritedAt)]))
-        .watch();
-  }
-
   /// Whether [assetId] is currently favorited.
   Stream<bool> watchIsFavorite(String assetId) {
     final query = select(favorites)..where((f) => f.assetId.equals(assetId));

@@ -107,14 +107,19 @@ nav with the design-system **dot active-indicator**.
 | Screen | Route | Nav |
 |---|---|---|
 | Library (home grid) | `/` | tab |
+| Search | `/search` | tab |
 | Saved (favorites) | `/saved` | tab |
 | Albums | `/albums` | tab |
-| Settings | `/settings` | tab |
+| Settings | `/settings` | pushed (Library app bar) |
 | Detail (full-screen viewer) | `/photo/:id` | pushed (later phase) |
 | Album detail | `/album/:id` | pushed (later phase) |
 
-Search is an app-bar affordance on Library, not a tab. Detail, album-detail,
-people, and edit routes are added in their respective feature phases.
+Settings is an app-bar affordance on Library, not a tab — it is visited rarely,
+where Search earns a permanent slot. Because the Search branch outlives a visit,
+its field takes focus from `searchTabActiveProvider` (published by the shell)
+rather than `autofocus`, and releases it when the tab is left. Detail,
+album-detail, people, and edit routes are added in their respective feature
+phases.
 
 ---
 
