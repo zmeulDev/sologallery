@@ -9,9 +9,8 @@ import 'detail_providers.dart';
 import 'photo_viewer_args.dart';
 import 'widgets/add_to_album_sheet.dart';
 import 'widgets/detail_action_bar.dart';
+import 'widgets/dismissible_photo.dart';
 import 'widgets/exif_sheet.dart';
-import 'widgets/photo_page.dart';
-import 'widgets/video_page.dart';
 
 /// Full-screen photo viewer (`/photo/:id`). Swipes horizontally through the
 /// originating sequence; tap toggles the chrome; the action bar favorites,
@@ -33,11 +32,18 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
   late final PageController _controller = PageController(initialPage: _index);
   bool _chromeVisible = true;
 
+  /// 0 (settled) → 1 (dismissed), mirrored up from whichever page is being
+  /// drag-dismissed so the chrome — a sibling of the [PageView], not a
+  /// descendant of any one page — fades in lockstep without a full-screen
+  /// rebuild on every drag frame.
+  final ValueNotifier<double> _dragProgress = ValueNotifier(0);
+
   String get _currentId => _ids[_index];
 
   @override
   void dispose() {
     _controller.dispose();
+    _dragProgress.dispose();
     super.dispose();
   }
 
@@ -93,6 +99,23 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
     _snack('Photo deleted');
   }
 
+  /// Multiplies [child]'s opacity by `1 - _dragProgress` and disables its
+  /// hit-testing mid-drag, on top of [child]'s own `visible`-driven fade —
+  /// the two compose independently, so chrome hides the instant a dismiss
+  /// drag starts regardless of whether it was toggled visible.
+  Widget _dragFadedChrome({required Widget child}) {
+    return ValueListenableBuilder<double>(
+      valueListenable: _dragProgress,
+      builder: (context, progress, chromeChild) {
+        if (progress == 0) return chromeChild!;
+        return IgnorePointer(
+          child: Opacity(opacity: 1 - progress, child: chromeChild),
+        );
+      },
+      child: child,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_ids.isEmpty) {
@@ -112,24 +135,32 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
                 controller: _controller,
                 itemCount: _ids.length,
                 onPageChanged: (i) => setState(() => _index = i),
-                itemBuilder: (context, i) => _DetailPage(assetId: _ids[i]),
+                itemBuilder: (context, i) => _DetailPage(
+                  assetId: _ids[i],
+                  onDragProgress: (p) => _dragProgress.value = p,
+                  onDismissed: () => Navigator.of(context).maybePop(),
+                ),
               ),
             ),
           ),
-          _Chrome(
-            visible: _chromeVisible,
-            alignment: Alignment.topCenter,
-            child: _TopBar(onExif: _onExif),
+          _dragFadedChrome(
+            child: _Chrome(
+              visible: _chromeVisible,
+              alignment: Alignment.topCenter,
+              child: _TopBar(onExif: _onExif),
+            ),
           ),
-          _Chrome(
-            visible: _chromeVisible,
-            alignment: Alignment.bottomCenter,
-            child: DetailActionBar(
-              isFavorite: isFavorite,
-              onFavorite: _onFavorite,
-              onShare: _onShare,
-              onAddToAlbum: _onAddToAlbum,
-              onDelete: _onDelete,
+          _dragFadedChrome(
+            child: _Chrome(
+              visible: _chromeVisible,
+              alignment: Alignment.bottomCenter,
+              child: DetailActionBar(
+                isFavorite: isFavorite,
+                onFavorite: _onFavorite,
+                onShare: _onShare,
+                onAddToAlbum: _onAddToAlbum,
+                onDelete: _onDelete,
+              ),
             ),
           ),
         ],
@@ -138,18 +169,31 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
   }
 }
 
-/// One page of the viewer: a [VideoPage] for a video asset, else a [PhotoPage].
-/// Branches on [isVideoProvider]; shows the still while the kind resolves so an
-/// image never flashes the player and vice versa.
+/// One page of the viewer: routes to [DismissiblePhoto] (drag-to-dismiss),
+/// which itself wraps [DetailStage] (Hero + reveal) branching on
+/// [isVideoProvider] into a [VideoPage]/[PhotoPage] once revealed. Shows the
+/// still while the kind resolves so a video never flashes as a photo page and
+/// vice versa.
 class _DetailPage extends ConsumerWidget {
-  const _DetailPage({required this.assetId});
+  const _DetailPage({
+    required this.assetId,
+    required this.onDragProgress,
+    required this.onDismissed,
+  });
 
   final String assetId;
+  final ValueChanged<double> onDragProgress;
+  final VoidCallback onDismissed;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isVideo = ref.watch(isVideoProvider(assetId)).value ?? false;
-    return isVideo ? VideoPage(assetId: assetId) : PhotoPage(assetId: assetId);
+    return DismissiblePhoto(
+      assetId: assetId,
+      isVideo: isVideo,
+      onProgress: onDragProgress,
+      onDismissed: onDismissed,
+    );
   }
 }
 

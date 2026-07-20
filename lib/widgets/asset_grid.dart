@@ -5,6 +5,7 @@ import '../core/theme/app_colors.dart';
 import '../core/theme/app_space.dart';
 import '../features/detail/photo_viewer_args.dart';
 import '../services/photo_library_service.dart';
+import 'asset_hero_tag.dart';
 import 'asset_thumbnail.dart';
 
 /// A paginating three-column grid of asset thumbnails, shared by the full-month
@@ -47,10 +48,13 @@ class AssetGrid extends StatelessWidget {
               '/photo/${items[i].id}',
               extra: PhotoViewerArgs([for (final a in items) a.id], i),
             ),
-            child: AssetThumbnail(
-              assetId: items[i].id,
-              size: 400,
-              showVideoBadge: true,
+            child: Hero(
+              tag: assetHeroTag(items[i].id),
+              child: AssetThumbnail(
+                assetId: items[i].id,
+                size: 400,
+                showVideoBadge: true,
+              ),
             ),
           );
         },

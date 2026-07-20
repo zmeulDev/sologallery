@@ -81,7 +81,12 @@ void main() {
 
   group('consent step', () {
     /// Pumps with [access] already sufficient to read, so the screen advances
-    /// to step 2.
+    /// to step 2. `pumpAndSettle` — the consent step has no perpetually
+    /// scheduling widget (no spinner, no focused TextField), so it's safe
+    /// here and, unlike a short bounded pump, reliably clears the staggered
+    /// EntranceFade reveal timers (up to 200ms + reveal duration) that back
+    /// the step's entrance choreography — a short pump leaves one pending at
+    /// teardown and trips the "Timer still pending" invariant.
     Future<void> pumpConsentWith(
       WidgetTester tester,
       PhotoAccess access,
@@ -99,8 +104,7 @@ void main() {
           ),
         ),
       );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
     }
 
     testWidgets('limited access still owes the consent step', (tester) async {
@@ -129,9 +133,8 @@ void main() {
           ),
         ),
       );
-      // Bounded pumps — enough turns for the consent read to resolve.
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+      // pumpAndSettle, not a short bounded pump — see pumpConsentWith's note.
+      await tester.pumpAndSettle();
     }
 
     testWidgets('asks once access is granted, with every feature off',
@@ -157,7 +160,11 @@ void main() {
       await tester.tap(find.byType(Switch).first);
       await tester.pump(const Duration(milliseconds: 50));
       await tester.tap(find.text('Continue'));
-      await tester.pump(const Duration(milliseconds: 50));
+      // pumpAndSettle: recording consent flips the screen back to step 1
+      // (canReadLibrary stays true, consent no longer "needed"), which
+      // mounts a fresh AnimatedSwitcher cross-fade and that step's own
+      // EntranceFade timers — a short bounded pump leaves those pending.
+      await tester.pumpAndSettle();
 
       expect(await db.settingsDao.readSearchEnabled(), isTrue);
       expect(await db.settingsDao.readMemoriesEnabled(), isFalse);
@@ -170,7 +177,8 @@ void main() {
       await pumpConsent(tester);
 
       await tester.tap(find.text('Continue'));
-      await tester.pump(const Duration(milliseconds: 50));
+      // pumpAndSettle — see the note in the previous test.
+      await tester.pumpAndSettle();
 
       expect(await db.settingsDao.readConsentRecorded(), isTrue);
       expect(await db.settingsDao.readSearchEnabled(), isFalse);

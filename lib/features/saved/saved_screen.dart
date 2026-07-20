@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_space.dart';
+import '../../widgets/asset_hero_tag.dart';
 import '../../widgets/asset_thumbnail.dart';
 import '../../widgets/empty_state.dart';
 import '../detail/photo_viewer_args.dart';
@@ -56,10 +57,13 @@ class _SavedGrid extends StatelessWidget {
           '/photo/${assetIds[i]}',
           extra: PhotoViewerArgs(assetIds, i),
         ),
-        child: AssetThumbnail(
-          assetId: assetIds[i],
-          size: 400,
-          showVideoBadge: true,
+        child: Hero(
+          tag: assetHeroTag(assetIds[i]),
+          child: AssetThumbnail(
+            assetId: assetIds[i],
+            size: 400,
+            showVideoBadge: true,
+          ),
         ),
       ),
     );

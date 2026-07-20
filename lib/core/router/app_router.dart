@@ -21,6 +21,8 @@ import '../../features/settings/settings_screen.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
 import '../../widgets/app_shell.dart';
+import '../theme/app_motion.dart';
+import 'fade_through_page.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -66,42 +68,65 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/month/:key',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) =>
-            MonthGridScreen(monthKey: state.pathParameters['key']!),
+        pageBuilder: (context, state) => fadeThroughPage(
+          context: context,
+          key: state.pageKey,
+          child: MonthGridScreen(monthKey: state.pathParameters['key']!),
+        ),
       ),
       GoRoute(
         path: '/older',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const OlderGridScreen(),
+        pageBuilder: (context, state) => fadeThroughPage(
+          context: context,
+          key: state.pageKey,
+          child: const OlderGridScreen(),
+        ),
       ),
       GoRoute(
         path: '/settings',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const SettingsScreen(),
+        pageBuilder: (context, state) => fadeThroughPage(
+          context: context,
+          key: state.pageKey,
+          child: const SettingsScreen(),
+        ),
       ),
       GoRoute(
         path: '/people',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const PeopleScreen(),
+        pageBuilder: (context, state) => fadeThroughPage(
+          context: context,
+          key: state.pageKey,
+          child: const PeopleScreen(),
+        ),
       ),
       GoRoute(
         path: '/person/:id',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final id = int.tryParse(state.pathParameters['id'] ?? '');
-          if (id == null) {
-            return const _NotFound(message: 'That person couldn\'t be found.');
-          }
-          return PersonDetailScreen(personId: id);
+          return fadeThroughPage(
+            context: context,
+            key: state.pageKey,
+            child: id == null
+                ? const _NotFound(message: 'That person couldn\'t be found.')
+                : PersonDetailScreen(personId: id),
+          );
         },
       ),
       GoRoute(
         path: '/album/:id',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final id = int.tryParse(state.pathParameters['id'] ?? '');
-          if (id == null) return const _InvalidAlbum();
-          return AlbumDetailScreen(albumId: id);
+          return fadeThroughPage(
+            context: context,
+            key: state.pageKey,
+            child: id == null
+                ? const _InvalidAlbum()
+                : AlbumDetailScreen(albumId: id),
+          );
         },
       ),
       GoRoute(
@@ -111,25 +136,35 @@ final routerProvider = Provider<GoRouter>((ref) {
         // the app bar, so a deep link may omit it.
         path: '/folder',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final id = state.uri.queryParameters['id'];
-          if (id == null || id.isEmpty) {
-            return const _NotFound(message: 'That folder couldn\'t be found.');
-          }
-          return FolderDetailScreen(
-            folderId: id,
-            folderName: state.uri.queryParameters['name'],
+          return fadeThroughPage(
+            context: context,
+            key: state.pageKey,
+            child: id == null || id.isEmpty
+                ? const _NotFound(message: 'That folder couldn\'t be found.')
+                : FolderDetailScreen(
+                    folderId: id,
+                    folderName: state.uri.queryParameters['name'],
+                  ),
           );
         },
       ),
       GoRoute(
         path: '/photo/:id',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => PhotoDetailScreen(
-          // `extra` carries the swipe sequence; a deep link / restore (no extra)
-          // falls back to a single-asset viewer built from the path id.
-          args: state.extra as PhotoViewerArgs? ??
-              PhotoViewerArgs([state.pathParameters['id']!], 0),
+        pageBuilder: (context, state) => fadeThroughPage(
+          context: context,
+          key: state.pageKey,
+          // The Hero flight carries the visual weight; give it more room to
+          // travel than a plain screen swap.
+          base: AppMotion.long,
+          child: PhotoDetailScreen(
+            // `extra` carries the swipe sequence; a deep link / restore (no
+            // extra) falls back to a single-asset viewer built from the path id.
+            args: state.extra as PhotoViewerArgs? ??
+                PhotoViewerArgs([state.pathParameters['id']!], 0),
+          ),
         ),
       ),
       GoRoute(
@@ -137,8 +172,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         // the nav bar would break the story.
         path: '/memory/:id',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => MemoryPlayerScreen(
-          memoryId: int.parse(state.pathParameters['id']!),
+        pageBuilder: (context, state) => fadeThroughPage(
+          context: context,
+          key: state.pageKey,
+          // The title card's cover Hero-flies from its carousel card; give
+          // it the same room to travel as the photo detail route.
+          base: AppMotion.long,
+          child: MemoryPlayerScreen(
+            memoryId: int.parse(state.pathParameters['id']!),
+          ),
         ),
       ),
       StatefulShellRoute.indexedStack(

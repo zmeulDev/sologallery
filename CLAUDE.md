@@ -732,7 +732,80 @@ Short form; full postmortems in `docs/postmortems/`.
   Phase-5 icon-family swap left all 18 goldens byte-identical (md5-verified),
   which is the *expected* outcome, not a missed regen. Goldens verify layout/
   color only; verify glyph shapes on device (or by eye in the running app).
-
+- **An `AnimatedBuilder`'s built tree shape must stay constant across a whole
+  gesture, or it silently kills the gesture mid-flight.** `DismissiblePhoto`'s
+  first version special-cased `if (t == 0) return child!;` to skip wrapping
+  the child in `Opacity`/`Transform` at rest, wrapping only once
+  `_dismiss.value` moved off zero. The *very first* drag-update frame flips
+  that branch, so `AnimatedBuilder`'s rebuild swaps the child's ancestor from
+  "none" to "Opacity → Transform → Transform" — a structural change Flutter's
+  reconciliation can't match by type, so it disposes and reinflates the
+  `GestureDetector` beneath it, along with its in-flight gesture-arena
+  membership. `onVerticalDragUpdate` fires once (before the dispose),
+  `onVerticalDragEnd` never fires again — the widget just sits at whatever
+  value the last update left it at, forever. A host widget test doing a real
+  `startGesture`/`moveBy`/`up()` sequence (not `tester.drag`, which coalesces
+  down+move+up and can hide this) is what caught it: `dismissed` stayed
+  `false` and the value never moved after release. Fix: always build the
+  *same* wrapper shape, with identity values (opacity 1, zero translate, unit
+  scale) at rest — never branch the shape on the animated value itself.
+- **`InteractiveViewer`'s scale recognizer can win the gesture arena over a
+  sibling `VerticalDragGestureRecognizer` even with `panEnabled: false`, and
+  then do nothing — silently swallowing the whole gesture.** It needs to be a
+  candidate from the first touch to recognize an incoming pinch, so
+  `panEnabled: false` only gates what it *does* with an accepted gesture, not
+  arena *participation* — this is invisible on host tests that stub
+  `detailImageProvider` to null bytes (no `InteractiveViewer` ever renders,
+  so nothing competes) and only showed up against a *real* photo on device.
+  Fix: track the drag-dismiss via raw `Listener` (`onPointerDown/Move/Up`)
+  instead of a competing `GestureDetector` — `Listener` receives every raw
+  pointer event regardless of which recognizer wins the arena, so it can't be
+  starved this way. It self-gates on zoom state and locks onto whichever axis
+  the drag reads as dominant once past `kTouchSlop`, deferring to the
+  `PageView`'s own horizontal swipe by simply not acting when the movement
+  reads as horizontal (see `DismissiblePhoto`).
+- **`print`/`debugPrint` do not surface anywhere observable from a
+  `patrol test`/`connectedAndroidTest` run** (not the CLI's own output, not
+  `adb logcat`, even filtered on the exact tag right after the run) — unlike
+  `flutter run`, where the same calls land under the `flutter` logcat tag.
+  Diagnosing gesture/animation behavior on-device instead has to go through
+  `expect()`/`fail()`, since test-framework failure messages *are* reliably
+  surfaced by both the CLI and the HTML report: e.g. `fail('DEBUG: '
+  'opacity=${opacity} count=${count}')` deliberately, read the message, then
+  remove it. This is how the two gotchas above were actually root-caused.
+- **A `late final AnimationController` field only gets created on first
+  *access* — if a widget's `build()` conditionally never touches it (e.g.
+  reduced motion skips the animated branch entirely), `dispose()` becomes
+  that first access, and creating a `Ticker` there throws** ("Looking up a
+  deactivated widget's ancestor is unsafe" — `SingleTickerProviderStateMixin
+  .createTicker` needs a live `TickerMode` ancestor lookup, which isn't safe
+  once the widget is already deactivating). `KenBurnsPhoto`'s first version
+  had exactly this: `late final _controller = AnimationController(...)`,
+  with `build()`'s reduced-motion branch returning early without ever
+  reading `_controller`. A host widget test pumping the reduced-motion case
+  and letting teardown dispose the tree caught it immediately. Fix: create
+  the controller *unconditionally* in `initState()` (never as a lazy field
+  initializer), and gate whether it ever actually `.forward()`s — checked
+  via `MediaQuery.of(context).disableAnimations` in `didChangeDependencies`,
+  the usual initState-is-unsafe-for-context trap — so `dispose()` always
+  finds an already-real controller to dispose of, used or not.
+- **Don't finish a drag-dismiss's own exit animation before popping the
+  route — hand off to the route's Hero return-flight immediately.**
+  `DismissiblePhoto`'s first version ran its own `animateTo(1, ...)`
+  (shrink+fade the photo to fully invisible, ~450ms) and only called
+  `Navigator.pop()` in `.whenComplete()`. Visually this is **two**
+  sequential ~450ms animations, not one: the photo fades to nothing (the
+  screen goes black), then — only once that finishes — the route's own pop
+  transition/Hero flight starts *on top of an already-invisible screen*,
+  so the photo appears to "come back" and fly to the grid as a second,
+  disconnected motion. Reported by the user as "feels laggy," which it
+  technically wasn't (frame timing was fine) — it was a sequencing bug
+  that read as broken/slow. Fix: on commit, call the dismiss callback
+  (→ `Navigator.maybePop()`) **immediately** instead of animating first;
+  the Hero flight takes over from wherever the drag left off, so there's
+  exactly one motion. A host test asserting the callback fires with *no
+  pump at all* is what proves this (the old version needed ~500ms of
+  pumping before the flag went true).
 ---
 
 ## Environment notes

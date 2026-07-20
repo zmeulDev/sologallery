@@ -9,8 +9,9 @@ import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../widgets/asset_thumbnail.dart';
-import '../detail/widgets/photo_page.dart';
 import 'memories_providers.dart';
+import 'memory_hero_tag.dart';
+import 'widgets/ken_burns_photo.dart';
 
 /// Plays one memory as a full-screen story: a title card, then each photo in
 /// turn, advancing on a timer.
@@ -67,11 +68,10 @@ class _MemoryPlayerScreenState extends ConsumerState<MemoryPlayerScreen> {
       Navigator.of(context).maybePop();
       return;
     }
-    // 320ms is deliberate story pacing (no motion token matches); the
-    // reduced-motion gate still applies — a zero duration jump-cuts the
+    // The reduced-motion gate still applies — a zero duration jump-cuts the
     // auto-advance, which is exactly what "remove animations" asks for.
     // PageController.nextPage asserts a non-zero duration, so jump instead.
-    final d = AppMotion.of(context, const Duration(milliseconds: 320));
+    final d = AppMotion.of(context, AppMotion.sceneChange);
     if (d == Duration.zero) {
       _controller.jumpToPage(_index + 1);
     } else {
@@ -132,6 +132,7 @@ class _MemoryPlayerScreenState extends ConsumerState<MemoryPlayerScreen> {
                     itemCount: pages,
                     itemBuilder: (context, i) => i == 0
                         ? _TitleCard(
+                            memoryId: widget.memoryId,
                             title: summary?.title ?? 'Memory',
                             subtitle: summary?.subtitle,
                             count: list.length,
@@ -140,7 +141,10 @@ class _MemoryPlayerScreenState extends ConsumerState<MemoryPlayerScreen> {
                             coverAssetId:
                                 summary?.coverAssetId ?? list.first.id,
                           )
-                        : PhotoPage(assetId: list[i - 1].id),
+                        : KenBurnsPhoto(
+                            assetId: list[i - 1].id,
+                            duration: MemoryPlayerScreen.pageDuration,
+                          ),
                   ),
                 ),
               ),
@@ -208,12 +212,14 @@ class _Progress extends StatelessWidget {
 /// `MemoryCard`, so tapping a card feels like it expanded into the story.
 class _TitleCard extends StatelessWidget {
   const _TitleCard({
+    required this.memoryId,
     required this.title,
     required this.subtitle,
     required this.count,
     required this.coverAssetId,
   });
 
+  final int memoryId;
   final String title;
   final String? subtitle;
   final int count;
@@ -225,7 +231,10 @@ class _TitleCard extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        AssetThumbnail(assetId: coverAssetId, size: 1000),
+        Hero(
+          tag: memoryHeroTag(memoryId),
+          child: AssetThumbnail(assetId: coverAssetId, size: 1000),
+        ),
         // Heavier than the card's scrim: the title is larger here and has to
         // hold against a full-bleed photo rather than a 150px thumbnail.
         const DecoratedBox(

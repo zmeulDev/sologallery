@@ -8,8 +8,10 @@ import '../../services/indexing_service.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
 import '../../widgets/app_button.dart';
+import '../../widgets/asset_hero_tag.dart';
 import '../../widgets/asset_thumbnail.dart';
 import '../../widgets/empty_state.dart';
+import '../../widgets/entrance_fade.dart';
 import '../../widgets/limited_access_banner.dart';
 import '../../widgets/month_section_header.dart';
 import '../detail/photo_viewer_args.dart';
@@ -95,10 +97,15 @@ class _MonthList extends StatelessWidget {
       itemBuilder: (context, i) {
         if (i == 0) return const MemoriesCarousel();
         final index = i - 1;
-        if (index >= counts.length) {
-          return _OlderSection(count: olderCount);
-        }
-        return _MonthSection(entry: counts[index]);
+        // Each section plays its entrance once, the first time it scrolls
+        // into view and gets built — index staggers the start, not the
+        // scroll position, so a fast scroll never leaves a backlog.
+        return EntranceFade(
+          index: index,
+          child: index >= counts.length
+              ? _OlderSection(count: olderCount)
+              : _MonthSection(entry: counts[index]),
+        );
       },
     );
   }
@@ -210,7 +217,10 @@ class _PreviewGrid extends StatelessWidget {
             ),
             child: ClipRRect(
               borderRadius: AppRadius.br4,
-              child: AssetThumbnail(assetId: id, size: 300, showVideoBadge: true),
+              child: Hero(
+                tag: assetHeroTag(id),
+                child: AssetThumbnail(assetId: id, size: 300, showVideoBadge: true),
+              ),
             ),
           ),
       ],

@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
 import '../../widgets/app_button.dart';
 import '../../widgets/consent_switch.dart';
+import '../../widgets/entrance_fade.dart';
 import '../settings/consent_provider.dart';
 
 /// First-run gate, in two steps. The router sends the user here whenever the app
@@ -67,11 +69,28 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     final access = ref.watch(permissionProvider);
-    if (access.canReadLibrary &&
-        ref.watch(consentProvider) == ConsentState.needed) {
-      return _buildConsentStep(context);
-    }
-    return _buildAccessStep(context, access);
+    final showConsent =
+        access.canReadLibrary && ref.watch(consentProvider) == ConsentState.needed;
+    // A plain cross-fade between the two steps — each is its own full
+    // Scaffold, so AnimatedSwitcher briefly stacks both during the
+    // transition rather than hard-cutting between them. Keying by step
+    // means arriving at a step always mounts it fresh, replaying its own
+    // entrance choreography (built with EntranceFade below) every time,
+    // including the second time consent is reached after access is revoked
+    // and re-granted.
+    return AnimatedSwitcher(
+      duration: AppMotion.of(context, AppMotion.medium),
+      switchInCurve: AppMotion.curve,
+      switchOutCurve: AppMotion.curve,
+      transitionBuilder: (child, animation) =>
+          FadeTransition(opacity: animation, child: child),
+      child: KeyedSubtree(
+        key: ValueKey(showConsent ? 'consent' : 'access'),
+        child: showConsent
+            ? _buildConsentStep(context)
+            : _buildAccessStep(context, access),
+      ),
+    );
   }
 
   Widget _buildAccessStep(BuildContext context, PhotoAccess access) {
@@ -102,55 +121,85 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 style: text.sectionLabel.copyWith(color: colors.textSecondary),
               ),
               const Spacer(),
-              Text(
-                denied
-                    ? 'Photo access is\nturned off.'
-                    : 'Your photos\nstay yours.',
-                style: text.display.copyWith(color: scheme.onSurface),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                denied
-                    ? 'SoloGallery needs access to your library to show your '
-                        'photos. Turn it on in Settings — nothing is uploaded, '
-                        'ever.'
-                    : 'SoloGallery organizes everything right here on this '
-                        'device. No cloud, no account, no network — your '
-                        'library never leaves your phone.',
-                style: text.body.copyWith(color: colors.textSecondary),
+              EntranceFade(
+                index: 1,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      denied
+                          ? 'Photo access is\nturned off.'
+                          : 'Your photos\nstay yours.',
+                      style: text.display.copyWith(color: scheme.onSurface),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      denied
+                          ? 'SoloGallery needs access to your library to show '
+                              'your photos. Turn it on in Settings — nothing '
+                              'is uploaded, ever.'
+                          : 'SoloGallery organizes everything right here on '
+                              'this device. No cloud, no account, no network '
+                              '— your library never leaves your phone.',
+                      style: text.body.copyWith(color: colors.textSecondary),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: AppSpace.s32),
-              const _Assurance(label: 'LOCAL ONLY', detail: 'Nothing is uploaded or synced'),
-              _Assurance(
-                label: 'ON DEVICE',
-                detail: 'Search and organizing run on your phone',
-                color: colors,
+              EntranceFade(
+                index: 2,
+                child: const _Assurance(
+                  label: 'LOCAL ONLY',
+                  detail: 'Nothing is uploaded or synced',
+                ),
               ),
-              const _Assurance(
-                label: 'NON-DESTRUCTIVE',
-                detail: 'Your original photos are never altered',
+              EntranceFade(
+                index: 3,
+                child: _Assurance(
+                  label: 'ON DEVICE',
+                  detail: 'Search and organizing run on your phone',
+                  color: colors,
+                ),
+              ),
+              EntranceFade(
+                index: 4,
+                child: const _Assurance(
+                  label: 'NON-DESTRUCTIVE',
+                  detail: 'Your original photos are never altered',
+                ),
               ),
               const Spacer(),
-              AppButton.primary(
-                label: denied ? 'Open Settings' : 'Allow photo access',
-                busy: _busy,
-                expand: true,
-                onPressed: _busy
-                    ? null
-                    : () => _run(
-                          denied
-                              ? ref.read(permissionProvider.notifier).openSettings
-                              : _requestAccess,
-                        ),
-              ),
-              const SizedBox(height: 14),
-              Center(
-                child: Text(
-                  denied
-                      ? 'We\'ll open the library the moment access is on.'
-                      : 'You choose what to share — all photos or only some.',
-                  textAlign: TextAlign.center,
-                  style: text.caption.copyWith(color: colors.textMuted),
+              EntranceFade(
+                index: 5,
+                child: Column(
+                  children: [
+                    AppButton.primary(
+                      label: denied ? 'Open Settings' : 'Allow photo access',
+                      busy: _busy,
+                      expand: true,
+                      onPressed: _busy
+                          ? null
+                          : () => _run(
+                                denied
+                                    ? ref
+                                        .read(permissionProvider.notifier)
+                                        .openSettings
+                                    : _requestAccess,
+                              ),
+                    ),
+                    const SizedBox(height: 14),
+                    Center(
+                      child: Text(
+                        denied
+                            ? 'We\'ll open the library the moment access is on.'
+                            : 'You choose what to share — all photos or only '
+                                'some.',
+                        textAlign: TextAlign.center,
+                        style: text.caption.copyWith(color: colors.textMuted),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -197,56 +246,83 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: AppSpace.s32),
-                      Text(
-                        'What should stay\non the shelf?',
-                        style: text.display.copyWith(color: scheme.onSurface),
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        'SoloGallery can look through your photos to make them '
-                        'easier to find. It all happens on this device — and '
-                        'none of it starts until you say so.',
-                        style: text.body.copyWith(color: colors.textSecondary),
+                      EntranceFade(
+                        index: 1,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'What should stay\non the shelf?',
+                              style: text.display
+                                  .copyWith(color: scheme.onSurface),
+                            ),
+                            const SizedBox(height: 18),
+                            Text(
+                              'SoloGallery can look through your photos to '
+                              'make them easier to find. It all happens on '
+                              'this device — and none of it starts until you '
+                              'say so.',
+                              style: text.body
+                                  .copyWith(color: colors.textSecondary),
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: AppSpace.s32),
-                      _ConsentToggle(
-                        label: 'CONTENT SEARCH',
-                        detail: 'Find photos by what is in them, and by text '
-                            'they contain',
-                        value: _search,
-                        onChanged: (v) => setState(() => _search = v),
+                      EntranceFade(
+                        index: 2,
+                        child: _ConsentToggle(
+                          label: 'CONTENT SEARCH',
+                          detail: 'Find photos by what is in them, and by '
+                              'text they contain',
+                          value: _search,
+                          onChanged: (v) => setState(() => _search = v),
+                        ),
                       ),
-                      _ConsentToggle(
-                        label: 'MEMORIES',
-                        detail: 'Occasional highlights built from photos you '
-                            'already have',
-                        value: _memories,
-                        onChanged: (v) => setState(() => _memories = v),
+                      EntranceFade(
+                        index: 3,
+                        child: _ConsentToggle(
+                          label: 'MEMORIES',
+                          detail: 'Occasional highlights built from photos '
+                              'you already have',
+                          value: _memories,
+                          onChanged: (v) => setState(() => _memories = v),
+                        ),
                       ),
-                      _ConsentToggle(
-                        label: 'FACE DETECTION',
-                        detail: "Groups photos by who's in them. Faces never "
-                            'leave this device.',
-                        value: _faces,
-                        onChanged: (v) => setState(() => _faces = v),
+                      EntranceFade(
+                        index: 4,
+                        child: _ConsentToggle(
+                          label: 'FACE DETECTION',
+                          detail: "Groups photos by who's in them. Faces "
+                              'never leave this device.',
+                          value: _faces,
+                          onChanged: (v) => setState(() => _faces = v),
+                        ),
                       ),
                       const SizedBox(height: AppSpace.s8),
                     ],
                   ),
                 ),
               ),
-              AppButton.primary(
-                label: 'Continue',
-                busy: _busy,
-                expand: true,
-                onPressed: _busy ? null : () => _run(_recordConsent),
-              ),
-              const SizedBox(height: 14),
-              Center(
-                child: Text(
-                  'Your photos open next either way.',
-                  textAlign: TextAlign.center,
-                  style: text.caption.copyWith(color: colors.textMuted),
+              EntranceFade(
+                index: 5,
+                child: Column(
+                  children: [
+                    AppButton.primary(
+                      label: 'Continue',
+                      busy: _busy,
+                      expand: true,
+                      onPressed: _busy ? null : () => _run(_recordConsent),
+                    ),
+                    const SizedBox(height: 14),
+                    Center(
+                      child: Text(
+                        'Your photos open next either way.',
+                        textAlign: TextAlign.center,
+                        style: text.caption.copyWith(color: colors.textMuted),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
