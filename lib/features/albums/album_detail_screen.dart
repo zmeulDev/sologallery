@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_text_styles.dart';
+import '../../core/theme/app_space.dart';
 import '../../widgets/asset_thumbnail.dart';
+import '../../widgets/empty_state.dart';
 import '../detail/photo_viewer_args.dart';
 import 'albums_providers.dart';
 
@@ -24,9 +24,9 @@ class AlbumDetailScreen extends ConsumerWidget {
       appBar: AppBar(title: Text(album.value?.name ?? 'Album')),
       body: entries.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, st) => const _CenteredNote('Couldn\'t load this album.'),
+        error: (e, st) => const EmptyState.note('Couldn\'t load this album.'),
         data: (items) => items.isEmpty
-            ? const _CenteredNote(
+            ? const EmptyState.note(
                 'This album is empty.\nAdd photos from any photo\'s menu.')
             : _Grid(assetIds: [for (final e in items) e.assetId]),
       ),
@@ -42,11 +42,11 @@ class _Grid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GridView.builder(
-      padding: const EdgeInsets.all(2),
+      padding: const EdgeInsets.all(AppSpace.s2),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        mainAxisSpacing: 2,
-        crossAxisSpacing: 2,
+        mainAxisSpacing: AppSpace.s2,
+        crossAxisSpacing: AppSpace.s2,
       ),
       itemCount: assetIds.length,
       itemBuilder: (context, i) => GestureDetector(
@@ -59,24 +59,6 @@ class _Grid extends StatelessWidget {
           size: 400,
           showVideoBadge: true,
         ),
-      ),
-    );
-  }
-}
-
-class _CenteredNote extends StatelessWidget {
-  const _CenteredNote(this.text);
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
-    final styles = Theme.of(context).extension<AppTextStyles>()!;
-    return Center(
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        style: styles.body.copyWith(color: colors.textSecondary),
       ),
     );
   }

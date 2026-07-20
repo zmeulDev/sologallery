@@ -282,12 +282,61 @@ docs/
 | Element | Size | Weight |
 |---|---|---|
 | Page title | 22sp | 700 |
+| Display | 34sp | 700 |
+| Button | 15sp | 600 |
 | Section label | 11sp | 600 (uppercase, 0.08em spacing) |
 | Filter pill | 12sp | 500 |
 | Body / list | 14sp | 400 |
 | EXIF value | 12sp | 600 |
 | EXIF key | 9sp | 400 (uppercase) |
 | Caption | 11sp | 400 |
+
+### Spacing (`AppSpace`)
+
+`s2 s4 s8 s12 s16 s20 s24 s32` — s2 photo-grid gutter, s16 screen inset.
+
+### Radius (`AppRadius`)
+
+| Token | Use |
+|---|---|
+| r2 | grab handle, progress segments |
+| r4 | grid cells, DurationBadge |
+| r12 | cards, banner, filled inputs |
+| r20 | sheets AND dialogs |
+| — | pills = `StadiumBorder` |
+
+### Motion (`AppMotion`)
+
+| Token | ms | Use |
+|---|---|---|
+| pressed | 110 | Pressable card scale |
+| short | 150 | pill selection, play glyph |
+| medium | 180 | thumbnail fade, chrome |
+| nav | 260 | dot-nav slide |
+
+Curve `easeOutCubic`; every duration via `AppMotion.of(context, d)`
+(reduced-motion → `Duration.zero`).
+
+### Over-media (`AppOverMedia`, app_colors.dart)
+
+Theme-invariant consts for content over photos/video: scrims
+`0x99`/`0xB3`/`0xD9` black (+`playScrim 0x66`), glyph whites
+(`glyph/Soft/Faint/Dim/Ghost`), progress `segment`/`segmentOff`.
+
+### System notes
+
+- Error color = ink (no red anywhere; errors carried by copy).
+- Dialogs and sheets share r20 + hairline border; actions are themed
+  `TextButton`s.
+- Snackbar = inverted-ink floating pill (`pillActiveBg`).
+- Icons = Material rounded family; `ios_share_rounded` for share.
+  Outlined-style glyphs with no rounded-outline variant stay on the
+  default family (nav inactive `photo_library_outlined`/
+  `photo_album_outlined`, `add_to_photos_outlined`,
+  `videocam_off_outlined`, `broken_image_outlined`).
+- Shared components: `AppButton` (primary/secondary/quiet), `EmptyState`,
+  `CoverRow`, `AppSheet`/`AppSheetNote`, `app_dialog` helpers,
+  `Pressable` (cards only — never grid cells).
 
 ### Screens
 
@@ -678,6 +727,11 @@ Short form; full postmortems in `docs/postmortems/`.
   (`appVersionProvider.overrideWith((ref) async => '1.0.0 (1)')`). Reads only the
   Android `PackageManager` / iOS bundle — adds no network perms (release manifest
   re-verified clean).
+- **Golden tests cannot see icon glyphs.** Alchemist's CI variant obscures
+  fonts, so every `Icon` renders as a solid box regardless of codepoint — the
+  Phase-5 icon-family swap left all 18 goldens byte-identical (md5-verified),
+  which is the *expected* outcome, not a missed regen. Goldens verify layout/
+  color only; verify glyph shapes on device (or by eye in the running app).
 
 ---
 

@@ -51,7 +51,7 @@ void main() {
       (tester) async {
     await pumpScreen(tester, const LibraryScreen());
     expect(find.widgetWithText(AppBar, 'Library'), findsOneWidget);
-    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.settings_rounded), findsOneWidget);
     // LibraryScreen now holds Drift .watch() streams (month counts / older).
     await disposeTree(tester);
   });

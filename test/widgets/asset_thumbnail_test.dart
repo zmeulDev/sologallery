@@ -33,22 +33,30 @@ void main() {
     );
   }
 
+  // Bounded pumps, not pumpAndSettle: once the thumbnail future resolves, the
+  // AnimatedSwitcher fade (180ms token) must be given time to run out before
+  // asserting on the resolved content.
+  Future<void> settle(WidgetTester tester) async {
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+  }
+
   testWidgets('shows a duration badge for a video', (tester) async {
     await pump(tester, 'v', badge: true);
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.byType(DurationBadge), findsOneWidget);
     expect(find.text('1:05'), findsOneWidget);
   });
 
   testWidgets('no badge for a still', (tester) async {
     await pump(tester, 'p', badge: true);
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.byType(DurationBadge), findsNothing);
   });
 
   testWidgets('no badge when the flag is off, even for a video', (tester) async {
     await pump(tester, 'v', badge: false);
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.byType(DurationBadge), findsNothing);
   });
 }

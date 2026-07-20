@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_text_styles.dart';
+import '../../core/theme/app_radius.dart';
+import '../../core/theme/app_space.dart';
 import '../../services/indexing_service.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
+import '../../widgets/app_button.dart';
 import '../../widgets/asset_thumbnail.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/limited_access_banner.dart';
 import '../../widgets/month_section_header.dart';
 import '../detail/photo_viewer_args.dart';
@@ -34,7 +36,7 @@ class LibraryScreen extends ConsumerWidget {
         title: const Text('Library'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings_outlined),
+            icon: const Icon(Icons.settings_rounded),
             tooltip: 'Settings',
             onPressed: () => context.push('/settings'),
           ),
@@ -50,7 +52,7 @@ class LibraryScreen extends ConsumerWidget {
           Expanded(
             child: months.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, st) => const _LibraryMessage(
+              error: (e, st) => const EmptyState(
                 title: 'Couldn\'t load your photos',
                 detail: 'Something went wrong reading your library. Pull to try '
                     'again.',
@@ -58,7 +60,7 @@ class LibraryScreen extends ConsumerWidget {
               data: (counts) {
                 if (counts.isEmpty && olderCount == 0) {
                   return cacheReady
-                      ? const _LibraryMessage(
+                      ? const EmptyState(
                           title: 'No photos yet',
                           detail: 'Photos you take will appear here, grouped by '
                               'month.',
@@ -88,7 +90,7 @@ class _MonthList extends StatelessWidget {
     // carousel collapses to zero height when there are no memories, so no
     // special-casing is needed here.
     return ListView.builder(
-      padding: const EdgeInsets.only(top: 4, bottom: 24),
+      padding: const EdgeInsets.only(top: AppSpace.s4, bottom: AppSpace.s24),
       itemCount: 1 + counts.length + (showOlder ? 1 : 0),
       itemBuilder: (context, i) {
         if (i == 0) return const MemoriesCarousel();
@@ -157,13 +159,22 @@ class _LibrarySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpace.s16,
+        AppSpace.s16,
+        AppSpace.s16,
+        AppSpace.s20,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           MonthSectionHeader(
             label: label,
-            trailing: _ViewAllButton(count: count, onTap: onViewAll),
+            trailing: AppButton.quiet(
+              label: 'View all $count',
+              chevron: true,
+              onPressed: onViewAll,
+            ),
           ),
           const SizedBox(height: 10),
           _PreviewGrid(assetIds: previewAssetIds),
@@ -184,8 +195,10 @@ class _PreviewGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return GridView.count(
       crossAxisCount: 3,
-      mainAxisSpacing: 3,
-      crossAxisSpacing: 3,
+      // Normalized from 3 to the standard photo-grid gutter (approved Phase-1e
+      // decision) so preview and full grids share one rhythm.
+      mainAxisSpacing: AppSpace.s2,
+      crossAxisSpacing: AppSpace.s2,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       children: [
@@ -196,80 +209,11 @@ class _PreviewGrid extends StatelessWidget {
               extra: PhotoViewerArgs(assetIds, index),
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: AppRadius.br4,
               child: AssetThumbnail(assetId: id, size: 300, showVideoBadge: true),
             ),
           ),
       ],
-    );
-  }
-}
-
-class _ViewAllButton extends StatelessWidget {
-  const _ViewAllButton({required this.count, required this.onTap});
-
-  final int count;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
-    final text = Theme.of(context).extension<AppTextStyles>()!;
-    return TextButton(
-      onPressed: onTap,
-      style: TextButton.styleFrom(
-        foregroundColor: colors.textSecondary,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        minimumSize: Size.zero,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('View all $count', style: text.filterPill),
-          const SizedBox(width: 2),
-          const Icon(Icons.chevron_right, size: 16),
-        ],
-      ),
-    );
-  }
-}
-
-/// Centered title + supporting line for the empty and error states.
-class _LibraryMessage extends StatelessWidget {
-  const _LibraryMessage({required this.title, required this.detail});
-
-  final String title;
-  final String detail;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
-    final text = Theme.of(context).extension<AppTextStyles>()!;
-    final scheme = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 40),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: text.body.copyWith(
-                color: scheme.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              detail,
-              textAlign: TextAlign.center,
-              style: text.caption.copyWith(color: colors.textSecondary),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

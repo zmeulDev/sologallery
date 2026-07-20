@@ -59,17 +59,17 @@ void main() {
   testWidgets('renders the action bar and top-bar affordances', (tester) async {
     await pump(tester);
     expect(find.byType(DetailActionBar), findsOneWidget);
-    expect(find.byIcon(Icons.info_outline), findsOneWidget);
-    expect(find.byIcon(Icons.favorite_border), findsOneWidget);
+    expect(find.byIcon(Icons.info_outline_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.favorite_border_rounded), findsOneWidget);
     await settleTeardown(tester);
   });
 
   testWidgets('favorite toggles the heart and persists', (tester) async {
     await pump(tester);
-    await tester.tap(find.byIcon(Icons.favorite_border));
+    await tester.tap(find.byIcon(Icons.favorite_border_rounded));
     await tester.pumpAndSettle();
 
-    expect(find.byIcon(Icons.favorite), findsOneWidget);
+    expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
     expect(await db.favoritesDao.isFavorite('a1'), isTrue);
     await settleTeardown(tester);
   });
@@ -86,7 +86,7 @@ void main() {
         mimeType: 'image/jpeg',
       ),
     });
-    await tester.tap(find.byIcon(Icons.info_outline));
+    await tester.tap(find.byIcon(Icons.info_outline_rounded));
     await tester.pumpAndSettle();
 
     expect(find.text('DETAILS'), findsOneWidget);
@@ -119,7 +119,7 @@ void main() {
 
   testWidgets('delete asks for confirmation first', (tester) async {
     await pump(tester);
-    await tester.tap(find.byIcon(Icons.delete_outline));
+    await tester.tap(find.byIcon(Icons.delete_outline_rounded));
     await tester.pumpAndSettle();
     expect(find.text('Delete photo?'), findsOneWidget);
     await settleTeardown(tester);

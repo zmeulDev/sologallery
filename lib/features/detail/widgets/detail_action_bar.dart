@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_space.dart';
+
 /// The detail viewer's bottom action bar: favorite · share · add to album ·
 /// delete, laid over a bottom scrim so white icons stay legible on any photo.
 ///
@@ -29,23 +32,30 @@ class DetailActionBar extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0x00000000), Color(0xB3000000)],
+          colors: [Color(0x00000000), AppOverMedia.scrimHeavy],
         ),
       ),
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 24, 12, 8),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpace.s12,
+            AppSpace.s24,
+            AppSpace.s12,
+            AppSpace.s8,
+          ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               _ActionButton(
-                icon: isFavorite ? Icons.favorite : Icons.favorite_border,
+                icon: isFavorite
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
                 label: isFavorite ? 'Favorited' : 'Favorite',
                 onTap: onFavorite,
               ),
               _ActionButton(
-                icon: Icons.ios_share,
+                icon: Icons.ios_share_rounded,
                 label: 'Share',
                 onTap: onShare,
               ),
@@ -55,7 +65,7 @@ class DetailActionBar extends StatelessWidget {
                 onTap: onAddToAlbum,
               ),
               _ActionButton(
-                icon: Icons.delete_outline,
+                icon: Icons.delete_outline_rounded,
                 label: 'Delete',
                 onTap: onDelete,
               ),
@@ -81,7 +91,7 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      icon: Icon(icon, color: Colors.white, size: 26),
+      icon: Icon(icon, color: AppOverMedia.glyph, size: 26),
       tooltip: label,
       onPressed: onTap,
       splashRadius: 24,

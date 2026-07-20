@@ -7,14 +7,15 @@ import 'package:go_router/go_router.dart';
 import '../../core/database/daos/albums_dao.dart' show AlbumSummary;
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../widgets/app_button.dart';
 import '../../widgets/asset_grid.dart';
-import '../../widgets/asset_thumbnail.dart';
 import '../../core/database/daos/faces_dao.dart' show PersonSummary;
 import '../../services/indexing_service.dart';
+import '../../widgets/cover_row.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/filter_pill.dart';
 import '../../widgets/month_section_header.dart';
 import '../folders/folders_providers.dart';
-import '../library/month_grid_screen.dart' show CenteredNote;
 import '../people/people_providers.dart';
 import '../settings/consent_provider.dart';
 import '../people/widgets/face_avatar.dart';
@@ -97,6 +98,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           onChanged: _onChanged,
           style: styles.body.copyWith(color: Theme.of(context).colorScheme.onSurface),
           decoration: InputDecoration(
+            // Opt out of the app-wide filled decoration — the app bar itself
+            // is this field's surface.
+            filled: false,
             border: InputBorder.none,
             contentPadding: const EdgeInsets.symmetric(horizontal: 16),
             // The hint only promises content matching when the user has
@@ -111,7 +115,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         actions: [
           if (_controller.text.isNotEmpty)
             IconButton(
-              icon: const Icon(Icons.close),
+              icon: const Icon(Icons.close_rounded),
               tooltip: 'Clear',
               onPressed: () => setState(_clear),
             ),
@@ -198,13 +202,14 @@ class _Results extends ConsumerWidget {
         Expanded(
           child: assets.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, st) => const CenteredNote('Couldn\'t run that search.'),
+            error: (e, st) =>
+                const EmptyState.note('Couldn\'t run that search.'),
             data: (items) {
               if (items.isEmpty) {
                 // Albums may still be the result; only claim "no matches" when
                 // nothing matched at all.
                 return showNoMatch
-                    ? const CenteredNote('No matches.')
+                    ? const EmptyState.note('No matches.')
                     : const SizedBox.shrink();
               }
               return Column(
@@ -249,73 +254,13 @@ class _AlbumsResult extends StatelessWidget {
           child: MonthSectionHeader(label: 'Albums'),
         ),
         for (final album in albums)
-          _CoverRow(
+          CoverRow(
             coverAssetId: album.coverAssetId,
             name: album.name,
             count: album.entryCount,
             onTap: () => context.push('/album/${album.id}'),
           ),
       ],
-    );
-  }
-}
-
-/// A compact collection row — cover · name · photo count — shared by the album
-/// results and the idle Folders section so both read as one list idiom.
-class _CoverRow extends StatelessWidget {
-  const _CoverRow({
-    required this.coverAssetId,
-    required this.name,
-    required this.count,
-    required this.onTap,
-  });
-
-  /// Null renders a flat placeholder tile (an empty album, or a folder whose
-  /// cover couldn't be resolved).
-  final String? coverAssetId;
-  final String name;
-  final int count;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
-    final styles = Theme.of(context).extension<AppTextStyles>()!;
-    final scheme = Theme.of(context).colorScheme;
-    final cover = coverAssetId;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: SizedBox(
-                width: 44,
-                height: 44,
-                child: cover == null
-                    ? ColoredBox(color: colors.surface2)
-                    : AssetThumbnail(assetId: cover, size: 120),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: styles.body.copyWith(color: scheme.onSurface),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              count == 1 ? '1 photo' : '$count photos',
-              style: styles.caption.copyWith(color: colors.textSecondary),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -362,7 +307,7 @@ class _IdleView extends ConsumerWidget {
             child: MonthSectionHeader(label: 'Folders'),
           ),
           for (final folder in folders)
-            _CoverRow(
+            CoverRow(
               coverAssetId: folder.coverAssetId,
               name: folder.name,
               count: folder.count,
@@ -394,9 +339,9 @@ class _PeopleStrip extends StatelessWidget {
         children: [
           MonthSectionHeader(
             label: 'People',
-            trailing: TextButton(
+            trailing: AppButton.quiet(
+              label: 'See all',
               onPressed: () => context.push('/people'),
-              child: const Text('See all'),
             ),
           ),
           const SizedBox(height: 8),

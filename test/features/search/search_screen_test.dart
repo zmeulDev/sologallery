@@ -205,12 +205,12 @@ void main() {
   testWidgets('the clear button appears after typing and resets to idle',
       (tester) async {
     await pump(tester, assets: assetsInMonth(2026, 8, 2));
-    expect(find.byIcon(Icons.close), findsNothing);
+    expect(find.byIcon(Icons.close_rounded), findsNothing);
 
     await type(tester, '2026');
-    expect(find.byIcon(Icons.close), findsOneWidget);
+    expect(find.byIcon(Icons.close_rounded), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.close));
+    await tester.tap(find.byIcon(Icons.close_rounded));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.textContaining('Search your library by date'), findsOneWidget);

@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_text_styles.dart';
+import '../../core/theme/app_space.dart';
 import '../../widgets/asset_thumbnail.dart';
+import '../../widgets/empty_state.dart';
 import '../detail/photo_viewer_args.dart';
 import 'saved_providers.dart';
 
@@ -21,12 +21,12 @@ class SavedScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Saved')),
       body: favorites.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, st) => const _SavedMessage(
+        error: (e, st) => const EmptyState(
           title: 'Couldn\'t load your favorites',
           detail: 'Something went wrong. Come back in a moment.',
         ),
         data: (rows) => rows.isEmpty
-            ? const _SavedMessage(
+            ? const EmptyState(
                 title: 'No favorites yet',
                 detail: 'Tap the heart on a photo and it will be collected here.',
               )
@@ -44,11 +44,11 @@ class _SavedGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GridView.builder(
-      padding: const EdgeInsets.all(2),
+      padding: const EdgeInsets.all(AppSpace.s2),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        mainAxisSpacing: 2,
-        crossAxisSpacing: 2,
+        mainAxisSpacing: AppSpace.s2,
+        crossAxisSpacing: AppSpace.s2,
       ),
       itemCount: assetIds.length,
       itemBuilder: (context, i) => GestureDetector(
@@ -60,46 +60,6 @@ class _SavedGrid extends StatelessWidget {
           assetId: assetIds[i],
           size: 400,
           showVideoBadge: true,
-        ),
-      ),
-    );
-  }
-}
-
-/// Centered title + supporting line for the empty and error states — mirrors the
-/// Library screen's message treatment.
-class _SavedMessage extends StatelessWidget {
-  const _SavedMessage({required this.title, required this.detail});
-
-  final String title;
-  final String detail;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
-    final text = Theme.of(context).extension<AppTextStyles>()!;
-    final scheme = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 40),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: text.body.copyWith(
-                color: scheme.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              detail,
-              textAlign: TextAlign.center,
-              style: text.caption.copyWith(color: colors.textSecondary),
-            ),
-          ],
         ),
       ),
     );

@@ -106,7 +106,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
 
     // Open the rename dialog.
-    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.tap(find.byIcon(Icons.edit_rounded));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Name this person'), findsOneWidget);

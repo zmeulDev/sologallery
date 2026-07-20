@@ -81,7 +81,7 @@ void main() {
     await pump(tester);
     await tester.pump();
 
-    await tester.tap(find.byIcon(Icons.add).first);
+    await tester.tap(find.byIcon(Icons.add_rounded).first);
     await tester.pump(); // dialog in (TextField now on screen — bounded pumps)
     await tester.enterText(find.byType(TextField), 'Beach');
     await tester.tap(find.widgetWithText(TextButton, 'Create'));

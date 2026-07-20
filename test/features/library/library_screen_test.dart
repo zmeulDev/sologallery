@@ -128,7 +128,7 @@ void main() {
   testWidgets('tapping the app-bar gear opens Settings', (tester) async {
     await pump(tester, access: PhotoAccess.granted);
 
-    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await tester.tap(find.byIcon(Icons.settings_rounded));
     await tester.pumpAndSettle();
     expect(find.text('settings'), findsOneWidget);
   });

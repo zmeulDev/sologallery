@@ -23,6 +23,9 @@ void main() {
     await $('Allow photo access').tap();
     await $.platform.mobile.grantPermissionWhenInUse();
     await $.pumpAndSettle();
+    // Onboarding step 2 (analysis consent): decline all and continue.
+    await $('Continue').tap();
+    await $.pumpAndSettle();
     expect($(AssetThumbnail), findsWidgets);
 
     // Videos aren't always among a month's six previews, so open the newest

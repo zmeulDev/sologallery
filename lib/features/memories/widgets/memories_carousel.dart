@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../widgets/app_dialog.dart';
 import '../../../widgets/month_section_header.dart';
 import '../memories_providers.dart';
 import 'memory_card.dart';
@@ -62,26 +63,14 @@ class MemoriesCarousel extends ConsumerWidget {
     WidgetRef ref,
     int id,
   ) async {
-    final hide = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Remove this memory?'),
-        content: const Text(
-          'It leaves the carousel for good. Your photos are untouched.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Keep'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Remove'),
-          ),
-        ],
-      ),
+    final hide = await showAppConfirmDialog(
+      context,
+      title: 'Remove this memory?',
+      message: 'It leaves the carousel for good. Your photos are untouched.',
+      confirmLabel: 'Remove',
+      cancelLabel: 'Keep',
     );
-    if (hide ?? false) {
+    if (hide) {
       await ref.read(memoryActionsProvider).hide(id);
     }
   }

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/database/daos/albums_dao.dart' show AlbumSummary;
+import '../../../core/format/count_labels.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../widgets/asset_thumbnail.dart';
+import '../../../widgets/pressable.dart';
 
 /// One album in the Albums grid: a square cover with the name and photo count
 /// set quietly beneath it. The cover photo is the only color; the label chrome
@@ -28,10 +30,9 @@ class AlbumCard extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final cover = summary.coverAssetId;
 
-    return GestureDetector(
+    return Pressable(
       onTap: onTap,
       onLongPress: onLongPress,
-      behavior: HitTestBehavior.opaque,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -60,19 +61,13 @@ class AlbumCard extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            _countLabel(summary.entryCount),
+            photoCountLabel(summary.entryCount, zero: 'Empty'),
             style: text.caption.copyWith(color: colors.textSecondary),
           ),
         ],
       ),
     );
   }
-
-  static String _countLabel(int count) => switch (count) {
-        0 => 'Empty',
-        1 => '1 photo',
-        _ => '$count photos',
-      };
 }
 
 class _EmptyCover extends StatelessWidget {

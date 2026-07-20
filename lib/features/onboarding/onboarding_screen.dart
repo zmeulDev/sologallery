@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
+import '../../widgets/app_button.dart';
 import '../../widgets/consent_switch.dart';
 import '../settings/consent_provider.dart';
 
@@ -84,7 +86,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     return Scaffold(
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
+          // Horizontal inset normalized from 28 to the s24 step (approved
+          // Phase-1e decision).
+          padding: const EdgeInsets.fromLTRB(
+            AppSpace.s24,
+            AppSpace.s24,
+            AppSpace.s24,
+            AppSpace.s20,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -97,13 +106,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 denied
                     ? 'Photo access is\nturned off.'
                     : 'Your photos\nstay yours.',
-                style: TextStyle(
-                  fontSize: 34,
-                  height: 1.08,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.4,
-                  color: scheme.onSurface,
-                ),
+                style: text.display.copyWith(color: scheme.onSurface),
               ),
               const SizedBox(height: 18),
               Text(
@@ -116,7 +119,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                         'library never leaves your phone.',
                 style: text.body.copyWith(color: colors.textSecondary),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: AppSpace.s32),
               const _Assurance(label: 'LOCAL ONLY', detail: 'Nothing is uploaded or synced'),
               _Assurance(
                 label: 'ON DEVICE',
@@ -128,9 +131,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 detail: 'Your original photos are never altered',
               ),
               const Spacer(),
-              _PrimaryButton(
+              AppButton.primary(
                 label: denied ? 'Open Settings' : 'Allow photo access',
                 busy: _busy,
+                expand: true,
                 onPressed: _busy
                     ? null
                     : () => _run(
@@ -169,7 +173,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     return Scaffold(
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
+          // Horizontal inset normalized from 28 to the s24 step (approved
+          // Phase-1e decision).
+          padding: const EdgeInsets.fromLTRB(
+            AppSpace.s24,
+            AppSpace.s24,
+            AppSpace.s24,
+            AppSpace.s20,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -185,16 +196,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: 32),
+                      const SizedBox(height: AppSpace.s32),
                       Text(
                         'What should stay\non the shelf?',
-                        style: TextStyle(
-                          fontSize: 34,
-                          height: 1.08,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.4,
-                          color: scheme.onSurface,
-                        ),
+                        style: text.display.copyWith(color: scheme.onSurface),
                       ),
                       const SizedBox(height: 18),
                       Text(
@@ -203,7 +208,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                         'none of it starts until you say so.',
                         style: text.body.copyWith(color: colors.textSecondary),
                       ),
-                      const SizedBox(height: 32),
+                      const SizedBox(height: AppSpace.s32),
                       _ConsentToggle(
                         label: 'CONTENT SEARCH',
                         detail: 'Find photos by what is in them, and by text '
@@ -225,14 +230,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                         value: _faces,
                         onChanged: (v) => setState(() => _faces = v),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: AppSpace.s8),
                     ],
                   ),
                 ),
               ),
-              _PrimaryButton(
+              AppButton.primary(
                 label: 'Continue',
                 busy: _busy,
+                expand: true,
                 onPressed: _busy ? null : () => _run(_recordConsent),
               ),
               const SizedBox(height: 14),
@@ -272,7 +278,7 @@ class _ConsentToggle extends StatelessWidget {
     final colors = Theme.of(context).extension<AppColors>()!;
     final text = Theme.of(context).extension<AppTextStyles>()!;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: AppSpace.s16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -294,7 +300,7 @@ class _ConsentToggle extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: AppSpace.s16),
           ConsentSwitch(
             value: value,
             onChanged: onChanged,
@@ -321,7 +327,7 @@ class _Assurance extends StatelessWidget {
     final colors = color ?? Theme.of(context).extension<AppColors>()!;
     final text = Theme.of(context).extension<AppTextStyles>()!;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: AppSpace.s16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -353,55 +359,6 @@ class _Assurance extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// The one high-contrast element on the screen: an inverted pill CTA.
-class _PrimaryButton extends StatelessWidget {
-  const _PrimaryButton({
-    required this.label,
-    required this.busy,
-    required this.onPressed,
-  });
-
-  final String label;
-  final bool busy;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
-    return SizedBox(
-      width: double.infinity,
-      height: 52,
-      child: Material(
-        color: colors.pillActiveBg,
-        borderRadius: BorderRadius.circular(26),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onPressed,
-          child: Center(
-            child: busy
-                ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: colors.pillActiveText,
-                    ),
-                  )
-                : Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: colors.pillActiveText,
-                    ),
-                  ),
-          ),
-        ),
       ),
     );
   }

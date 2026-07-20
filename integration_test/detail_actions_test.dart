@@ -20,6 +20,9 @@ void main() {
     await $('Allow photo access').tap();
     await $.platform.mobile.grantPermissionWhenInUse();
     await $.pumpAndSettle();
+    // Onboarding step 2 (analysis consent): decline all and continue.
+    await $('Continue').tap();
+    await $.pumpAndSettle();
     expect($(AssetThumbnail), findsWidgets);
   }
 
@@ -32,12 +35,12 @@ void main() {
     expect($(DetailActionBar), findsOneWidget);
 
     // Favorite — the heart fills and the flag persists in Drift.
-    await $.tester.tap(find.byIcon(Icons.favorite_border));
+    await $.tester.tap(find.byIcon(Icons.favorite_border_rounded));
     await $.pumpAndSettle();
-    expect(find.byIcon(Icons.favorite), findsOneWidget);
+    expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
 
     // Reveal EXIF metadata, then dismiss the sheet by tapping its barrier.
-    await $.tester.tap(find.byIcon(Icons.info_outline));
+    await $.tester.tap(find.byIcon(Icons.info_outline_rounded));
     await $.pumpAndSettle();
     expect($('DETAILS'), findsOneWidget);
     await $.tester.tapAt(const Offset(20, 20));
@@ -52,7 +55,7 @@ void main() {
     expect($('Added to Patrol Trip'), findsOneWidget);
 
     // Back to the Library grid.
-    await $.tester.tap(find.byIcon(Icons.arrow_back));
+    await $.tester.tap(find.byIcon(Icons.arrow_back_rounded));
     await $.pumpAndSettle();
     expect($('Library'), findsWidgets);
   });
@@ -62,7 +65,7 @@ void main() {
     await $(AssetThumbnail).first.tap();
     await $.pumpAndSettle();
 
-    await $.tester.tap(find.byIcon(Icons.ios_share));
+    await $.tester.tap(find.byIcon(Icons.ios_share_rounded));
     await $.pumpAndSettle();
     // The OS share sheet is a system surface; enable per device and assert its
     // labels via the platform automator (labels are device/locale-specific).
@@ -79,7 +82,7 @@ void main() {
     await $(AssetThumbnail).first.tap();
     await $.pumpAndSettle();
 
-    await $.tester.tap(find.byIcon(Icons.delete_outline));
+    await $.tester.tap(find.byIcon(Icons.delete_outline_rounded));
     await $.pumpAndSettle();
     expect($('Delete photo?'), findsOneWidget);
     await $('Delete').tap();

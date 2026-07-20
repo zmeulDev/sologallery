@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/theme/app_colors.dart';
+import '../core/theme/app_space.dart';
 import '../features/detail/photo_viewer_args.dart';
 import '../services/photo_library_service.dart';
 import 'asset_thumbnail.dart';
@@ -32,11 +33,11 @@ class AssetGrid extends StatelessWidget {
         return false;
       },
       child: GridView.builder(
-        padding: const EdgeInsets.all(2),
+        padding: const EdgeInsets.all(AppSpace.s2),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
-          mainAxisSpacing: 2,
-          crossAxisSpacing: 2,
+          mainAxisSpacing: AppSpace.s2,
+          crossAxisSpacing: AppSpace.s2,
         ),
         itemCount: items.length + (hasMore ? 3 : 0),
         itemBuilder: (context, i) {

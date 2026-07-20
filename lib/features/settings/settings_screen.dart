@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/database/database_provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_radius.dart';
+import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../widgets/app_dialog.dart';
 import '../../services/indexing_service.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
@@ -25,7 +28,12 @@ class SettingsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: Text('Settings', style: styles.pageTitle)),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpace.s16,
+          AppSpace.s8,
+          AppSpace.s16,
+          AppSpace.s32,
+        ),
         children: const [
           _PhotoAccessGroup(),
           _LibraryGroup(),
@@ -201,30 +209,17 @@ class _IndexGroup extends ConsumerWidget {
       if (ref.read(searchEnabledProvider).value ?? false) 'labels and text',
       if (ref.read(facesEnabledProvider).value ?? false) 'people',
     ];
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Rebuild index?'),
-        content: Text(
-          enabled.isEmpty
-              ? 'Re-scans your whole library. No on-device analysis is turned '
-                  'on, so nothing is analyzed. Your photos are never changed.'
-              : 'Re-scans your whole library and re-runs on-device analysis — '
-                  '${enabled.join(' and ')}. Your photos are never changed.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Rebuild'),
-          ),
-        ],
-      ),
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: 'Rebuild index?',
+      message: enabled.isEmpty
+          ? 'Re-scans your whole library. No on-device analysis is turned '
+              'on, so nothing is analyzed. Your photos are never changed.'
+          : 'Re-scans your whole library and re-runs on-device analysis — '
+              '${enabled.join(' and ')}. Your photos are never changed.',
+      confirmLabel: 'Rebuild',
     );
-    if (confirmed ?? false) {
+    if (confirmed) {
       await ref.read(indexingServiceProvider).rebuild();
     }
   }
@@ -243,7 +238,7 @@ class _AppearanceGroup extends ConsumerWidget {
       child: _Card(
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppSpace.s16),
             child: ThemeModePicker(
               mode: mode,
               onChanged: (next) =>
@@ -293,12 +288,12 @@ class _Group extends StatelessWidget {
     final styles = Theme.of(context).extension<AppTextStyles>()!;
     final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.only(top: 20),
+      padding: const EdgeInsets.only(top: AppSpace.s20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 10),
+            padding: const EdgeInsets.only(left: AppSpace.s4, bottom: 10),
             child: Text(
               label.toUpperCase(),
               style: styles.sectionLabel.copyWith(color: scheme.onSurface),
@@ -324,7 +319,7 @@ class _Card extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: scheme.surface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadius.br12,
         border: Border.all(color: colors.border),
       ),
       clipBehavior: Clip.antiAlias,
@@ -354,7 +349,8 @@ class _InfoRow extends StatelessWidget {
     final colors = Theme.of(context).extension<AppColors>()!;
     final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding:
+          const EdgeInsets.symmetric(horizontal: AppSpace.s16, vertical: 14),
       child: Row(
         children: [
           Expanded(
@@ -385,7 +381,7 @@ class _CaptionRow extends StatelessWidget {
     final styles = Theme.of(context).extension<AppTextStyles>()!;
     final colors = Theme.of(context).extension<AppColors>()!;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+      padding: const EdgeInsets.fromLTRB(AppSpace.s16, 0, AppSpace.s16, 14),
       child: Text(
         text,
         style: styles.caption.copyWith(color: colors.textMuted),
@@ -416,7 +412,8 @@ class _SwitchRow extends StatelessWidget {
     final colors = Theme.of(context).extension<AppColors>()!;
     final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding:
+          const EdgeInsets.symmetric(horizontal: AppSpace.s16, vertical: 14),
       child: Row(
         children: [
           Expanded(
@@ -435,7 +432,7 @@ class _SwitchRow extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: AppSpace.s16),
           ConsentSwitch(
             value: value,
             onChanged: onChanged,
@@ -463,7 +460,8 @@ class _ActionRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding:
+          const EdgeInsets.symmetric(horizontal: AppSpace.s16, vertical: 14),
         child: Row(
           children: [
             Expanded(
@@ -484,7 +482,7 @@ class _ActionRow extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, size: 20, color: colors.textMuted),
+            Icon(Icons.chevron_right_rounded, size: 20, color: colors.textMuted),
           ],
         ),
       ),

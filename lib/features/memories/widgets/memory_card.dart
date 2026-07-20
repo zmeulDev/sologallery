@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/database/daos/memories_dao.dart' show MemorySummary;
+import '../../../core/format/count_labels.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../widgets/asset_thumbnail.dart';
+import '../../../widgets/pressable.dart';
 
 /// One memory in the Library carousel: a portrait cover with its title set
 /// over the photo, and a row of hairline segments marking how many photos the
@@ -43,17 +46,16 @@ class MemoryCard extends StatelessWidget {
 
     return Semantics(
       button: true,
-      label: '${memory.title}, ${memory.assetCount} photos',
-      child: GestureDetector(
+      label: '${memory.title}, ${photoCountLabel(memory.assetCount)}',
+      child: Pressable(
         onTap: onTap,
         onLongPress: onLongPress,
-        behavior: HitTestBehavior.opaque,
         child: SizedBox(
           width: width,
           child: AspectRatio(
             aspectRatio: aspectRatio,
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: AppRadius.br12,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -68,7 +70,7 @@ class MemoryCard extends StatelessWidget {
                       gradient: LinearGradient(
                         begin: Alignment.center,
                         end: Alignment.bottomCenter,
-                        colors: [Color(0x00000000), Color(0xB3000000)],
+                        colors: [Color(0x00000000), AppOverMedia.scrimHeavy],
                       ),
                     ),
                   ),
@@ -91,7 +93,7 @@ class MemoryCard extends StatelessWidget {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: text.body.copyWith(
-                            color: Colors.white,
+                            color: AppOverMedia.glyph,
                             fontWeight: FontWeight.w600,
                             height: 1.2,
                           ),
@@ -103,7 +105,7 @@ class MemoryCard extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: text.caption.copyWith(
-                              color: Colors.white70,
+                              color: AppOverMedia.glyphSoft,
                             ),
                           ),
                         ],
@@ -137,7 +139,7 @@ class _Segments extends StatelessWidget {
           const Expanded(
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: Color(0x8CFFFFFF),
+                color: AppOverMedia.segment,
                 borderRadius: BorderRadius.all(Radius.circular(1)),
               ),
               child: SizedBox(height: 2),

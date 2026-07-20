@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../widgets/asset_grid.dart';
-import '../library/month_grid_screen.dart' show CenteredNote;
+import '../../widgets/empty_state.dart';
 import 'folders_providers.dart';
 
 /// One device folder's photos (`/folder?id=…&name=…`), reached from the Search
@@ -27,9 +27,9 @@ class FolderDetailScreen extends ConsumerWidget {
       appBar: AppBar(title: Text(folderName ?? 'Folder')),
       body: assets.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, st) => const CenteredNote('Couldn\'t load this folder.'),
+        error: (e, st) => const EmptyState.note('Couldn\'t load this folder.'),
         data: (items) => items.isEmpty
-            ? const CenteredNote('This folder is empty.')
+            ? const EmptyState.note('This folder is empty.')
             : AssetGrid(
                 items: items,
                 hasMore: ref.watch(folderAssetsProvider(folderId).notifier).hasMore,

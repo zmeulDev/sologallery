@@ -16,6 +16,9 @@ void main() {
     await $('Allow photo access').tap();
     await $.platform.mobile.grantPermissionWhenInUse();
     await $.pumpAndSettle();
+    // Onboarding step 2 (analysis consent): decline all and continue.
+    await $('Continue').tap();
+    await $.pumpAndSettle();
     expect($(AssetThumbnail), findsWidgets);
   }
 
@@ -55,7 +58,7 @@ void main() {
     // Pushed on the root navigator: full screen, no bottom nav behind it.
     expect(find.byTooltip('Library'), findsNothing);
 
-    await $.tester.tap(find.byIcon(Icons.arrow_back));
+    await $.tester.tap(find.byIcon(Icons.arrow_back_rounded));
     await $.pumpAndSettle();
     expect(find.widgetWithText(AppBar, 'Library'), findsOneWidget);
   });

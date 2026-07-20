@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_colors.dart';
 import '../detail_providers.dart';
 
 /// One swipeable page in the detail viewer: the full, uncropped photo on the
@@ -47,7 +48,7 @@ class _Loading extends StatelessWidget {
         height: 26,
         child: CircularProgressIndicator(
           strokeWidth: 2,
-          valueColor: AlwaysStoppedAnimation(Colors.white24),
+          valueColor: AlwaysStoppedAnimation(AppOverMedia.glyphDim),
         ),
       ),
     );
@@ -60,7 +61,11 @@ class _Unavailable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Center(
-      child: Icon(Icons.broken_image_outlined, color: Colors.white24, size: 44),
+      child: Icon(
+        Icons.broken_image_outlined,
+        color: AppOverMedia.glyphDim,
+        size: 44,
+      ),
     );
   }
 }

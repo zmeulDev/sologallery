@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_motion.dart';
+import '../../core/theme/app_space.dart';
+import '../../widgets/app_dialog.dart';
 import 'detail_providers.dart';
 import 'photo_viewer_args.dart';
 import 'widgets/add_to_album_sheet.dart';
@@ -63,27 +67,14 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
 
   Future<void> _onDelete() async {
     final id = _currentId;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete photo?'),
-        content: const Text(
-          'This removes it from your device photo library. You can\'t undo '
-          'this from SoloGallery.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: 'Delete photo?',
+      message: 'This removes it from your device photo library. You can\'t '
+          'undo this from SoloGallery.',
+      confirmLabel: 'Delete',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     final deleted = await ref.read(detailActionsProvider).delete(id);
     if (!deleted || !mounted) return; // OS trash dialog was cancelled
@@ -182,7 +173,7 @@ class _Chrome extends StatelessWidget {
         ignoring: !visible,
         child: AnimatedOpacity(
           opacity: visible ? 1 : 0,
-          duration: const Duration(milliseconds: 180),
+          duration: AppMotion.of(context, AppMotion.medium),
           child: child,
         ),
       ),
@@ -202,23 +193,27 @@ class _TopBar extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
-          colors: [Color(0x00000000), Color(0x99000000)],
+          colors: [Color(0x00000000), AppOverMedia.scrim],
         ),
       ),
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpace.s4,
+            vertical: AppSpace.s4,
+          ),
           child: Row(
             children: [
               IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                icon: const Icon(Icons.arrow_back_rounded, color: AppOverMedia.glyph),
                 tooltip: 'Back',
                 onPressed: () => Navigator.of(context).maybePop(),
               ),
               const Spacer(),
               IconButton(
-                icon: const Icon(Icons.info_outline, color: Colors.white),
+                icon:
+                    const Icon(Icons.info_outline_rounded, color: AppOverMedia.glyph),
                 tooltip: 'Details',
                 onPressed: onExif,
               ),
