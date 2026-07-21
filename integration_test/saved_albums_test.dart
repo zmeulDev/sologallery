@@ -18,6 +18,9 @@ void main() {
     await $('Allow photo access').tap();
     await $.platform.mobile.grantPermissionWhenInUse();
     await $.pumpAndSettle();
+    // Onboarding step 2 (analysis consent): decline all and continue.
+    await $('Continue').tap();
+    await $.pumpAndSettle();
     expect($(AssetThumbnail), findsWidgets);
   }
 
@@ -28,16 +31,16 @@ void main() {
     await $(AssetThumbnail).first.tap();
     await $.pumpAndSettle();
     expect($(DetailActionBar), findsOneWidget);
-    if (find.byIcon(Icons.favorite_border).evaluate().isEmpty) {
-      await $.tester.tap(find.byIcon(Icons.favorite)); // was already favorited
+    if (find.byIcon(Icons.favorite_border_rounded).evaluate().isEmpty) {
+      await $.tester.tap(find.byIcon(Icons.favorite_rounded)); // was already favorited
       await $.pumpAndSettle();
     }
-    await $.tester.tap(find.byIcon(Icons.favorite_border));
+    await $.tester.tap(find.byIcon(Icons.favorite_border_rounded));
     await $.pumpAndSettle();
-    expect(find.byIcon(Icons.favorite), findsOneWidget);
+    expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
 
     // Back to Library, then over to the Saved tab — the favorite shows there.
-    await $.tester.tap(find.byIcon(Icons.arrow_back));
+    await $.tester.tap(find.byIcon(Icons.arrow_back_rounded));
     await $.pumpAndSettle();
     await $.tester.tap(find.byTooltip('Saved'));
     await $.pumpAndSettle();
@@ -46,10 +49,10 @@ void main() {
     // Open it from Saved and unfavorite — the round-trip persists in Drift.
     await $(AssetThumbnail).first.tap();
     await $.pumpAndSettle();
-    await $.tester.tap(find.byIcon(Icons.favorite));
+    await $.tester.tap(find.byIcon(Icons.favorite_rounded));
     await $.pumpAndSettle();
-    expect(find.byIcon(Icons.favorite_border), findsOneWidget);
-    await $.tester.tap(find.byIcon(Icons.arrow_back));
+    expect(find.byIcon(Icons.favorite_border_rounded), findsOneWidget);
+    await $.tester.tap(find.byIcon(Icons.arrow_back_rounded));
     await $.pumpAndSettle();
   });
 
@@ -61,7 +64,7 @@ void main() {
 
     // Create an album with a run-unique name.
     final name = 'Patrol ${DateTime.now().millisecondsSinceEpoch}';
-    await $.tester.tap(find.byIcon(Icons.add).first);
+    await $.tester.tap(find.byIcon(Icons.add_rounded).first);
     await $.pumpAndSettle();
     await $.tester.enterText(find.byType(TextField), name);
     await $.tester.tap(find.text('Create'));
@@ -74,7 +77,7 @@ void main() {
     // The empty-album note is a longer multi-line string; match a substring
     // ($('..') is an exact-text finder).
     expect(find.textContaining('This album is empty'), findsOneWidget);
-    await $.tester.tap(find.byIcon(Icons.arrow_back));
+    await $.tester.tap(find.byIcon(Icons.arrow_back_rounded));
     await $.pumpAndSettle();
 
     // Long-press the card → confirm delete → it's gone.

@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/database/app_database.dart' show Favorite;
+import '../../core/database/daos/index_dao.dart' show FavoriteAsset;
 import '../../core/database/database_provider.dart';
 
 /// Favorited photos, most recently favorited first — the Saved grid's source.
@@ -9,7 +9,8 @@ import '../../core/database/database_provider.dart';
 /// that must react to favorite/unfavorite from the detail viewer. `autoDispose`
 /// so the stream closes when the Saved tab is left. Joined to the `photo_asset`
 /// cache so a favorite whose asset was deleted (and pruned from the cache) drops
-/// out instead of showing a broken thumbnail.
-final savedFavoritesProvider = StreamProvider.autoDispose<List<Favorite>>(
+/// out instead of showing a broken thumbnail — and so each row carries the
+/// dimensions the masonry grid lays out with.
+final savedFavoritesProvider = StreamProvider.autoDispose<List<FavoriteAsset>>(
   (ref) => ref.watch(indexDaoProvider).watchFavoritesInCache(),
 );

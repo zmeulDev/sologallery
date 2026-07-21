@@ -13,6 +13,7 @@ import 'package:sologallery/features/detail/widgets/photo_page.dart';
 import 'package:sologallery/features/detail/widgets/video_page.dart';
 import 'package:sologallery/services/permission_provider.dart';
 import 'package:sologallery/services/photo_library_service.dart';
+import 'package:sologallery/widgets/circle_icon_button.dart';
 
 import '../../support/fake_photo_library_service.dart';
 
@@ -28,8 +29,10 @@ void main() {
     Map<String, AssetDetail> details = const {},
     Map<String, Duration> videoDurations = const {},
   }) async {
-    final fake =
-        FakePhotoLibraryService(details: details, videoDurations: videoDurations);
+    final fake = FakePhotoLibraryService(
+      details: details,
+      videoDurations: videoDurations,
+    );
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -56,38 +59,122 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   }
 
-  testWidgets('renders the action bar and top-bar affordances', (tester) async {
+  /// Drags the photo up past the open threshold with a raw pointer sequence.
+  /// Not `tester.fling`, which coalesces down/move/up and would hide whether
+  /// the axis lock resolved on the intervening moves.
+  Future<void> swipeUp(WidgetTester tester) async {
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(PhotoPage)),
+    );
+    await gesture.moveBy(const Offset(0, -150)); // past the 15%-of-height mark
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('splits the chrome into outbound actions on top and actions on '
+      'this photo at the bottom', (tester) async {
     await pump(tester);
+
+    // Top: back, plus the two ways of sending this photo elsewhere. Each rides
+    // its own scrim disc.
+    expect(find.byType(CircleIconButton), findsNWidgets(3));
+    expect(find.byTooltip('Back'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(CircleIconButton),
+        matching: find.byTooltip('Add to album'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(CircleIconButton),
+        matching: find.byTooltip('Share'),
+      ),
+      findsOneWidget,
+    );
+
+    // Bottom: the three that act on the photo itself.
     expect(find.byType(DetailActionBar), findsOneWidget);
-    expect(find.byIcon(Icons.info_outline), findsOneWidget);
-    expect(find.byIcon(Icons.favorite_border), findsOneWidget);
+    for (final tooltip in const ['Favorite', 'Details', 'Delete']) {
+      expect(
+        find.descendant(
+          of: find.byType(DetailActionBar),
+          matching: find.byTooltip(tooltip),
+        ),
+        findsOneWidget,
+        reason: '$tooltip belongs in the action bar',
+      );
+    }
     await settleTeardown(tester);
   });
 
-  testWidgets('favorite toggles the heart and persists', (tester) async {
+  testWidgets('each action appears exactly once, in one bar or the other', (
+    tester,
+  ) async {
     await pump(tester);
-    await tester.tap(find.byIcon(Icons.favorite_border));
+    // Guards against an action quietly reappearing in both bars: favorite used
+    // to be duplicated, and share and add-to-album used to sit at the bottom.
+    for (final tooltip in const [
+      'Favorite',
+      'Share',
+      'Add to album',
+      'Details',
+      'Delete',
+    ]) {
+      expect(find.byTooltip(tooltip), findsOneWidget, reason: tooltip);
+    }
+    expect(find.byIcon(Icons.ios_share_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.favorite_border_rounded), findsOneWidget);
+    await settleTeardown(tester);
+  });
+
+  testWidgets('no swipe-up caption sits over the photo any more', (
+    tester,
+  ) async {
+    // The details button is the affordance now; the gesture stays as a
+    // shortcut, so the caption is just chrome over the image.
+    await pump(tester);
+    expect(find.textContaining('SWIPE UP'), findsNothing);
+    expect(find.textContaining('Swipe up'), findsNothing);
+    await settleTeardown(tester);
+  });
+
+  testWidgets('favorite from the action bar toggles the heart and persists', (
+    tester,
+  ) async {
+    await pump(tester);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(DetailActionBar),
+        matching: find.byIcon(Icons.favorite_border_rounded),
+      ),
+    );
     await tester.pumpAndSettle();
 
-    expect(find.byIcon(Icons.favorite), findsOneWidget);
+    expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.favorite_border_rounded), findsNothing);
     expect(await db.favoritesDao.isFavorite('a1'), isTrue);
     await settleTeardown(tester);
   });
 
-  testWidgets('info opens the EXIF sheet with formatted fields', (tester) async {
-    await pump(tester, details: {
-      'a1': AssetDetail(
-        id: 'a1',
-        width: 4000,
-        height: 3000,
-        createdAt: DateTime(2026, 7, 12, 14, 33),
-        orientationDegrees: 0,
-        isVideo: false,
-        mimeType: 'image/jpeg',
-      ),
-    });
-    await tester.tap(find.byIcon(Icons.info_outline));
-    await tester.pumpAndSettle();
+  testWidgets('the EXIF sheet shows formatted fields', (tester) async {
+    await pump(
+      tester,
+      details: {
+        'a1': AssetDetail(
+          id: 'a1',
+          width: 4000,
+          height: 3000,
+          createdAt: DateTime(2026, 7, 12, 14, 33),
+          orientationDegrees: 0,
+          isVideo: false,
+          mimeType: 'image/jpeg',
+        ),
+      },
+    );
+    await swipeUp(tester);
 
     expect(find.text('DETAILS'), findsOneWidget);
     expect(find.text('4000 × 3000'), findsOneWidget);
@@ -95,9 +182,129 @@ void main() {
     await settleTeardown(tester);
   });
 
-  testWidgets('add-to-album creates a new album and confirms', (tester) async {
+  testWidgets('the details button opens the EXIF sheet', (tester) async {
+    await pump(
+      tester,
+      details: {
+        'a1': AssetDetail(
+          id: 'a1',
+          width: 4000,
+          height: 3000,
+          createdAt: DateTime(2026, 7, 12, 14, 33),
+          orientationDegrees: 0,
+          isVideo: false,
+          mimeType: 'image/jpeg',
+        ),
+      },
+    );
+
+    await tester.tap(find.byIcon(Icons.info_outline_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.text('DETAILS'), findsOneWidget);
+    expect(find.text('4000 × 3000'), findsOneWidget);
+    await settleTeardown(tester);
+  });
+
+  testWidgets('swiping up still opens the EXIF sheet — the gesture survives '
+      'as a shortcut', (tester) async {
+    await pump(
+      tester,
+      details: {
+        'a1': AssetDetail(
+          id: 'a1',
+          width: 4000,
+          height: 3000,
+          createdAt: DateTime(2026, 7, 12, 14, 33),
+          orientationDegrees: 0,
+          isVideo: false,
+          mimeType: 'image/jpeg',
+        ),
+      },
+    );
+
+    await swipeUp(tester);
+
+    expect(find.text('DETAILS'), findsOneWidget);
+    expect(find.text('4000 × 3000'), findsOneWidget);
+    await settleTeardown(tester);
+  });
+
+  testWidgets('a photo with GPS shows where it was taken', (tester) async {
+    await pump(
+      tester,
+      details: {
+        'a1': AssetDetail(
+          id: 'a1',
+          width: 4000,
+          height: 3000,
+          createdAt: DateTime(2026, 7, 12, 14, 33),
+          orientationDegrees: 0,
+          isVideo: false,
+          mimeType: 'image/jpeg',
+          latitude: 37.7749,
+          longitude: -122.4194,
+        ),
+      },
+    );
+
+    await tester.tap(find.byIcon(Icons.info_outline_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.text('LOCATION'), findsOneWidget);
+    expect(find.text('37.7749, -122.4194'), findsOneWidget);
+    await settleTeardown(tester);
+  });
+
+  testWidgets('a photo without GPS shows no location chip', (tester) async {
+    await pump(
+      tester,
+      details: {
+        'a1': AssetDetail(
+          id: 'a1',
+          width: 4000,
+          height: 3000,
+          createdAt: DateTime(2026, 7, 12, 14, 33),
+          orientationDegrees: 0,
+          isVideo: false,
+          mimeType: 'image/jpeg',
+        ),
+      },
+    );
+
+    await tester.tap(find.byIcon(Icons.info_outline_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.text('DETAILS'), findsOneWidget);
+    expect(find.text('LOCATION'), findsNothing);
+    await settleTeardown(tester);
+  });
+
+  testWidgets('swiping down dismisses the viewer instead of opening details', (
+    tester,
+  ) async {
     await pump(tester);
-    await tester.tap(find.byIcon(Icons.add_to_photos_outlined));
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(PhotoPage)),
+    );
+    await gesture.moveBy(const Offset(0, 250));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.text('DETAILS'), findsNothing);
+    // Nothing to pop back to (PhotoDetailScreen is the MaterialApp home), so
+    // maybePop is a no-op and the viewer stays — the assertion that matters is
+    // that the downward drag did not reach the swipe-up path.
+    await settleTeardown(tester);
+  });
+
+  testWidgets('add-to-album from the top bar creates an album and confirms', (
+    tester,
+  ) async {
+    await pump(tester);
+    await tester.tap(find.byTooltip('Add to album'));
     // Bounded pumps throughout — the sheet's TextField cursor-blink is a
     // periodic timer, so pumpAndSettle would never settle.
     await tester.pump();
@@ -119,7 +326,7 @@ void main() {
 
   testWidgets('delete asks for confirmation first', (tester) async {
     await pump(tester);
-    await tester.tap(find.byIcon(Icons.delete_outline));
+    await tester.tap(find.byIcon(Icons.delete_outline_rounded));
     await tester.pumpAndSettle();
     expect(find.text('Delete photo?'), findsOneWidget);
     await settleTeardown(tester);

@@ -2,16 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_space.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../services/photo_library_service.dart' show AssetDetail;
+import '../../../widgets/app_sheet.dart';
 import '../detail_providers.dart';
 import '../domain/asset_detail_display.dart';
 
 /// Opens the EXIF/metadata sheet for [assetId] from the detail viewer.
 Future<void> showExifSheet(BuildContext context, String assetId) {
-  return showModalBottomSheet<void>(
-    context: context,
-    backgroundColor: Colors.transparent,
+  return showAppSheet<void>(
+    context,
     builder: (_) => ExifSheet(assetId: assetId),
   );
 }
@@ -26,63 +27,26 @@ class ExifSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
-    final colors = Theme.of(context).extension<AppColors>()!;
     final detail = ref.watch(assetDetailProvider(assetId));
 
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: colors.textMuted,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+    return AppSheet(
+      label: 'DETAILS',
+      child: detail.when(
+        loading: () => const AppSheetNote('Reading details…'),
+        error: (_, _) =>
+            const AppSheetNote('Details aren\'t available for this photo.'),
+        data: (d) => d == null
+            ? const AppSheetNote('Details aren\'t available for this photo.')
+            : Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpace.s20,
+                  AppSpace.s8,
+                  AppSpace.s20,
+                  AppSpace.s24,
                 ),
+                child: _Chips(detail: d),
               ),
-              const SizedBox(height: 18),
-              _Title(colors: colors),
-              const SizedBox(height: 18),
-              detail.when(
-                loading: () => const _SheetNote('Reading details…'),
-                error: (_, _) =>
-                    const _SheetNote('Details aren\'t available for this photo.'),
-                data: (d) => d == null
-                    ? const _SheetNote(
-                        'Details aren\'t available for this photo.')
-                    : _Chips(detail: d),
-              ),
-            ],
-          ),
-        ),
       ),
-    );
-  }
-}
-
-class _Title extends StatelessWidget {
-  const _Title({required this.colors});
-  final AppColors colors;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).extension<AppTextStyles>()!;
-    return Text(
-      'DETAILS',
-      style: text.sectionLabel.copyWith(color: colors.textSecondary),
     );
   }
 }
@@ -141,24 +105,6 @@ class _ExifChip extends StatelessWidget {
           style: text.exifValue.copyWith(color: scheme.onSurface),
         ),
       ],
-    );
-  }
-}
-
-class _SheetNote extends StatelessWidget {
-  const _SheetNote(this.text);
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
-    final styles = Theme.of(context).extension<AppTextStyles>()!;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Text(
-        text,
-        style: styles.body.copyWith(color: colors.textSecondary),
-      ),
     );
   }
 }

@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/theme/app_colors.dart';
+import '../core/theme/app_space.dart';
 import '../features/detail/photo_viewer_args.dart';
 import '../services/photo_library_service.dart';
+import 'asset_hero_tag.dart';
 import 'asset_thumbnail.dart';
 
 /// A paginating three-column grid of asset thumbnails, shared by the full-month
@@ -32,11 +34,11 @@ class AssetGrid extends StatelessWidget {
         return false;
       },
       child: GridView.builder(
-        padding: const EdgeInsets.all(2),
+        padding: const EdgeInsets.all(AppSpace.s2),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
-          mainAxisSpacing: 2,
-          crossAxisSpacing: 2,
+          mainAxisSpacing: AppSpace.s2,
+          crossAxisSpacing: AppSpace.s2,
         ),
         itemCount: items.length + (hasMore ? 3 : 0),
         itemBuilder: (context, i) {
@@ -46,10 +48,13 @@ class AssetGrid extends StatelessWidget {
               '/photo/${items[i].id}',
               extra: PhotoViewerArgs([for (final a in items) a.id], i),
             ),
-            child: AssetThumbnail(
-              assetId: items[i].id,
-              size: 400,
-              showVideoBadge: true,
+            child: Hero(
+              tag: assetHeroTag(items[i].id),
+              child: AssetThumbnail(
+                assetId: items[i].id,
+                size: 400,
+                showVideoBadge: true,
+              ),
             ),
           );
         },

@@ -58,4 +58,53 @@ void main() {
       );
     });
   });
+
+  group('faceIsUsable', () {
+    bool check({
+      double? yaw = 0,
+      double? roll = 0,
+      bool leftEye = true,
+      bool rightEye = true,
+      bool nose = true,
+    }) =>
+        faceIsUsable(
+          yawDegrees: yaw,
+          rollDegrees: roll,
+          hasLeftEye: leftEye,
+          hasRightEye: rightEye,
+          hasNoseBase: nose,
+        );
+
+    test('keeps a frontal face with a full landmark set', () {
+      expect(check(), isTrue);
+      expect(check(yaw: -12, roll: 8), isTrue);
+    });
+
+    test('rejects a detection missing any of the anchor landmarks', () {
+      // The dog faces, the drawn face and the beer glass all came back like
+      // this — a box, but no proper eye/nose geometry inside it.
+      expect(check(leftEye: false), isFalse);
+      expect(check(rightEye: false), isFalse);
+      expect(check(nose: false), isFalse);
+    });
+
+    test('rejects a profile, in either direction', () {
+      expect(check(yaw: maxFaceYaw + 1), isFalse);
+      expect(check(yaw: -(maxFaceYaw + 1)), isFalse);
+    });
+
+    test('rejects a strongly tilted head, in either direction', () {
+      expect(check(roll: maxFaceRoll + 1), isFalse);
+      expect(check(roll: -(maxFaceRoll + 1)), isFalse);
+    });
+
+    test('keeps a face exactly at each limit', () {
+      expect(check(yaw: maxFaceYaw, roll: maxFaceRoll), isTrue);
+    });
+
+    test('rejects a detection whose pose the detector could not determine', () {
+      expect(check(yaw: null), isFalse);
+      expect(check(roll: null), isFalse);
+    });
+  });
 }

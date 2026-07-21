@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../core/theme/app_colors.dart';
+import '../core/theme/app_radius.dart';
+import '../core/theme/app_space.dart';
 import '../core/theme/app_text_styles.dart';
 
 /// Shown at the top of the Library when access is limited (the user shared only
@@ -17,11 +19,16 @@ class LimitedAccessBanner extends StatelessWidget {
     final text = Theme.of(context).extension<AppTextStyles>()!;
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+      margin: const EdgeInsets.fromLTRB(
+        AppSpace.s16,
+        AppSpace.s8,
+        AppSpace.s16,
+        AppSpace.s4,
+      ),
+      padding: const EdgeInsets.fromLTRB(14, AppSpace.s12, AppSpace.s8, AppSpace.s12),
       decoration: BoxDecoration(
         color: colors.surface2,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadius.br12,
       ),
       child: Row(
         children: [
@@ -36,7 +43,10 @@ class LimitedAccessBanner extends StatelessWidget {
             style: TextButton.styleFrom(
               foregroundColor: scheme.onSurface,
               textStyle: text.filterPill.copyWith(fontWeight: FontWeight.w600),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpace.s12,
+                vertical: 6,
+              ),
             ),
             child: const Text('Select more'),
           ),

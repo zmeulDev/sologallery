@@ -6,24 +6,25 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/database/daos/albums_dao.dart' show AlbumSummary;
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_radius.dart';
+import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../widgets/app_card.dart';
 import '../../widgets/asset_grid.dart';
-import '../../widgets/asset_thumbnail.dart';
-import '../../core/database/daos/faces_dao.dart' show PersonSummary;
-import '../../services/indexing_service.dart';
+import '../../widgets/cover_row.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/filter_pill.dart';
-import '../../widgets/month_section_header.dart';
-import '../folders/folders_providers.dart';
-import '../library/month_grid_screen.dart' show CenteredNote;
+import '../../widgets/section_header.dart';
+import '../../widgets/people_strip.dart';
+import '../../services/indexing_service.dart';
 import '../people/people_providers.dart';
 import '../settings/consent_provider.dart';
-import '../people/widgets/face_avatar.dart';
 import 'domain/search_date.dart';
 import 'search_providers.dart';
 
-/// Metadata search (`/search`, the second bottom-nav tab). Searches the
-/// library by capture date ("June 2026", "2026"), media type, favorites, and
-/// album name — the metadata available before ML indexing lands.
+/// Metadata + content search (`/search`, the second bottom-nav tab). Searches
+/// the library by capture date ("June 2026", "2026"), media type, favorites,
+/// album name, and — when content search is enabled — on-device ML labels.
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
 
@@ -35,6 +36,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    // Restore a query that outlived this State (a fresh branch build, or a chip
+    // set while the tab was away) so the field matches what's being searched.
+    _controller.text = ref.read(searchQueryProvider);
+  }
 
   @override
   void dispose() {
@@ -53,6 +62,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     });
   }
 
+  /// A browse chip commits its label immediately (no debounce) and mirrors it
+  /// into the field so the two never diverge.
+  void _search(String value) {
+    _debounce?.cancel();
+    _controller.text = value;
+    ref.read(searchQueryProvider.notifier).set(value);
+  }
+
   void _clear() {
     _debounce?.cancel();
     _controller.clear();
@@ -61,9 +78,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
-    final styles = Theme.of(context).extension<AppTextStyles>()!;
-
     // Focus follows the tab: typing starts as soon as Search is selected, and
     // the keyboard leaves with the tab rather than lingering over the branch
     // the user switched to.
@@ -84,50 +98,115 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         query.trim().isEmpty && type == MediaTypeFilter.all && !favoritesOnly;
 
     return Scaffold(
-      appBar: AppBar(
-        // The field spans the full title area so taps anywhere in the bar focus
-        // it, while its *text* is inset to 16 — the same left edge as the filter
-        // pills and results below. Leaving both at 0 hung the query and hint 16
-        // px left of every other element on the screen.
-        titleSpacing: 0,
-        title: TextField(
-          controller: _controller,
-          focusNode: _focusNode,
-          textInputAction: TextInputAction.search,
-          onChanged: _onChanged,
-          style: styles.body.copyWith(color: Theme.of(context).colorScheme.onSurface),
-          decoration: InputDecoration(
-            border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      appBar: AppBar(title: const Text('Search')),
+      body: Column(
+        children: [
+          _SearchField(
+            controller: _controller,
+            focusNode: _focusNode,
+            onChanged: _onChanged,
+            onClear: _clear,
             // The hint only promises content matching when the user has
             // actually enabled it — otherwise typing "dog" would silently
             // return nothing after the field invited it.
             hintText: ref.watch(searchEnabledProvider).value ?? false
-                ? 'Search photos, text, dates, albums'
-                : 'Search by date or album',
-            hintStyle: styles.body.copyWith(color: colors.textMuted),
+                ? 'Photos, places, people, text…'
+                : 'Dates, albums, media type…',
           ),
-        ),
-        actions: [
-          if (_controller.text.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.close),
-              tooltip: 'Clear',
-              onPressed: () => setState(_clear),
-            ),
-        ],
-      ),
-      body: Column(
-        children: [
-          _FilterBar(type: type, favoritesOnly: favoritesOnly),
+          // Facets are an answer-narrowing tool, so they arrive with the
+          // answers. On the idle screen they would be four controls narrowing
+          // nothing, competing with the browse entry points that are the
+          // actual invitation.
+          if (!idle) _FilterBar(type: type, favoritesOnly: favoritesOnly),
           if (ref.watch(indexingStatusProvider).value?.isIndexing ?? false)
             const _IndexingNote(),
           Expanded(
             child: idle
-                ? const _IdleView()
+                ? _IdleView(onBrowseLabel: _search)
                 : _Results(albums: albums, showNoMatch: albums.isEmpty),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The query field: a filled, rounded input sitting in the body under the page
+/// title, rather than standing in for the title itself. Owning a real title
+/// costs one row of height and buys the screen the same header anatomy as
+/// Library, Saved and Albums.
+class _SearchField extends StatelessWidget {
+  const _SearchField({
+    required this.controller,
+    required this.focusNode,
+    required this.onChanged,
+    required this.onClear,
+    required this.hintText,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+  final String hintText;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppColors>()!;
+    final styles = Theme.of(context).extension<AppTextStyles>()!;
+    final scheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpace.s16,
+        AppSpace.s4,
+        AppSpace.s16,
+        AppSpace.s12,
+      ),
+      child: TextField(
+        controller: controller,
+        focusNode: focusNode,
+        textInputAction: TextInputAction.search,
+        onChanged: onChanged,
+        style: styles.body.copyWith(color: scheme.onSurface),
+        decoration: InputDecoration(
+          filled: true,
+          fillColor: colors.surface2,
+          border: OutlineInputBorder(
+            borderRadius: AppRadius.br12,
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: AppRadius.br12,
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: AppRadius.br12,
+            borderSide: BorderSide.none,
+          ),
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          prefixIcon: Icon(
+            Icons.search_rounded,
+            size: 20,
+            color: colors.textMuted,
+          ),
+          // Tracks the controller directly, so a chip that writes the field
+          // reveals the clear button without the screen rebuilding for it.
+          suffixIcon: ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (context, value, _) => value.text.isEmpty
+                ? const SizedBox.shrink()
+                : IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    tooltip: 'Clear',
+                    color: colors.textMuted,
+                    onPressed: onClear,
+                  ),
+          ),
+          hintText: hintText,
+          hintStyle: styles.body.copyWith(color: colors.textMuted),
+        ),
       ),
     );
   }
@@ -198,27 +277,35 @@ class _Results extends ConsumerWidget {
         Expanded(
           child: assets.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, st) => const CenteredNote('Couldn\'t run that search.'),
+            error: (e, st) =>
+                const EmptyState.note('Couldn\'t run that search.'),
             data: (items) {
               if (items.isEmpty) {
                 // Albums may still be the result; only claim "no matches" when
                 // nothing matched at all.
                 return showNoMatch
-                    ? const CenteredNote('No matches.')
+                    ? const EmptyState.note('No matches.')
                     : const SizedBox.shrink();
               }
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
-                    child: MonthSectionHeader(label: 'Photos'),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                    child: SectionHeader(
+                      label: 'Photos',
+                      trailing: _ResultCount(
+                        count: items.length,
+                        hasMore: ref
+                            .watch(searchAssetsProvider.notifier)
+                            .hasMore,
+                      ),
+                    ),
                   ),
                   Expanded(
                     child: AssetGrid(
                       items: items,
-                      hasMore:
-                          ref.watch(searchAssetsProvider.notifier).hasMore,
+                      hasMore: ref.watch(searchAssetsProvider.notifier).hasMore,
                       onLoadMore: () =>
                           ref.read(searchAssetsProvider.notifier).loadMore(),
                     ),
@@ -229,6 +316,26 @@ class _Results extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The trailing "N results" tally on the Photos header. A trailing `+` marks a
+/// count still growing as more pages load, rather than claiming a total.
+class _ResultCount extends StatelessWidget {
+  const _ResultCount({required this.count, required this.hasMore});
+
+  final int count;
+  final bool hasMore;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppColors>()!;
+    final styles = Theme.of(context).extension<AppTextStyles>()!;
+    final n = '$count${hasMore ? '+' : ''}';
+    return Text(
+      count == 1 && !hasMore ? '1 result' : '$n results',
+      style: styles.caption.copyWith(color: colors.textSecondary),
     );
   }
 }
@@ -246,76 +353,16 @@ class _AlbumsResult extends StatelessWidget {
       children: [
         const Padding(
           padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: MonthSectionHeader(label: 'Albums'),
+          child: SectionHeader(label: 'Albums'),
         ),
         for (final album in albums)
-          _CoverRow(
+          CoverRow(
             coverAssetId: album.coverAssetId,
             name: album.name,
             count: album.entryCount,
             onTap: () => context.push('/album/${album.id}'),
           ),
       ],
-    );
-  }
-}
-
-/// A compact collection row — cover · name · photo count — shared by the album
-/// results and the idle Folders section so both read as one list idiom.
-class _CoverRow extends StatelessWidget {
-  const _CoverRow({
-    required this.coverAssetId,
-    required this.name,
-    required this.count,
-    required this.onTap,
-  });
-
-  /// Null renders a flat placeholder tile (an empty album, or a folder whose
-  /// cover couldn't be resolved).
-  final String? coverAssetId;
-  final String name;
-  final int count;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
-    final styles = Theme.of(context).extension<AppTextStyles>()!;
-    final scheme = Theme.of(context).colorScheme;
-    final cover = coverAssetId;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: SizedBox(
-                width: 44,
-                height: 44,
-                child: cover == null
-                    ? ColoredBox(color: colors.surface2)
-                    : AssetThumbnail(assetId: cover, size: 120),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: styles.body.copyWith(color: scheme.onSurface),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              count == 1 ? '1 photo' : '$count photos',
-              style: styles.caption.copyWith(color: colors.textSecondary),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -339,51 +386,86 @@ class _IndexingNote extends StatelessWidget {
   }
 }
 
-/// The idle state: browse entry points — a People strip (when clusters exist)
-/// above the device's folders. Scrolls, since the folder list is unbounded.
-/// Falls back to the search prompt when there's nothing to browse yet (no face
-/// clusters, and folders still loading or genuinely absent).
+/// The idle state: browse entry points — a People strip (when clusters exist),
+/// then label chips (when content search is on) — closed by the note explaining
+/// where all of this is computed.
+///
+/// Device folders deliberately live on the Albums tab and not here: they are a
+/// place you browse *collections*, not a way to narrow a query, and Albums is
+/// already the screen that gathers every collection in one list.
 class _IdleView extends ConsumerWidget {
-  const _IdleView();
+  const _IdleView({required this.onBrowseLabel});
+
+  /// Commits a tapped label chip as the active query.
+  final void Function(String) onBrowseLabel;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final people = ref.watch(personSummariesProvider).value ?? const [];
-    final folders = ref.watch(deviceFoldersProvider).value ?? const [];
-
-    if (people.isEmpty && folders.isEmpty) return const _IdleHint();
+    final searchOn = ref.watch(searchEnabledProvider).value ?? false;
+    // Only what the library actually carries: with content search off there is
+    // nothing to browse, and while the indexer is still working the list fills
+    // in as labels land.
+    final labels = searchOn
+        ? ref.watch(topBrowseLabelsProvider).value ?? const <String>[]
+        : const <String>[];
 
     return ListView(
       children: [
-        if (people.isNotEmpty) _PeopleStrip(people: people),
-        if (folders.isNotEmpty) ...[
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: MonthSectionHeader(label: 'Folders'),
-          ),
-          for (final folder in folders)
-            _CoverRow(
-              coverAssetId: folder.coverAssetId,
-              name: folder.name,
-              count: folder.count,
-              onTap: () => context.push(
-                Uri(
-                  path: '/folder',
-                  queryParameters: {'id': folder.id, 'name': folder.name},
-                ).toString(),
-              ),
-            ),
-        ],
+        // Nothing to browse yet — a new library, an unfinished index, or every
+        // analysis declined. The prompt explains what the field accepts
+        // instead of leaving a blank screen under it.
+        if (people.isEmpty && labels.isEmpty) const _IdleHint(),
+        if (people.isNotEmpty) PeopleStrip(people: people),
+        if (labels.isNotEmpty)
+          _BrowseLabels(labels: labels, onTap: onBrowseLabel),
+        const _PrivacyNote(),
       ],
     );
   }
 }
 
-/// A horizontal row of person avatars linking into the People screens.
-class _PeopleStrip extends StatelessWidget {
-  const _PeopleStrip({required this.people});
+/// States plainly that searching is local. It sits on the idle screen — the
+/// moment the user is deciding what to hand over — because that is when the
+/// claim is worth anything; buried in Settings it would only reassure someone
+/// already looking for reassurance.
+class _PrivacyNote extends StatelessWidget {
+  const _PrivacyNote();
 
-  final List<PersonSummary> people;
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppColors>()!;
+    final styles = Theme.of(context).extension<AppTextStyles>()!;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpace.s16,
+        AppSpace.s20,
+        AppSpace.s16,
+        AppSpace.s16,
+      ),
+      child: AppCard(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpace.s16),
+          child: Text(
+            'Search runs entirely on this device. Labels, text (OCR) and faces '
+            'are indexed locally and never leave your phone.',
+            style: styles.body.copyWith(color: colors.textSecondary),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A wrap of label chips that each run a content search for their text — the
+/// tap-to-browse entry into ML labels. [labels] arrives ranked by how many
+/// photos carry it (see `topBrowseLabelsProvider`), so the widest doors are
+/// first; it is never empty, the caller drops the section instead.
+class _BrowseLabels extends StatelessWidget {
+  const _BrowseLabels({required this.labels, required this.onTap});
+
+  final List<String> labels;
+  final void Function(String) onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -392,28 +474,19 @@ class _PeopleStrip extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          MonthSectionHeader(
-            label: 'People',
-            trailing: TextButton(
-              onPressed: () => context.push('/people'),
-              child: const Text('See all'),
-            ),
-          ),
+          const SectionHeader(label: 'On-device labels'),
           const SizedBox(height: 8),
-          SizedBox(
-            // Height must equal the avatar diameter: a horizontal ListView gives
-            // children a *tight* cross-axis (height) constraint, so a taller
-            // strip would stretch the avatar into an oval.
-            height: 72,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: people.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 12),
-              itemBuilder: (context, i) => GestureDetector(
-                onTap: () => context.push('/person/${people[i].id}'),
-                child: FaceAvatar(personId: people[i].id, size: 72),
-              ),
-            ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final label in labels)
+                FilterPill(
+                  label: label,
+                  selected: false,
+                  onTap: () => onTap(label),
+                ),
+            ],
           ),
         ],
       ),
@@ -436,10 +509,10 @@ class _IdleHint extends ConsumerWidget {
         child: Text(
           searchOn
               ? 'Search your library by what is in a photo, text it contains, '
-                  'date, album name, or media type.'
+                    'date, album name, or media type.'
               : 'Search your library by date, album name, or media type. '
-                  'Turn on content search in Settings to search by what is in '
-                  'a photo.',
+                    'Turn on content search in Settings to search by what is in '
+                    'a photo.',
           textAlign: TextAlign.center,
           style: styles.body.copyWith(color: colors.textSecondary),
         ),

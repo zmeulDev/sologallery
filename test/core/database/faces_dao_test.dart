@@ -50,7 +50,7 @@ void main() {
     expect(await db.facesDao.unclusteredFaces(), hasLength(1));
   });
 
-  test('assignPersonToFace + centroids + summaries', () async {
+  test('assignPersonToFace + exemplars + summaries', () async {
     await asset('a');
     await asset('b', at: DateTime(2026, 7, 1));
     await db.facesDao.insertFaces('a', [face([1, 0])]);
@@ -62,9 +62,10 @@ void main() {
     }
 
     expect(await db.facesDao.unclusteredFaces(), isEmpty);
-    final centroids = await db.facesDao.clusteredCentroids();
-    expect(centroids.keys, [personId]);
-    expect(centroids[personId]!.count, 2);
+    final exemplars = await db.facesDao.clusteredExemplars();
+    expect(exemplars.keys, [personId]);
+    expect(exemplars[personId], hasLength(2));
+    expect(exemplars[personId]!.first, [1, 0]);
 
     final summaries = await db.facesDao.watchPersonSummaries().first;
     expect(summaries, hasLength(1));
@@ -228,6 +229,143 @@ void main() {
     test('returns null for a person with no faces', () async {
       final personId = await db.facesDao.createPerson();
       expect(await db.facesDao.coverFace(personId), isNull);
+    });
+  });
+
+  group('user merges', () {
+    // Two clusters of the same person that clustering keeps apart — the real
+    // case is one man with and without sunglasses.
+    Future<(int, int)> twoClusters() async {
+      await asset('a');
+      await asset('b', at: DateTime(2026, 7, 1));
+      await db.facesDao.insertFaces('a', [face([1, 0])]);
+      await db.facesDao.insertFaces('b', [face([0, 1])]);
+      final faces = await db.facesDao.allFacesForClustering();
+      final big = await db.facesDao.createPerson(coverAssetId: 'a');
+      final small = await db.facesDao.createPerson(coverAssetId: 'b');
+      await db.facesDao.renamePerson(big, 'Zml');
+      await db.facesDao.renamePerson(small, 'ZmlG');
+      await db.facesDao.assignPersonToFace(
+        faces.firstWhere((f) => f.assetId == 'a').id,
+        big,
+      );
+      await db.facesDao.assignPersonToFace(
+        faces.firstWhere((f) => f.assetId == 'b').id,
+        small,
+      );
+      return (big, small);
+    }
+
+    test('folds the absorbed cluster into the survivor', () async {
+      final (big, small) = await twoClusters();
+      await db.facesDao.mergePersons(into: big, from: small);
+
+      final summaries = await db.facesDao.watchPersonSummaries().first;
+      expect(summaries, hasLength(1));
+      expect(summaries.single.id, big);
+      expect(summaries.single.displayName, 'Zml');
+      expect(summaries.single.faceCount, 2); // counts add up
+    });
+
+    test('the survivor owns both clusters\' photos', () async {
+      final (big, small) = await twoClusters();
+      await db.facesDao.mergePersons(into: big, from: small);
+
+      final assets = await db.facesDao.assetsForPerson(big);
+      expect(assets.map((a) => a.id), ['a', 'b']);
+      // The absorbed row is not a person any more, so it has no photos of its
+      // own to show.
+      expect(await db.facesDao.assetsForPerson(small), isEmpty);
+    });
+
+    test('unmerge restores the absorbed person', () async {
+      final (big, small) = await twoClusters();
+      await db.facesDao.mergePersons(into: big, from: small);
+      await db.facesDao.unmergePerson(small);
+
+      final summaries = await db.facesDao.watchPersonSummaries().first;
+      expect(summaries, hasLength(2));
+      expect(await db.facesDao.assetsForPerson(small), hasLength(1));
+    });
+
+    test('mergedPeopleOf lists what the survivor absorbed', () async {
+      final (big, small) = await twoClusters();
+      expect(await db.facesDao.mergedPeopleOf(big), isEmpty);
+      await db.facesDao.mergePersons(into: big, from: small);
+      final absorbed = await db.facesDao.mergedPeopleOf(big);
+      expect(absorbed.map((p) => p.displayName), ['ZmlG']);
+    });
+
+    test('chains stay one hop deep, so reads never have to recurse', () async {
+      final (big, small) = await twoClusters();
+      await asset('c', at: DateTime(2026, 6, 1));
+      await db.facesDao.insertFaces('c', [face([1, 1])]);
+      final third = await db.facesDao.createPerson(coverAssetId: 'c');
+      final cFace = (await db.facesDao.allFacesForClustering())
+          .firstWhere((f) => f.assetId == 'c');
+      await db.facesDao.assignPersonToFace(cFace.id, third);
+
+      // Merging into an already-merged person redirects to its root instead.
+      await db.facesDao.mergePersons(into: big, from: small);
+      await db.facesDao.mergePersons(into: small, from: third);
+
+      final rows = await db.facesDao.allPersons();
+      expect(rows.firstWhere((p) => p.id == third).mergedInto, big);
+      final summaries = await db.facesDao.watchPersonSummaries().first;
+      expect(summaries, hasLength(1));
+      expect(summaries.single.faceCount, 3);
+    });
+
+    test('merging a person into its own descendant is refused', () async {
+      final (big, small) = await twoClusters();
+      await db.facesDao.mergePersons(into: big, from: small);
+      // `small` already resolves to `big`; this would otherwise make a cycle.
+      await db.facesDao.mergePersons(into: small, from: big);
+
+      final rows = await db.facesDao.allPersons();
+      expect(rows.firstWhere((p) => p.id == big).mergedInto, isNull);
+      expect(await db.facesDao.watchPersonSummaries().first, hasLength(1));
+    });
+
+    test('deleting the survivor resurfaces the absorbed person', () async {
+      final (big, small) = await twoClusters();
+      await db.facesDao.mergePersons(into: big, from: small);
+      await (db.delete(db.persons)..where((p) => p.id.equals(big))).go();
+
+      final rows = await db.facesDao.allPersons();
+      expect(rows.single.id, small);
+      expect(rows.single.mergedInto, isNull, reason: 'setNull, not cascade');
+    });
+
+    test('a global re-cluster does not undo the merge', () async {
+      // The whole reason the merge is a redirect rather than a move of faces:
+      // rebuildClusters reassigns every face from scratch, and the two
+      // embeddings are far apart, so clustering re-derives the same two groups.
+      final (big, small) = await twoClusters();
+      await db.facesDao.mergePersons(into: big, from: small);
+
+      final all = await db.facesDao.allFacesForClustering();
+      final groups = clusterAll(
+        [for (final f in all) (id: f.id, embedding: f.embedding)],
+      );
+      expect(groups, hasLength(2), reason: 'clustering still splits them');
+      await db.facesDao.rebuildClusters(
+        planClusters(
+          groups: groups,
+          faceMeta: {
+            for (final f in all) f.id: (personId: f.personId, assetId: f.assetId),
+          },
+          persons: {
+            for (final p in await db.facesDao.allPersons())
+              p.id: (displayName: p.displayName, coverAssetId: p.coverAssetId),
+          },
+        ),
+      );
+
+      final summaries = await db.facesDao.watchPersonSummaries().first;
+      expect(summaries, hasLength(1), reason: 'still one person to the user');
+      expect(summaries.single.displayName, 'Zml');
+      expect(summaries.single.faceCount, 2);
     });
   });
 }

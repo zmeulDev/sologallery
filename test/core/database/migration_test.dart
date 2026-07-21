@@ -4,6 +4,7 @@ import 'package:sologallery/core/database/app_database.dart';
 
 import 'generated_migrations/schema.dart';
 import 'generated_migrations/schema_v6.dart';
+import 'generated_migrations/schema_v7.dart';
 
 /// Establishes the schema-verification harness. Each case migrates a real old
 /// schema all the way to the current version and asserts it matches the
@@ -26,55 +27,55 @@ void main() {
     await verifier.migrateAndValidate(db, 1);
   });
 
-  test('upgrades v1 → v7 (fresh photo_asset in current shape + all later tables)',
+  test('upgrades v1 → v8 (fresh photo_asset in current shape + all later tables)',
       () async {
     final connection = await verifier.startAt(1);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 7);
+    await verifier.migrateAndValidate(db, 8);
   });
 
-  test('upgrades v2 → v7 (adds photo_text + alters photo_asset + settings/memories)',
+  test('upgrades v2 → v8 (adds photo_text + alters photo_asset + settings/memories)',
       () async {
     final connection = await verifier.startAt(2);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 7);
+    await verifier.migrateAndValidate(db, 8);
   });
 
-  test('upgrades v3 → v7 (photo_asset.indexed_at nullable + is_dated + rest)',
+  test('upgrades v3 → v8 (photo_asset.indexed_at nullable + is_dated + rest)',
       () async {
     final connection = await verifier.startAt(3);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 7);
+    await verifier.migrateAndValidate(db, 8);
   });
 
-  test('upgrades v4 → v7 (adds app_settings + memories)', () async {
+  test('upgrades v4 → v8 (adds app_settings + memories)', () async {
     final connection = await verifier.startAt(4);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 7);
+    await verifier.migrateAndValidate(db, 8);
   });
 
-  test('upgrades v5 → v7 (adds memories + memory_entries)', () async {
+  test('upgrades v5 → v8 (adds memories + memory_entries)', () async {
     final connection = await verifier.startAt(5);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 7);
+    await verifier.migrateAndValidate(db, 8);
   });
 
-  test('upgrades v6 → v7 (face box columns become normalized reals)', () async {
+  test('upgrades v6 → v8 (face box columns become normalized reals)', () async {
     final connection = await verifier.startAt(6);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 7);
+    await verifier.migrateAndValidate(db, 8);
   });
 
   test(
@@ -101,7 +102,7 @@ void main() {
 
     final db = AppDatabase(schema.newConnection());
     addTearDown(db.close);
-    await verifier.migrateAndValidate(db, 7);
+    await verifier.migrateAndValidate(db, 8);
 
     // The pixel box is unconvertible — the thumbnail size it was measured
     // against was never recorded — so the face and the cluster built from it
@@ -110,5 +111,33 @@ void main() {
     expect(await db.facesDao.allPersons(), isEmpty);
     // And the asset is unstamped again, so the next pass re-derives both.
     expect(await db.indexDao.pendingMlIds(), ['a']);
+  });
+
+  test('upgrades v7 → v8 (persons gain merged_into)', () async {
+    final connection = await verifier.startAt(7);
+    final db = AppDatabase(connection);
+    addTearDown(db.close);
+
+    await verifier.migrateAndValidate(db, 8);
+  });
+
+  test('v7 → v8 keeps existing people, unmerged', () async {
+    final schema = await verifier.schemaAt(7);
+    final old = DatabaseAtV7(schema.newConnection());
+    await old.customStatement(
+      'INSERT INTO persons (id, display_name, cover_asset_id, created_at) '
+      "VALUES (1, 'Ana', 'a', 1000)",
+    );
+    await old.close();
+
+    final db = AppDatabase(schema.newConnection());
+    addTearDown(db.close);
+    await verifier.migrateAndValidate(db, 8);
+
+    // The column is additive: the person survives and starts life unmerged.
+    final people = await db.facesDao.allPersons();
+    expect(people, hasLength(1));
+    expect(people.single.displayName, 'Ana');
+    expect(people.single.mergedInto, isNull);
   });
 }

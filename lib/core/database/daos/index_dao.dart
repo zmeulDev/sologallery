@@ -19,6 +19,16 @@ typedef SweptAsset = ({
   bool isDated,
 });
 
+/// A favorited asset joined to its cached metadata — what the Saved grid needs
+/// to lay itself out: the id to render, the timestamp it orders by, and the
+/// dimensions its masonry columns are sized from.
+typedef FavoriteAsset = ({
+  String assetId,
+  DateTime favoritedAt,
+  int width,
+  int height,
+});
+
 /// Data-access for the ML index: the [PhotoAssets] cache (metadata sweep +
 /// indexing cursor), the [PhotoLabels] image labels, and the [PhotoTexts] OCR
 /// text. Pure data layer — no UI, no ML. The background [IndexingService] sweeps
@@ -96,8 +106,9 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
   /// place). Backs enabling face detection after the library was already
   /// indexed: those assets have `indexed_at` set, so [pendingMlIds] would
   /// otherwise never return them and their faces would never be computed.
-  Future<int> resetMlPending() => update(photoAssets)
-      .write(const PhotoAssetsCompanion(indexedAt: Value(null)));
+  Future<int> resetMlPending() => update(
+    photoAssets,
+  ).write(const PhotoAssetsCompanion(indexedAt: Value(null)));
 
   /// Ids awaiting ML analysis (`indexed_at IS NULL`), newest first so recent
   /// photos are labelled first. Replaces the old indexed/library set-diff.
@@ -113,8 +124,9 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
   /// photos+videos and how many of those are videos.
   Stream<({int photos, int videos})> watchLibraryTotals() {
     final total = photoAssets.assetId.count();
-    final videos =
-        photoAssets.assetId.count(filter: photoAssets.isVideo.equals(true));
+    final videos = photoAssets.assetId.count(
+      filter: photoAssets.isVideo.equals(true),
+    );
     final q = selectOnly(photoAssets)..addColumns([total, videos]);
     return q
         .map((r) => (photos: r.read(total) ?? 0, videos: r.read(videos) ?? 0))
@@ -168,9 +180,9 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
       }
       await (delete(photoTexts)..where((t) => t.assetId.equals(assetId))).go();
       if (text.isNotEmpty) {
-        await into(photoTexts).insert(
-          PhotoTextsCompanion.insert(assetId: assetId, content: text),
-        );
+        await into(
+          photoTexts,
+        ).insert(PhotoTextsCompanion.insert(assetId: assetId, content: text));
       }
     });
   }
@@ -224,14 +236,18 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
     required int offset,
   }) async {
     final q = select(photoAssets)
-      ..where((a) =>
-          a.isDated.equals(true) &
-          a.createdAt.isBiggerOrEqualValue(month.start) &
-          a.createdAt.isSmallerThanValue(month.end))
+      ..where(
+        (a) =>
+            a.isDated.equals(true) &
+            a.createdAt.isBiggerOrEqualValue(month.start) &
+            a.createdAt.isSmallerThanValue(month.end),
+      )
       ..orderBy([(a) => OrderingTerm.desc(a.createdAt)])
       ..limit(limit, offset: offset);
     final rows = await q.get();
-    return [for (final r in rows) AssetRef(id: r.assetId, createdAt: r.createdAt)];
+    return [
+      for (final r in rows) AssetRef(id: r.assetId, createdAt: r.createdAt),
+    ];
   }
 
   /// The dated [month]'s full grid as a reactive growing window: the newest
@@ -243,16 +259,81 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
     required int limit,
   }) {
     final q = select(photoAssets)
-      ..where((a) =>
-          a.isDated.equals(true) &
-          a.createdAt.isBiggerOrEqualValue(month.start) &
-          a.createdAt.isSmallerThanValue(month.end))
+      ..where(
+        (a) =>
+            a.isDated.equals(true) &
+            a.createdAt.isBiggerOrEqualValue(month.start) &
+            a.createdAt.isSmallerThanValue(month.end),
+      )
       ..orderBy([(a) => OrderingTerm.desc(a.createdAt)])
       ..limit(limit);
     return q.watch().map(
-          (rows) =>
-              [for (final r in rows) AssetRef(id: r.assetId, createdAt: r.createdAt)],
-        );
+      (rows) => [
+        for (final r in rows) AssetRef(id: r.assetId, createdAt: r.createdAt),
+      ],
+    );
+  }
+
+  // --- Year grouping (the `Year` / `Months` time filters) ------------------
+
+  /// Non-empty calendar years over *dated* assets with their exact counts,
+  /// newest first — the year-grouped mirror of [watchMonthCounts], and reactive
+  /// on the same cache changes.
+  Stream<List<({int year, int count})>> watchYearCounts() {
+    // Local-time extraction, for the same reason [watchMonthCounts] does it:
+    // Drift's `.year` extracts in UTC, which would file a local-Jan-1 00:00
+    // capture under the previous year in any timezone west of UTC.
+    final key = CustomExpression<String>(
+      "STRFTIME('%Y', created_at, 'unixepoch', 'localtime')",
+      precedence: Precedence.primary,
+    );
+    final count = photoAssets.assetId.count();
+    final q = selectOnly(photoAssets)
+      ..addColumns([key, count])
+      ..where(photoAssets.isDated.equals(true))
+      ..groupBy([key])
+      ..orderBy([OrderingTerm.desc(key)]);
+    return q
+        .map((r) => (year: int.parse(r.read(key)!), count: r.read(count)!))
+        .watch();
+  }
+
+  /// Up to [limit] newest preview ids for one calendar [year], reactive —
+  /// the year-section mirror of [watchMonthPreviews].
+  Stream<List<String>> watchYearPreviews(int year, {int limit = 6}) {
+    final q = selectOnly(photoAssets)
+      ..addColumns([photoAssets.assetId])
+      ..where(
+        photoAssets.isDated.equals(true) &
+            photoAssets.createdAt.isBiggerOrEqualValue(DateTime(year)) &
+            photoAssets.createdAt.isSmallerThanValue(DateTime(year + 1)),
+      )
+      ..orderBy([OrderingTerm.desc(photoAssets.createdAt)])
+      ..limit(limit);
+    return q.map((r) => r.read(photoAssets.assetId)!).watch();
+  }
+
+  // --- Recent window (the `This week` time filter) --------------------------
+
+  /// Dated asset refs captured on or after [cutoff], newest first, reactive.
+  ///
+  /// [limit] is a safety rail, not a page size — the caller shows the whole
+  /// result as one scrolling grid, and a week's captures are small. A local
+  /// `DateTime` maps to the same absolute instant the column stores, so the
+  /// boundary lands on the caller's local midnight without a timezone dance.
+  Stream<List<AssetRef>> watchRecentSince(DateTime cutoff, {int limit = 500}) {
+    final q = select(photoAssets)
+      ..where(
+        (a) =>
+            a.isDated.equals(true) & a.createdAt.isBiggerOrEqualValue(cutoff),
+      )
+      ..orderBy([(a) => OrderingTerm.desc(a.createdAt)])
+      ..limit(limit);
+    return q.watch().map(
+      (rows) => [
+        for (final r in rows) AssetRef(id: r.assetId, createdAt: r.createdAt),
+      ],
+    );
   }
 
   Expression<bool> _datedInMonth(YearMonth month) =>
@@ -292,9 +373,10 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
       ..orderBy([(a) => OrderingTerm.desc(a.createdAt)])
       ..limit(limit);
     return q.watch().map(
-          (rows) =>
-              [for (final r in rows) AssetRef(id: r.assetId, createdAt: r.createdAt)],
-        );
+      (rows) => [
+        for (final r in rows) AssetRef(id: r.assetId, createdAt: r.createdAt),
+      ],
+    );
   }
 
   // --- Saved ---------------------------------------------------------------
@@ -302,20 +384,61 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
   /// Favorites whose asset is still in the cache, most-recently-favorited first.
   /// The inner join drops dangling favorites (asset deleted / pruned) so the
   /// Saved grid never shows a broken thumbnail.
-  Stream<List<Favorite>> watchFavoritesInCache() {
+  ///
+  /// Carries the cached pixel dimensions because the Saved grid is a masonry
+  /// layout: it has to know each cell's aspect ratio *before* laying out, and
+  /// the join it already does to prove the asset exists is exactly where those
+  /// numbers live. Reading them from a decode instead would both cost a decode
+  /// per cell and break the never-trust-Dart-decode-dimensions rule.
+  Stream<List<FavoriteAsset>> watchFavoritesInCache() {
     final q = select(favorites).join([
-      innerJoin(
-        photoAssets,
-        photoAssets.assetId.equalsExp(favorites.assetId),
-      ),
-    ])
-      ..orderBy([OrderingTerm.desc(favorites.favoritedAt)]);
+      innerJoin(photoAssets, photoAssets.assetId.equalsExp(favorites.assetId)),
+    ])..orderBy([OrderingTerm.desc(favorites.favoritedAt)]);
     return q.watch().map(
-          (rows) => [for (final r in rows) r.readTable(favorites)],
-        );
+      (rows) => [
+        for (final r in rows)
+          (
+            assetId: r.readTable(favorites).assetId,
+            favoritedAt: r.readTable(favorites).favoritedAt,
+            width: r.readTable(photoAssets).width,
+            height: r.readTable(photoAssets).height,
+          ),
+      ],
+    );
   }
 
   // --- Search --------------------------------------------------------------
+
+  /// The [limit] most frequent labels in this library, restricted to [allow]
+  /// (the curated browsable set) and ordered by how many assets carry them,
+  /// ties alphabetical. Counts distinct assets, so a label the model emitted
+  /// twice for one photo still counts once.
+  ///
+  /// Reactive: the Search browse chips grow into place as the background
+  /// indexer labels more of the library, and a label nothing carries never
+  /// appears — a chip that returns no photos is worse than no chip.
+  Stream<List<({String label, int count})>> watchTopLabels({
+    required Set<String> allow,
+    int limit = 10,
+  }) {
+    // The aggregate has to be selected explicitly to be readable (CLAUDE.md).
+    final count = photoLabels.assetId.count(distinct: true);
+    final q = selectOnly(photoLabels)
+      ..addColumns([photoLabels.label, count])
+      ..where(photoLabels.label.isIn(allow.toList()))
+      ..groupBy([photoLabels.label])
+      ..orderBy([
+        OrderingTerm.desc(count),
+        OrderingTerm.asc(photoLabels.label),
+      ])
+      ..limit(limit);
+    return q.watch().map(
+      (rows) => [
+        for (final r in rows)
+          (label: r.read(photoLabels.label)!, count: r.read(count)!),
+      ],
+    );
+  }
 
   /// Assets whose ML labels **or** OCR text match [query] (case-insensitive
   /// substring), newest first, refined by the same facets as metadata Search:
@@ -334,9 +457,9 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
     // SQLite LIKE is case-insensitive for ASCII; labels/text are plain words.
     final pattern = '%$query%';
     final labelMatch = existsQuery(
-      select(photoLabels)
-        ..where((l) =>
-            l.assetId.equalsExp(photoAssets.assetId) & l.label.like(pattern)),
+      select(photoLabels)..where(
+        (l) => l.assetId.equalsExp(photoAssets.assetId) & l.label.like(pattern),
+      ),
     );
 
     final q = select(photoAssets).join([

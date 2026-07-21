@@ -11,10 +11,15 @@ analytics, no network calls after install.
   handling for photo library access
 - **App bar:** settings (on Library)
 - **Main view:** gallery grouped by month — first 6 photos per month,
-  newest first, plus a per-month "view all" button
-- **Detail view (on tap):** full-screen viewer with horizontal swipe;
-  actions: favorite, delete, share, add to existing album; dedicated
-  button to reveal EXIF metadata
+  newest first; the section header row itself opens the full month (label,
+  count and chevron are one tap target, not a separate "view all" button)
+- **Detail view (on tap):** full-screen viewer. Chrome splits by direction of
+  travel: the top bar carries back · add-to-album · share as scrim discs (the
+  outbound actions), the action bar below carries favorite · info · delete (the
+  ones acting on the photo itself). Gestures: swipe left/right for
+  previous/next, swipe down to close, swipe up for details, pinch and
+  double-tap (2× at the tap point) to zoom, single tap to toggle chrome.
+  Neighbours ±3 are pre-warmed
 - **Bottom nav:** Home Gallery · Search · Saved · Albums
 
 ---
@@ -239,6 +244,8 @@ lib/
     database/                   # Drift DB, tables, DAOs
   features/
     library/ saved/ search/ albums/ detail/ people/ onboarding/ settings/
+    saved/domain/masonry_layout.dart  # pure-Dart column-balanced placement
+    saved/widgets/masonry_grid_delegate.dart # feeds it to a lazy SliverGrid
     memories/                   # auto-curated memories: builder, carousel, player
     # edit/ (non-destructive editor) is spec'd but not built yet
   services/
@@ -282,12 +289,74 @@ docs/
 | Element | Size | Weight |
 |---|---|---|
 | Page title | 22sp | 700 |
+| Display | 34sp | 700 |
+| Button | 15sp | 600 |
 | Section label | 11sp | 600 (uppercase, 0.08em spacing) |
 | Filter pill | 12sp | 500 |
 | Body / list | 14sp | 400 |
 | EXIF value | 12sp | 600 |
 | EXIF key | 9sp | 400 (uppercase) |
 | Caption | 11sp | 400 |
+
+### Spacing (`AppSpace`)
+
+`s2 s4 s8 s12 s16 s20 s24 s32` — s2 edge-to-edge photo-grid gutter (Search
+results, month/folder grids), s4 gutter for *inset* preview grids (Library
+sections, which inset s8 rather than s16 so the grid runs wider than the
+header), s8 Saved masonry gutter, s16 screen inset.
+
+### Radius (`AppRadius`)
+
+| Token | Use |
+|---|---|
+| r2 | grab handle, progress segments |
+| r4 | grid cells, DurationBadge |
+| r12 | cards, banner, filled inputs |
+| r20 | sheets AND dialogs |
+| — | pills = `StadiumBorder` |
+
+### Motion (`AppMotion`)
+
+| Token | ms | Use |
+|---|---|---|
+| pressed | 110 | Pressable card scale |
+| short | 150 | pill selection, play glyph |
+| medium | 180 | thumbnail fade, chrome |
+| nav | 260 | dot-nav slide |
+
+Curve `easeOutCubic`; every duration via `AppMotion.of(context, d)`
+(reduced-motion → `Duration.zero`).
+
+### Over-media (`AppOverMedia`, app_colors.dart)
+
+Theme-invariant consts for content over photos/video: scrims
+`0x99`/`0xB3`/`0xD9` black (+`playScrim 0x66`), glyph whites
+(`glyph/Soft/Faint/Dim/Ghost`), progress `segment`/`segmentOff`.
+
+### System notes
+
+- Error color = ink (no red anywhere; errors carried by copy).
+- Dialogs and sheets share r20 + hairline border; actions are themed
+  `TextButton`s.
+- Snackbar = inverted-ink floating pill (`pillActiveBg`).
+- Icons = Material rounded family; `ios_share_rounded` for share.
+  Outlined-style glyphs with no rounded-outline variant stay on the
+  default family (nav inactive `photo_library_outlined`/
+  `photo_album_outlined`, `videocam_off_outlined`, `broken_image_outlined`).
+- Shared components: `AppButton` (primary/secondary/quiet; primary takes
+  `compact` for the 40-high app-bar metric and an optional leading icon),
+  `AppCard` (surface + r12 + hairline; `.divided` for hairline-separated rows —
+  the one grouping container), `CircleIconButton` (`.overMedia` scrim disc /
+  `.surface` themed disc), `SegmentedControl<T>` (one value, mutually exclusive
+  choices — distinct from a `FilterPill` row of independent facets),
+  `SectionHeader` (uppercase section label; `onTap` makes the whole row the
+  destination and adds a chevron), `EmptyState`, `CoverRow` (`showChevron` for
+  rows that stand alone in a card), `AppSheet`/`AppSheetNote`, `app_dialog`
+  helpers, `Pressable` (cards only — never grid cells).
+- Grids differ by job: Library and Search are square multi-column grids for
+  *finding* a photo among thousands (uniform scan pattern); Saved is a
+  two-column aspect-preserving masonry (`layoutMasonry` + `MasonryGridDelegate`)
+  because it is a small, deliberately-kept set.
 
 ### Screens
 
@@ -601,6 +670,16 @@ Short form; full postmortems in `docs/postmortems/`.
   (Settings) lazily builds — assert off-screen sections/rows only after
   `tester.binding.setSurfaceSize(tall)` (reset with `setSurfaceSize(null)`), else
   `find.text` on a below-the-fold row returns nothing.
+- **A horizontal `ListView` constrains its children's height *tightly*, so the
+  strip's `SizedBox(height:)` is the child's height — not a maximum.** Adding a
+  caption under an avatar therefore squashes the avatar into an oval rather than
+  overflowing (no red stripe, no exception — it just looks subtly wrong). The
+  height has to be computed: `PeopleStrip` sums the avatar diameter, the gap and
+  `MediaQuery.textScalerOf(context).scale(fontSize) * lineHeight`, and adds the
+  caption band **only when at least one item actually has a caption**, so the
+  common all-unnamed row has no dead space under it. Same trap in
+  `MemoriesCarousel`, which derives its height from `MemoryCard.width /
+  aspectRatio`.
 - **Bottom-nav taps in widget tests need the shell's entry transition to finish.**
   `pumpApp` + a 50 ms pump leaves the shell route mid-slide — the whole nav bar
   sits ~176 px right of its final position, so `tap(find.byTooltip(...))` on a
@@ -611,6 +690,20 @@ Short form; full postmortems in `docs/postmortems/`.
   **offstage**, so asserting on a backgrounded tab's widgets needs
   `find.byType(X, skipOffstage: false)`. Branches are built lazily on first
   visit, not eagerly.
+- **A `Hero` in an offstage shell branch still collides with the same tag in the
+  active branch — gate inactive branches with `HeroMode`.** `/photo/:id` is a
+  root route (`parentNavigatorKey: _rootNavigatorKey`), so its Hero flight scans
+  the **whole shell subtree**, and `StatefulShellRoute.indexedStack` keeps every
+  *visited* branch alive (offstage, but present — `Hero._allHeroesFor` does not
+  skip offstage). A favorite shows in both Library and Saved with tag
+  `asset-<id>`; once the user has opened the Saved tab (building that branch),
+  opening that photo from Library throws "multiple heroes share the same tag"
+  during `_startHeroTransition`. Latent until a second tab is visited, which is
+  why it hid behind a single-tab session. Fix: the shell uses the general
+  `StatefulShellRoute` with a `navigatorContainerBuilder` that rebuilds the
+  indexed stack (`IndexedStack`, `StackFit.expand`) wrapping each branch in
+  `HeroMode(enabled: i == currentIndex)` (`_BranchContainer` in `app_router`), so
+  only the visible tab exposes Heroes — one per flight, state still preserved.
 - **On-device manual verification: `pm grant` does not get you past onboarding, and
   the app DB is the only readable state.** `PhotoManager` reports the permission
   as *not yet requested* until the in-app request flow actually runs, so an
@@ -666,6 +759,55 @@ Short form; full postmortems in `docs/postmortems/`.
   lands mid-pass is not enough on its own** — the rest of that round re-stamps
   over it, so `_run()` also tracks the flags each round ran with and calls
   `resetMlPending()` at the top of a round in which a feature switched on.
+- **Periodic maintenance work must sit *outside* `_run`'s `if (todo.isNotEmpty)`
+  branch.** `todo` is the list of assets still needing ML, so on a fully indexed
+  library it is empty on every launch and anything nested inside that branch
+  never runs again. Face clustering lived there and so the periodic global
+  re-cluster — the only thing that heals a grouping produced by an older
+  algorithm — was unreachable on exactly the installs that needed it. The
+  memories refresh was already outside for the same reason. Anything gated on its
+  own cheap DB check (`_clusterNewFaces`, `_maybeGlobalRecluster`,
+  `_maybeRegenerateMemories`) belongs next to it, not inside.
+- **Face clustering: compare against *faces*, never a running centroid, and note
+  that average linkage over normalized embeddings is just the dot product of the
+  cluster means.** A centroid drifts away from every individual member as a
+  cluster grows, so a nearest-centroid assigner loses recall precisely on the
+  most-photographed people (on a real 223-face library it split one person across
+  six "people"; two of his singletons scored 0.688 and 0.655 against a *member*
+  of his main cluster, above the 0.65 threshold, while the 34-face mean scored
+  below it). A single greedy pass also has no merge step, so once two clusters of
+  one person exist nothing can reunite them. `clusterAll` is average-linkage
+  agglomeration: because `Σ_{a∈A,b∈B} a·b = (ΣA)·(ΣB)` for L2-normalized vectors,
+  the average cross-pair similarity is `meanA · meanB` with **no re-normalization**
+  — re-normalizing the means turns it back into centroid linkage. Thresholds are
+  empirical and must be validated against pulled real embeddings, not reasoned
+  about: 0.45 is right for this pipeline, and 0.40 (which looked clean against
+  three probe clusters) fuses visibly different people once every merge it adds is
+  inspected. Single linkage chains — at 0.60 it produced one 129-face blob
+  including dog faces.
+- **The face detector, the crop and `clusterMergeThreshold` are one calibrated
+  system — changing how a face is detected invalidates the threshold.** Switching
+  `FaceDetectorOptions` to `performanceMode: accurate` looked like a pure win
+  (it does not report `fast`'s outright false positives — dog faces, a beer
+  glass, a patch of sky — so junk detections fell 23 → 3, total faces 223 → 161,
+  people 60 → 33, singletons 27 → 12). Every one of those aggregates was an
+  improvement and every one of them was hiding a regression: `accurate` returns
+  *different, tighter* boxes, so every crop and embedding changed, and the
+  most-photographed person went straight back to being split six ways
+  (24+16+3+1+2+1 of his 47 faces). Re-tuning could not rescue it — sweeping the
+  threshold went from "split 5–6 ways" at 0.35 to "one 92-face cluster with three
+  other people in it" at 0.30, with nothing usable between. Reverted to `fast`
+  with `enableLandmarks: true`; the pose gate alone gets junk 23 → 6 and keeps
+  46 of his 47 faces in one cluster. **Never evaluate a clustering change on
+  cluster counts, singleton counts or face totals — they all improve when a
+  person shatters into several tight clusters. Track a known person's faces
+  individually, end-to-end, and carry verified-distinct people as contamination
+  controls** (and note that "did anything bleed into X's cluster" does not catch
+  two *other* people fusing with each other). **And track the person, not a face
+  set:** "46 of his 48 reference faces cohere" scored as a fix while he still
+  appeared twice on the People screen, because the reference set was one of his
+  old clusters and by construction held none of his sunglasses faces. The metric
+  that matches the bug report is *how many People entries are this person*.
 - **`IndexingService` toggle methods kick a pass fire-and-forget, so `await
   start()` right after one returns immediately** (`start()` no-ops while
   `_running`). The Settings switch must not block on a full re-index, so
@@ -678,6 +820,120 @@ Short form; full postmortems in `docs/postmortems/`.
   (`appVersionProvider.overrideWith((ref) async => '1.0.0 (1)')`). Reads only the
   Android `PackageManager` / iOS bundle — adds no network perms (release manifest
   re-verified clean).
+- **Golden tests cannot see icon glyphs.** Alchemist's CI variant obscures
+  fonts, so every `Icon` renders as a solid box regardless of codepoint — the
+  Phase-5 icon-family swap left all 18 goldens byte-identical (md5-verified),
+  which is the *expected* outcome, not a missed regen. Goldens verify layout/
+  color only; verify glyph shapes on device (or by eye in the running app).
+- **An `AnimatedBuilder`'s built tree shape must stay constant across a whole
+  gesture, or it silently kills the gesture mid-flight.** `DismissiblePhoto`'s
+  first version special-cased `if (t == 0) return child!;` to skip wrapping
+  the child in `Opacity`/`Transform` at rest, wrapping only once
+  `_dismiss.value` moved off zero. The *very first* drag-update frame flips
+  that branch, so `AnimatedBuilder`'s rebuild swaps the child's ancestor from
+  "none" to "Opacity → Transform → Transform" — a structural change Flutter's
+  reconciliation can't match by type, so it disposes and reinflates the
+  `GestureDetector` beneath it, along with its in-flight gesture-arena
+  membership. `onVerticalDragUpdate` fires once (before the dispose),
+  `onVerticalDragEnd` never fires again — the widget just sits at whatever
+  value the last update left it at, forever. A host widget test doing a real
+  `startGesture`/`moveBy`/`up()` sequence (not `tester.drag`, which coalesces
+  down+move+up and can hide this) is what caught it: `dismissed` stayed
+  `false` and the value never moved after release. Fix: always build the
+  *same* wrapper shape, with identity values (opacity 1, zero translate, unit
+  scale) at rest — never branch the shape on the animated value itself.
+- **`InteractiveViewer`'s scale recognizer can win the gesture arena over a
+  sibling `VerticalDragGestureRecognizer` even with `panEnabled: false`, and
+  then do nothing — silently swallowing the whole gesture.** It needs to be a
+  candidate from the first touch to recognize an incoming pinch, so
+  `panEnabled: false` only gates what it *does* with an accepted gesture, not
+  arena *participation* — this is invisible on host tests that stub
+  `detailImageProvider` to null bytes (no `InteractiveViewer` ever renders,
+  so nothing competes) and only showed up against a *real* photo on device.
+  Fix: track the drag-dismiss via raw `Listener` (`onPointerDown/Move/Up`)
+  instead of a competing `GestureDetector` — `Listener` receives every raw
+  pointer event regardless of which recognizer wins the arena, so it can't be
+  starved this way. It self-gates on zoom state and locks onto whichever axis
+  the drag reads as dominant once past `kTouchSlop`, deferring to the
+  `PageView`'s own horizontal swipe by simply not acting when the movement
+  reads as horizontal (see `DismissiblePhoto`).
+- **`print`/`debugPrint` do not surface anywhere observable from a
+  `patrol test`/`connectedAndroidTest` run** (not the CLI's own output, not
+  `adb logcat`, even filtered on the exact tag right after the run) — unlike
+  `flutter run`, where the same calls land under the `flutter` logcat tag.
+  Diagnosing gesture/animation behavior on-device instead has to go through
+  `expect()`/`fail()`, since test-framework failure messages *are* reliably
+  surfaced by both the CLI and the HTML report: e.g. `fail('DEBUG: '
+  'opacity=${opacity} count=${count}')` deliberately, read the message, then
+  remove it. This is how the two gotchas above were actually root-caused.
+- **A `late final AnimationController` field only gets created on first
+  *access* — if a widget's `build()` conditionally never touches it (e.g.
+  reduced motion skips the animated branch entirely), `dispose()` becomes
+  that first access, and creating a `Ticker` there throws** ("Looking up a
+  deactivated widget's ancestor is unsafe" — `SingleTickerProviderStateMixin
+  .createTicker` needs a live `TickerMode` ancestor lookup, which isn't safe
+  once the widget is already deactivating). The memory player's since-removed
+  `KenBurnsPhoto` had exactly this: `late final _controller =
+  AnimationController(...)`, with `build()`'s reduced-motion branch returning
+  early without ever reading `_controller`. A host widget test pumping the
+  reduced-motion case
+  and letting teardown dispose the tree caught it immediately. Fix: create
+  the controller *unconditionally* in `initState()` (never as a lazy field
+  initializer), and gate whether it ever actually `.forward()`s — checked
+  via `MediaQuery.of(context).disableAnimations` in `didChangeDependencies`,
+  the usual initState-is-unsafe-for-context trap — so `dispose()` always
+  finds an already-real controller to dispose of, used or not.
+- **Don't finish a drag-dismiss's own exit animation before popping the
+  route — hand off to the route's Hero return-flight immediately.**
+  `DismissiblePhoto`'s first version ran its own `animateTo(1, ...)`
+  (shrink+fade the photo to fully invisible, ~450ms) and only called
+  `Navigator.pop()` in `.whenComplete()`. Visually this is **two**
+  sequential ~450ms animations, not one: the photo fades to nothing (the
+  screen goes black), then — only once that finishes — the route's own pop
+  transition/Hero flight starts *on top of an already-invisible screen*,
+  so the photo appears to "come back" and fly to the grid as a second,
+  disconnected motion. Reported by the user as "feels laggy," which it
+  technically wasn't (frame timing was fine) — it was a sequencing bug
+  that read as broken/slow. Fix: on commit, call the dismiss callback
+  (→ `Navigator.maybePop()`) **immediately** instead of animating first;
+  the Hero flight takes over from wherever the drag left off, so there's
+  exactly one motion. A host test asserting the callback fires with *no
+  pump at all* is what proves this (the old version needed ~500ms of
+  pumping before the flag went true).
+- **A zero-size *unpositioned* child collapses a full-screen `Stack` to 0x0 —
+  and it fails completely silently.** A `Stack` sizes itself to its largest
+  **non**-positioned child; only if it has none does it take
+  `constraints.biggest`. The memory player's stage is all `Positioned` children,
+  so dropping the zero-size `PrecacheAdjacent` warm-up in unpositioned made the
+  Stack 0x0, and `Clip.hardEdge` (the Stack default) then clipped the entire
+  story away — a **black screen** with no exception, no overflow stripe, and no
+  log line. The photo detail screen took the same widget without breaking,
+  because its chrome `Align`s are unpositioned children that expand, which is
+  what makes this look "impossible to be layout". Wrap any render-nothing helper
+  in a `Positioned`. In a widget test the tell is that the tree is fully built
+  but every `find.*` returns nothing while `skipOffstage: false` finds one:
+  sliver/viewport elements report children with zero extent as offstage. Assert
+  the stage's size, not just its contents.
+- **A full-screen route over the shell must be opaque and un-transformed, or the
+  light shell bleeds around it as a white frame.** `fadeThroughPage`'s fade
+  (partial opacity) + 0.96 scale means the background is visible *around and
+  behind* the incoming page for the whole flight — on a black media stage over
+  the off-white shell that reads as a white border on open and close.
+  `heroMediaPage` returns the child untouched (opaque from frame one) and lets
+  the Hero, drawn in the app overlay above the page, carry the motion. The
+  precondition is that the destination Hero exists on the **first** frame:
+  build the landing widget from state you already hold (the memory player takes
+  its cover from the `memoriesProvider` summary the carousel is keeping alive)
+  rather than from the screen's own async load, and let the load decide only
+  what comes *after*. A screen that opens on its `loading` branch has no Hero
+  destination, so the flight silently doesn't happen.
+- **`tester.tap` produces no frame, so an animation it starts records t=0 on the
+  *next* pump.** `tap(...)` then a single `pump(400ms)` lands exactly on that
+  zero-elapsed frame — `PageController.nextPage` looks like it did nothing and
+  the tap reads as ignored. Always `tap` → bare `pump()` → `pump(duration)`.
+  Same shape for a pushed route whose screen opens on an `AsyncValue` loading
+  branch: the future only resolves after the frame that subscribes to it, so
+  the pushed screen needs one more pump before its content exists.
 
 ---
 
@@ -703,3 +959,13 @@ Short form; full postmortems in `docs/postmortems/`.
   `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`
   (the `flutter` tool sets this itself).
 - **Primary device:** Pixel 9 Pro XL (`46121FDAS008AA`), Android 17 (API 37).
+- **Never run `dart format` on a directory — only on the files you edited.**
+  The committed tree predates the current `dart format` style, so
+  `dart format lib/ test/` rewrites **~115 files** (trailing-comma/argument
+  wrapping), burying a real change in thousands of lines of cosmetic diff.
+  Worse, it is unrecoverable where it lands on a file that already had
+  *uncommitted* edits: the pre-format content was never committed, so the
+  formatting can't be separated from the work afterwards, and `git checkout`
+  would take both. `tool/check.sh` deliberately does **not** run a format check,
+  so nothing forces the issue — reformat the whole tree only as its own
+  standalone commit, never as a side effect of a feature.

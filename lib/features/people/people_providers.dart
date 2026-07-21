@@ -47,6 +47,13 @@ final personCoverProvider =
   (ref, id) => ref.watch(facesDaoProvider).coverFace(id),
 );
 
+/// The clusters the user merged into this person — empty for almost everyone,
+/// so the "separate" action only appears where it means something.
+final mergedPeopleProvider =
+    FutureProvider.autoDispose.family<List<Person>, int>(
+  (ref, id) => ref.watch(facesDaoProvider).mergedPeopleOf(id),
+);
+
 /// Side-effecting people actions, kept out of widgets (Riverpod conventions).
 final peopleActionsProvider = Provider<PeopleActions>(PeopleActions.new);
 
@@ -60,5 +67,26 @@ class PeopleActions {
     return _ref
         .read(facesDaoProvider)
         .renamePerson(personId, (trimmed == null || trimmed.isEmpty) ? null : trimmed);
+  }
+
+  /// Declares [from] to be the same person as [into]. The summaries stream
+  /// picks this up on its own; the per-person futures have to be told.
+  Future<void> merge({required int into, required int from}) async {
+    await _ref.read(facesDaoProvider).mergePersons(into: into, from: from);
+    _invalidatePerson(into);
+    _invalidatePerson(from);
+  }
+
+  /// Undoes a merge, giving [personId] back its own entry.
+  Future<void> separate(int personId, {required int from}) async {
+    await _ref.read(facesDaoProvider).unmergePerson(personId);
+    _invalidatePerson(personId);
+    _invalidatePerson(from);
+  }
+
+  void _invalidatePerson(int id) {
+    _ref.invalidate(personAssetsProvider(id));
+    _ref.invalidate(personCoverProvider(id));
+    _ref.invalidate(mergedPeopleProvider(id));
   }
 }

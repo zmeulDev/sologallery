@@ -11,12 +11,17 @@ class _Destination {
 }
 
 const _destinations = <_Destination>[
-  _Destination(Icons.photo_library_outlined, Icons.photo_library, 'Library'),
+  // Inactive Library/Albums glyphs stay on the default outlined family: the
+  // rounded family ships no outlined forms for these, and the filled
+  // `_rounded` variant would equal the active glyph.
+  _Destination(Icons.photo_library_outlined, Icons.photo_library_rounded,
+      'Library'),
   // Material ships no filled counterpart for the magnifier; colour and the dot
   // carry the selected state here, as they do for every destination.
-  _Destination(Icons.search, Icons.search, 'Search'),
-  _Destination(Icons.favorite_border, Icons.favorite, 'Saved'),
-  _Destination(Icons.photo_album_outlined, Icons.photo_album, 'Albums'),
+  _Destination(Icons.search_rounded, Icons.search_rounded, 'Search'),
+  _Destination(
+      Icons.favorite_border_rounded, Icons.favorite_rounded, 'Saved'),
+  _Destination(Icons.photo_album_outlined, Icons.photo_album_rounded, 'Albums'),
 ];
 
 /// Custom bottom nav: icon-only destinations with a single dot that slides to
@@ -36,7 +41,6 @@ class DotNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<AppColors>()!;
     final scheme = Theme.of(context).colorScheme;
-    final reduceMotion = MediaQuery.of(context).disableAnimations;
 
     return Container(
       decoration: BoxDecoration(
@@ -67,10 +71,8 @@ class DotNavBar extends StatelessWidget {
                     ],
                   ),
                   AnimatedPositioned(
-                    duration: reduceMotion
-                        ? Duration.zero
-                        : const Duration(milliseconds: 260),
-                    curve: Curves.easeOutCubic,
+                    duration: AppMotion.of(context, AppMotion.nav),
+                    curve: AppMotion.curve,
                     left: itemWidth * currentIndex + (itemWidth - _dotSize) / 2,
                     bottom: 10,
                     child: Container(

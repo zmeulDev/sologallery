@@ -6,6 +6,46 @@ import 'package:flutter/material.dart';
 /// The palette is intentionally monochromatic warm-grey with no accent color:
 /// in a photo app the photographs supply all the color, so the chrome stays
 /// quiet. Values come straight from CLAUDE.md "Design system".
+/// Colors drawn *over photos and video* — scrims, glyphs, progress segments.
+///
+/// Deliberately theme-invariant (media is the background, not the chrome), so
+/// this is a const class rather than a [ThemeExtension]: the values never flip
+/// with brightness and stay const-constructible in decorations.
+abstract final class AppOverMedia {
+  /// Standard scrim behind chrome over media (top bar, duration badge).
+  static const Color scrim = Color(0x99000000);
+
+  /// Heavier scrim (action bar, card gradient end).
+  static const Color scrimHeavy = Color(0xB3000000);
+
+  /// Deepest scrim (memory title-card gradient end).
+  static const Color scrimDeep = Color(0xD9000000);
+
+  /// Circular backdrop behind the video play glyph.
+  static const Color playScrim = Color(0x66000000);
+
+  /// Primary glyph/text over media.
+  static const Color glyph = Colors.white;
+
+  /// Softer glyph/text (white70).
+  static const Color glyphSoft = Colors.white70;
+
+  /// Faint glyph/text (white54).
+  static const Color glyphFaint = Colors.white54;
+
+  /// Dim structural marks (white24).
+  static const Color glyphDim = Colors.white24;
+
+  /// Ghost structural marks (white12).
+  static const Color glyphGhost = Colors.white12;
+
+  /// Active progress segment (memory card/player).
+  static const Color segment = Color(0x8CFFFFFF);
+
+  /// Inactive progress segment.
+  static const Color segmentOff = Color(0x40FFFFFF);
+}
+
 @immutable
 class AppColors extends ThemeExtension<AppColors> {
   const AppColors({

@@ -45,6 +45,9 @@ void main() {
     await $('Allow photo access').tap();
     await $.platform.mobile.grantPermissionWhenInUse();
     await $.pumpAndSettle();
+    // Onboarding step 2 (analysis consent): decline all and continue.
+    await $('Continue').tap();
+    await $.pumpAndSettle();
     expect($(AssetThumbnail), findsWidgets);
 
     // Bottom nav → Search.
@@ -78,12 +81,12 @@ void main() {
     // Opening a photo from the folder grid reaches the detail viewer.
     await $(AssetThumbnail).first.tap();
     await $.pumpAndSettle();
-    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
-    await $.tester.tap(find.byIcon(Icons.arrow_back));
+    expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
+    await $.tester.tap(find.byIcon(Icons.arrow_back_rounded));
     await $.pumpAndSettle();
 
     // Back out of the folder to Search.
-    await $.tester.tap(find.byIcon(Icons.arrow_back));
+    await $.tester.tap(find.byIcon(Icons.arrow_back_rounded));
     await settleSearch($);
     expect(find.text('FOLDERS'), findsOneWidget);
   });

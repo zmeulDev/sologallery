@@ -2238,12 +2238,27 @@ class $PersonsTable extends Persons with TableInfo<$PersonsTable, Person> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _mergedIntoMeta = const VerificationMeta(
+    'mergedInto',
+  );
+  @override
+  late final GeneratedColumn<int> mergedInto = GeneratedColumn<int>(
+    'merged_into',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES persons (id) ON DELETE SET NULL',
+    ),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
     displayName,
     coverAssetId,
     createdAt,
+    mergedInto,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2286,6 +2301,12 @@ class $PersonsTable extends Persons with TableInfo<$PersonsTable, Person> {
     } else if (isInserting) {
       context.missing(_createdAtMeta);
     }
+    if (data.containsKey('merged_into')) {
+      context.handle(
+        _mergedIntoMeta,
+        mergedInto.isAcceptableOrUnknown(data['merged_into']!, _mergedIntoMeta),
+      );
+    }
     return context;
   }
 
@@ -2311,6 +2332,10 @@ class $PersonsTable extends Persons with TableInfo<$PersonsTable, Person> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      mergedInto: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}merged_into'],
+      ),
     );
   }
 
@@ -2327,11 +2352,31 @@ class Person extends DataClass implements Insertable<Person> {
   /// A `photo_manager` asset id used for the person's cover/avatar.
   final String? coverAssetId;
   final DateTime createdAt;
+
+  /// Set when the user has declared this cluster to be the same person as
+  /// another one: every read resolves through to that person instead.
+  ///
+  /// Clustering cannot reunite one person across a strong appearance change
+  /// (glasses, a beard) without also fusing genuinely different people — no
+  /// global threshold separates the two cases (see
+  /// `docs/plans/people-merge-action.md`), so the user gets to say so.
+  ///
+  /// The merge is a **redirect, not a move**: the absorbed row keeps its faces
+  /// and stays in the table. That is what makes it survive the periodic global
+  /// re-cluster, which reassigns every face from scratch — `planClusters`
+  /// re-derives the same two groups and each re-claims its own person row, so
+  /// the redirect still points where it did. Moving the faces instead would let
+  /// the next re-cluster silently split them apart again.
+  ///
+  /// `setNull` rather than cascade: if the survivor is deleted, the absorbed
+  /// person must resurface on its own rather than disappear with it.
+  final int? mergedInto;
   const Person({
     required this.id,
     this.displayName,
     this.coverAssetId,
     required this.createdAt,
+    this.mergedInto,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2344,6 +2389,9 @@ class Person extends DataClass implements Insertable<Person> {
       map['cover_asset_id'] = Variable<String>(coverAssetId);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || mergedInto != null) {
+      map['merged_into'] = Variable<int>(mergedInto);
+    }
     return map;
   }
 
@@ -2357,6 +2405,9 @@ class Person extends DataClass implements Insertable<Person> {
           ? const Value.absent()
           : Value(coverAssetId),
       createdAt: Value(createdAt),
+      mergedInto: mergedInto == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mergedInto),
     );
   }
 
@@ -2370,6 +2421,7 @@ class Person extends DataClass implements Insertable<Person> {
       displayName: serializer.fromJson<String?>(json['displayName']),
       coverAssetId: serializer.fromJson<String?>(json['coverAssetId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      mergedInto: serializer.fromJson<int?>(json['mergedInto']),
     );
   }
   @override
@@ -2380,6 +2432,7 @@ class Person extends DataClass implements Insertable<Person> {
       'displayName': serializer.toJson<String?>(displayName),
       'coverAssetId': serializer.toJson<String?>(coverAssetId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'mergedInto': serializer.toJson<int?>(mergedInto),
     };
   }
 
@@ -2388,11 +2441,13 @@ class Person extends DataClass implements Insertable<Person> {
     Value<String?> displayName = const Value.absent(),
     Value<String?> coverAssetId = const Value.absent(),
     DateTime? createdAt,
+    Value<int?> mergedInto = const Value.absent(),
   }) => Person(
     id: id ?? this.id,
     displayName: displayName.present ? displayName.value : this.displayName,
     coverAssetId: coverAssetId.present ? coverAssetId.value : this.coverAssetId,
     createdAt: createdAt ?? this.createdAt,
+    mergedInto: mergedInto.present ? mergedInto.value : this.mergedInto,
   );
   Person copyWithCompanion(PersonsCompanion data) {
     return Person(
@@ -2404,6 +2459,9 @@ class Person extends DataClass implements Insertable<Person> {
           ? data.coverAssetId.value
           : this.coverAssetId,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      mergedInto: data.mergedInto.present
+          ? data.mergedInto.value
+          : this.mergedInto,
     );
   }
 
@@ -2413,13 +2471,15 @@ class Person extends DataClass implements Insertable<Person> {
           ..write('id: $id, ')
           ..write('displayName: $displayName, ')
           ..write('coverAssetId: $coverAssetId, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('mergedInto: $mergedInto')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, displayName, coverAssetId, createdAt);
+  int get hashCode =>
+      Object.hash(id, displayName, coverAssetId, createdAt, mergedInto);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2427,7 +2487,8 @@ class Person extends DataClass implements Insertable<Person> {
           other.id == this.id &&
           other.displayName == this.displayName &&
           other.coverAssetId == this.coverAssetId &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.mergedInto == this.mergedInto);
 }
 
 class PersonsCompanion extends UpdateCompanion<Person> {
@@ -2435,29 +2496,34 @@ class PersonsCompanion extends UpdateCompanion<Person> {
   final Value<String?> displayName;
   final Value<String?> coverAssetId;
   final Value<DateTime> createdAt;
+  final Value<int?> mergedInto;
   const PersonsCompanion({
     this.id = const Value.absent(),
     this.displayName = const Value.absent(),
     this.coverAssetId = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.mergedInto = const Value.absent(),
   });
   PersonsCompanion.insert({
     this.id = const Value.absent(),
     this.displayName = const Value.absent(),
     this.coverAssetId = const Value.absent(),
     required DateTime createdAt,
+    this.mergedInto = const Value.absent(),
   }) : createdAt = Value(createdAt);
   static Insertable<Person> custom({
     Expression<int>? id,
     Expression<String>? displayName,
     Expression<String>? coverAssetId,
     Expression<DateTime>? createdAt,
+    Expression<int>? mergedInto,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (displayName != null) 'display_name': displayName,
       if (coverAssetId != null) 'cover_asset_id': coverAssetId,
       if (createdAt != null) 'created_at': createdAt,
+      if (mergedInto != null) 'merged_into': mergedInto,
     });
   }
 
@@ -2466,12 +2532,14 @@ class PersonsCompanion extends UpdateCompanion<Person> {
     Value<String?>? displayName,
     Value<String?>? coverAssetId,
     Value<DateTime>? createdAt,
+    Value<int?>? mergedInto,
   }) {
     return PersonsCompanion(
       id: id ?? this.id,
       displayName: displayName ?? this.displayName,
       coverAssetId: coverAssetId ?? this.coverAssetId,
       createdAt: createdAt ?? this.createdAt,
+      mergedInto: mergedInto ?? this.mergedInto,
     );
   }
 
@@ -2490,6 +2558,9 @@ class PersonsCompanion extends UpdateCompanion<Person> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (mergedInto.present) {
+      map['merged_into'] = Variable<int>(mergedInto.value);
+    }
     return map;
   }
 
@@ -2499,7 +2570,8 @@ class PersonsCompanion extends UpdateCompanion<Person> {
           ..write('id: $id, ')
           ..write('displayName: $displayName, ')
           ..write('coverAssetId: $coverAssetId, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('mergedInto: $mergedInto')
           ..write(')'))
         .toString();
   }
@@ -4354,6 +4426,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('photo_texts', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'persons',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('persons', kind: UpdateKind.update)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
@@ -6566,6 +6645,7 @@ typedef $$PersonsTableCreateCompanionBuilder =
       Value<String?> displayName,
       Value<String?> coverAssetId,
       required DateTime createdAt,
+      Value<int?> mergedInto,
     });
 typedef $$PersonsTableUpdateCompanionBuilder =
     PersonsCompanion Function({
@@ -6573,11 +6653,29 @@ typedef $$PersonsTableUpdateCompanionBuilder =
       Value<String?> displayName,
       Value<String?> coverAssetId,
       Value<DateTime> createdAt,
+      Value<int?> mergedInto,
     });
 
 final class $$PersonsTableReferences
     extends BaseReferences<_$AppDatabase, $PersonsTable, Person> {
   $$PersonsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $PersonsTable _mergedIntoTable(_$AppDatabase db) =>
+      db.persons.createAlias('persons__merged_into__persons__id');
+
+  $$PersonsTableProcessedTableManager? get mergedInto {
+    final $_column = $_itemColumn<int>('merged_into');
+    if ($_column == null) return null;
+    final manager = $$PersonsTableTableManager(
+      $_db,
+      $_db.persons,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_mergedIntoTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
 
   static MultiTypedResultKey<$FaceEmbeddingsTable, List<FaceEmbedding>>
   _faceEmbeddingsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
@@ -6626,6 +6724,29 @@ class $$PersonsTableFilterComposer
     column: $table.createdAt,
     builder: (column) => ColumnFilters(column),
   );
+
+  $$PersonsTableFilterComposer get mergedInto {
+    final $$PersonsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.mergedInto,
+      referencedTable: $db.persons,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PersonsTableFilterComposer(
+            $db: $db,
+            $table: $db.persons,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 
   Expression<bool> faceEmbeddingsRefs(
     Expression<bool> Function($$FaceEmbeddingsTableFilterComposer f) f,
@@ -6681,6 +6802,29 @@ class $$PersonsTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  $$PersonsTableOrderingComposer get mergedInto {
+    final $$PersonsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.mergedInto,
+      referencedTable: $db.persons,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PersonsTableOrderingComposer(
+            $db: $db,
+            $table: $db.persons,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$PersonsTableAnnotationComposer
@@ -6707,6 +6851,29 @@ class $$PersonsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$PersonsTableAnnotationComposer get mergedInto {
+    final $$PersonsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.mergedInto,
+      referencedTable: $db.persons,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PersonsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.persons,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 
   Expression<T> faceEmbeddingsRefs<T extends Object>(
     Expression<T> Function($$FaceEmbeddingsTableAnnotationComposer a) f,
@@ -6747,7 +6914,7 @@ class $$PersonsTableTableManager
           $$PersonsTableUpdateCompanionBuilder,
           (Person, $$PersonsTableReferences),
           Person,
-          PrefetchHooks Function({bool faceEmbeddingsRefs})
+          PrefetchHooks Function({bool mergedInto, bool faceEmbeddingsRefs})
         > {
   $$PersonsTableTableManager(_$AppDatabase db, $PersonsTable table)
     : super(
@@ -6766,11 +6933,13 @@ class $$PersonsTableTableManager
                 Value<String?> displayName = const Value.absent(),
                 Value<String?> coverAssetId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<int?> mergedInto = const Value.absent(),
               }) => PersonsCompanion(
                 id: id,
                 displayName: displayName,
                 coverAssetId: coverAssetId,
                 createdAt: createdAt,
+                mergedInto: mergedInto,
               ),
           createCompanionCallback:
               ({
@@ -6778,11 +6947,13 @@ class $$PersonsTableTableManager
                 Value<String?> displayName = const Value.absent(),
                 Value<String?> coverAssetId = const Value.absent(),
                 required DateTime createdAt,
+                Value<int?> mergedInto = const Value.absent(),
               }) => PersonsCompanion.insert(
                 id: id,
                 displayName: displayName,
                 coverAssetId: coverAssetId,
                 createdAt: createdAt,
+                mergedInto: mergedInto,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -6792,37 +6963,72 @@ class $$PersonsTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({faceEmbeddingsRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [
-                if (faceEmbeddingsRefs) db.faceEmbeddings,
-              ],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (faceEmbeddingsRefs)
-                    await $_getPrefetchedData<
-                      Person,
-                      $PersonsTable,
-                      FaceEmbedding
-                    >(
-                      currentTable: table,
-                      referencedTable: $$PersonsTableReferences
-                          ._faceEmbeddingsRefsTable(db),
-                      managerFromTypedResult: (p0) => $$PersonsTableReferences(
-                        db,
-                        table,
-                        p0,
-                      ).faceEmbeddingsRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.personId == item.id),
-                      typedResults: items,
-                    ),
-                ];
+          prefetchHooksCallback:
+              ({mergedInto = false, faceEmbeddingsRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (faceEmbeddingsRefs) db.faceEmbeddings,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (mergedInto) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.mergedInto,
+                                    referencedTable: $$PersonsTableReferences
+                                        ._mergedIntoTable(db),
+                                    referencedColumn: $$PersonsTableReferences
+                                        ._mergedIntoTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (faceEmbeddingsRefs)
+                        await $_getPrefetchedData<
+                          Person,
+                          $PersonsTable,
+                          FaceEmbedding
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PersonsTableReferences
+                              ._faceEmbeddingsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PersonsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).faceEmbeddingsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.personId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -6839,7 +7045,7 @@ typedef $$PersonsTableProcessedTableManager =
       $$PersonsTableUpdateCompanionBuilder,
       (Person, $$PersonsTableReferences),
       Person,
-      PrefetchHooks Function({bool faceEmbeddingsRefs})
+      PrefetchHooks Function({bool mergedInto, bool faceEmbeddingsRefs})
     >;
 typedef $$FaceEmbeddingsTableCreateCompanionBuilder =
     FaceEmbeddingsCompanion Function({

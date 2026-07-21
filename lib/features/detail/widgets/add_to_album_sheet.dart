@@ -3,16 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/app_database.dart' show Album;
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_space.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../widgets/app_sheet.dart';
+import '../../../widgets/cover_row.dart';
 import '../detail_providers.dart';
 
 /// Opens the add-to-album picker for [assetId]. Resolves to the album name the
 /// photo was added to (for a confirmation), or null if the sheet was dismissed.
 Future<String?> showAddToAlbumSheet(BuildContext context, String assetId) {
-  return showModalBottomSheet<String>(
-    context: context,
+  return showAppSheet<String>(
+    context,
     isScrollControlled: true,
-    backgroundColor: Colors.transparent,
     builder: (_) => AddToAlbumSheet(assetId: assetId),
   );
 }
@@ -57,71 +59,43 @@ class _AddToAlbumSheetState extends ConsumerState<AddToAlbumSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final colors = Theme.of(context).extension<AppColors>()!;
-    final text = Theme.of(context).extension<AppTextStyles>()!;
     final albums = ref.watch(albumsListProvider);
 
-    return Material(
-      color: scheme.surface,
-      clipBehavior: Clip.antiAlias,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      child: Padding(
-        // Lift above the keyboard when the create field is focused.
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 10),
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: colors.textMuted,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
-                child: Text(
-                  'ADD TO ALBUM',
-                  style: text.sectionLabel.copyWith(color: colors.textSecondary),
-                ),
-              ),
-              _CreateRow(
-                controller: _controller,
-                enabled: !_busy,
-                onSubmit: _createAndAdd,
-              ),
-              Divider(height: 1, color: colors.border),
-              Flexible(
-                child: albums.when(
-                  loading: () => const _ListNote('Loading albums…'),
-                  error: (_, _) => const _ListNote('Couldn\'t load albums.'),
-                  data: (list) => list.isEmpty
-                      ? const _ListNote(
-                          'No albums yet — type a name above to make one.')
-                      : ListView.builder(
-                          shrinkWrap: true,
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          itemCount: list.length,
-                          itemBuilder: (context, i) => _AlbumTile(
-                            album: list[i],
-                            onTap: _busy ? null : () => _addTo(list[i]),
-                          ),
-                        ),
-                ),
-              ),
-            ],
+    return AppSheet(
+      label: 'ADD TO ALBUM',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _CreateRow(
+            controller: _controller,
+            enabled: !_busy,
+            onSubmit: _createAndAdd,
           ),
-        ),
+          Divider(height: 1, color: colors.border),
+          Flexible(
+            child: albums.when(
+              loading: () => const AppSheetNote('Loading albums…'),
+              error: (_, _) => const AppSheetNote('Couldn\'t load albums.'),
+              data: (list) => list.isEmpty
+                  ? const AppSheetNote(
+                      'No albums yet — type a name above to make one.')
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      padding:
+                          const EdgeInsets.symmetric(vertical: AppSpace.s8),
+                      itemCount: list.length,
+                      itemBuilder: (context, i) => CoverRow(
+                        coverAssetId: list[i].coverAssetId,
+                        name: list[i].name,
+                        fallbackIcon: Icons.photo_album_outlined,
+                        onTap: _busy ? null : () => _addTo(list[i]),
+                      ),
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -142,12 +116,18 @@ class _CreateRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final colors = Theme.of(context).extension<AppColors>()!;
+    final styles = Theme.of(context).extension<AppTextStyles>()!;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 12, 8),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpace.s20,
+        AppSpace.s4,
+        AppSpace.s12,
+        AppSpace.s8,
+      ),
       child: Row(
         children: [
-          Icon(Icons.add, color: colors.textSecondary, size: 22),
-          const SizedBox(width: 12),
+          Icon(Icons.add_rounded, color: colors.textSecondary, size: 22),
+          const SizedBox(width: AppSpace.s12),
           Expanded(
             child: TextField(
               controller: controller,
@@ -157,11 +137,14 @@ class _CreateRow extends StatelessWidget {
               onSubmitted: (_) => onSubmit(),
               decoration: InputDecoration(
                 isDense: true,
+                // Opt out of the app-wide filled decoration — the row reads
+                // as a plain inline field.
+                filled: false,
                 border: InputBorder.none,
                 hintText: 'New album',
                 hintStyle: TextStyle(color: colors.textMuted),
               ),
-              style: TextStyle(color: scheme.onSurface, fontSize: 14),
+              style: styles.body.copyWith(color: scheme.onSurface),
             ),
           ),
           TextButton(
@@ -169,45 +152,6 @@ class _CreateRow extends StatelessWidget {
             child: const Text('Create'),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _AlbumTile extends StatelessWidget {
-  const _AlbumTile({required this.album, required this.onTap});
-
-  final Album album;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final colors = Theme.of(context).extension<AppColors>()!;
-    return ListTile(
-      onTap: onTap,
-      leading: Icon(Icons.photo_album_outlined, color: colors.textSecondary),
-      title: Text(
-        album.name,
-        style: TextStyle(color: scheme.onSurface, fontSize: 14),
-      ),
-    );
-  }
-}
-
-class _ListNote extends StatelessWidget {
-  const _ListNote(this.text);
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
-    final styles = Theme.of(context).extension<AppTextStyles>()!;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
-      child: Text(
-        text,
-        style: styles.body.copyWith(color: colors.textSecondary),
       ),
     );
   }

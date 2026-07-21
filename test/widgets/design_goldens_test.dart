@@ -1,20 +1,29 @@
 import 'package:alchemist/alchemist.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:sologallery/core/database/daos/albums_dao.dart' show AlbumSummary;
+import 'package:sologallery/core/database/daos/albums_dao.dart'
+    show AlbumSummary;
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/core/database/daos/memories_dao.dart'
     show MemorySummary;
 import 'package:sologallery/features/albums/widgets/album_card.dart';
+import 'package:sologallery/features/library/widgets/year_header.dart';
 import 'package:sologallery/features/memories/widgets/memory_card.dart';
 import 'package:sologallery/features/settings/widgets/theme_mode_picker.dart';
 import 'package:sologallery/services/permission_provider.dart';
+import 'package:sologallery/widgets/app_button.dart';
+import 'package:sologallery/widgets/app_card.dart';
+import 'package:sologallery/widgets/app_sheet.dart';
 import 'package:sologallery/widgets/asset_thumbnail.dart';
+import 'package:sologallery/widgets/circle_icon_button.dart';
 import 'package:sologallery/widgets/consent_switch.dart';
+import 'package:sologallery/widgets/cover_row.dart';
 import 'package:sologallery/widgets/dot_nav_bar.dart';
+import 'package:sologallery/widgets/empty_state.dart';
 import 'package:sologallery/widgets/filter_pill.dart';
 import 'package:sologallery/widgets/limited_access_banner.dart';
-import 'package:sologallery/widgets/month_section_header.dart';
+import 'package:sologallery/widgets/section_header.dart';
+import 'package:sologallery/widgets/segmented_control.dart';
 
 import '../support/fake_photo_library_service.dart';
 
@@ -26,7 +35,10 @@ void main() {
     return GoldenTestGroup(
       columns: 1,
       children: [
-        for (final entry in {'light': AppTheme.light, 'dark': AppTheme.dark}.entries)
+        for (final entry in {
+          'light': AppTheme.light,
+          'dark': AppTheme.dark,
+        }.entries)
           GoldenTestScenario(
             name: entry.key,
             child: Theme(
@@ -45,13 +57,10 @@ void main() {
   }
 
   goldenTest(
-    'MonthSectionHeader renders label and trailing',
-    fileName: 'month_section_header',
+    'SectionHeader renders label and trailing',
+    fileName: 'section_header',
     builder: () => themedGroup(
-      const MonthSectionHeader(
-        label: 'July 2026',
-        trailing: Text('View all 128'),
-      ),
+      const SectionHeader(label: 'July 2026', trailing: Text('View all 128')),
     ),
   );
 
@@ -68,6 +77,27 @@ void main() {
           DurationBadge(duration: Duration(minutes: 1, seconds: 5)),
           SizedBox(width: 12),
           DurationBadge(duration: Duration(hours: 1, minutes: 2, seconds: 3)),
+        ],
+      ),
+    ),
+  );
+
+  // The one place the design system raises its voice: the display face against
+  // the 11sp uppercase section labels it introduces. The golden pins that scale
+  // relationship, which is the whole hierarchy — there is no rule or fill
+  // behind it to carry the header on its own.
+  goldenTest(
+    'YearHeader over a month section label',
+    fileName: 'year_header',
+    builder: () => themedGroup(
+      const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          YearHeader(year: 2026, count: 412),
+          SizedBox(height: 8),
+          SectionHeader(label: 'July 2026'),
+          SizedBox(height: 16),
+          YearHeader(year: 2025, count: 1),
         ],
       ),
     ),
@@ -90,9 +120,7 @@ void main() {
   goldenTest(
     'LimitedAccessBanner',
     fileName: 'limited_access_banner',
-    builder: () => themedGroup(
-      LimitedAccessBanner(onSelectMore: () {}),
-    ),
+    builder: () => themedGroup(LimitedAccessBanner(onSelectMore: () {})),
   );
 
   // The nav bar's dot sits under the active destination; Search (index 1) is
@@ -100,17 +128,14 @@ void main() {
   goldenTest(
     'DotNavBar — Search selected',
     fileName: 'dot_nav_bar',
-    builder: () => themedGroup(
-      DotNavBar(currentIndex: 1, onTap: (_) {}),
-    ),
+    builder: () => themedGroup(DotNavBar(currentIndex: 1, onTap: (_) {})),
   );
 
   goldenTest(
     'ThemeModePicker — system selected',
     fileName: 'theme_mode_picker',
-    builder: () => themedGroup(
-      ThemeModePicker(mode: ThemeMode.system, onChanged: (_) {}),
-    ),
+    builder: () =>
+        themedGroup(ThemeModePicker(mode: ThemeMode.system, onChanged: (_) {})),
   );
 
   // The consent switch is the only switch in the app; its active track is the
@@ -138,8 +163,9 @@ void main() {
     builder: () => themedGroup(
       ProviderScope(
         overrides: [
-          photoLibraryServiceProvider
-              .overrideWithValue(FakePhotoLibraryService()),
+          photoLibraryServiceProvider.overrideWithValue(
+            FakePhotoLibraryService(),
+          ),
         ],
         child: const Row(
           children: [
@@ -174,6 +200,62 @@ void main() {
     ),
   );
 
+  // Dialogs are styled entirely by the theme's DialogThemeData /
+  // TextButtonThemeData (r20 surface, hairline border, stadium text actions);
+  // these goldens pin that styling so the six AlertDialog call sites can rely
+  // on it with zero call-site styling. Built directly, never via showDialog.
+  goldenTest(
+    'AppDialog — confirm',
+    fileName: 'app_dialog_confirm',
+    builder: () => themedGroup(
+      AlertDialog(
+        title: const Text('Delete album?'),
+        content: const Text(
+          'Photos stay in your library. Only the album is removed.',
+        ),
+        actions: [
+          TextButton(onPressed: () {}, child: const Text('Cancel')),
+          TextButton(onPressed: () {}, child: const Text('Delete')),
+        ],
+      ),
+    ),
+  );
+
+  // The unfocused TextField pins the themed filled input decoration
+  // (surface2 fill, r12, no underline). Unfocused on purpose — a focused
+  // field's cursor blink never settles under the test clock.
+  goldenTest(
+    'AppDialog — text input',
+    fileName: 'app_dialog_input',
+    builder: () => themedGroup(
+      AlertDialog(
+        title: const Text('New album'),
+        content: const TextField(
+          decoration: InputDecoration(hintText: 'Album name'),
+        ),
+        actions: [
+          TextButton(onPressed: () {}, child: const Text('Cancel')),
+          TextButton(onPressed: () {}, child: const Text('Create')),
+        ],
+      ),
+    ),
+  );
+
+  // The sheet's surface and top-r20 shape come from the theme's
+  // BottomSheetThemeData and only paint inside a real modal route, so this
+  // golden pins the content column — grab handle, tracked-uppercase header,
+  // and note — on the scenario's own background.
+  goldenTest(
+    'AppSheet — grab handle, header, note',
+    fileName: 'app_sheet',
+    builder: () => themedGroup(
+      const AppSheet(
+        label: 'ADD TO ALBUM',
+        child: AppSheetNote('No albums yet — type a name above to make one.'),
+      ),
+    ),
+  );
+
   // Same null-bytes fake: the placeholder cover isolates the card's own
   // treatment — the segment row, the scrim, and the overlaid title.
   goldenTest(
@@ -182,8 +264,9 @@ void main() {
     builder: () => themedGroup(
       ProviderScope(
         overrides: [
-          photoLibraryServiceProvider
-              .overrideWithValue(FakePhotoLibraryService()),
+          photoLibraryServiceProvider.overrideWithValue(
+            FakePhotoLibraryService(),
+          ),
         ],
         child: const Row(
           children: [
@@ -210,6 +293,223 @@ void main() {
             ),
           ],
         ),
+      ),
+    ),
+  );
+
+  // All three AppButton voices plus the busy primary. pumpOnce, not settle —
+  // the busy spinner animates forever, and a single pump renders it at a
+  // deterministic t=0.
+  goldenTest(
+    'AppButton — primary, busy, secondary, quiet',
+    fileName: 'app_button',
+    pumpBeforeTest: pumpOnce,
+    builder: () => themedGroup(
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppButton.primary(
+            label: 'Allow photo access',
+            expand: true,
+            onPressed: () {},
+          ),
+          const SizedBox(height: 12),
+          const AppButton.primary(
+            label: 'Continue',
+            busy: true,
+            onPressed: null,
+          ),
+          const SizedBox(height: 12),
+          AppButton.secondary(
+            label: 'New album',
+            icon: Icons.add_rounded,
+            onPressed: () {},
+          ),
+          const SizedBox(height: 12),
+          AppButton.quiet(
+            label: 'View all 128',
+            chevron: true,
+            onPressed: () {},
+          ),
+        ],
+      ),
+    ),
+  );
+
+  goldenTest(
+    'EmptyState — title with detail and CTA, and note',
+    fileName: 'empty_state',
+    builder: () => themedGroup(
+      Column(
+        children: [
+          EmptyState(
+            title: 'No albums yet',
+            detail: 'Group photos your way. Tap + to make your first album.',
+            action: AppButton.secondary(
+              label: 'New album',
+              icon: Icons.add_rounded,
+              onPressed: () {},
+            ),
+          ),
+          const SizedBox(height: 24),
+          const EmptyState.note('No matches.'),
+        ],
+      ),
+    ),
+  );
+
+  // Same null-bytes fake as AlbumCard: the "cover" row renders the flat
+  // placeholder tile deterministically; the fallbackIcon row pins the glyph
+  // treatment, and the last row omits the count entirely.
+  goldenTest(
+    'CoverRow — cover, fallback icon, no count',
+    fileName: 'cover_row',
+    builder: () => themedGroup(
+      ProviderScope(
+        overrides: [
+          photoLibraryServiceProvider.overrideWithValue(
+            FakePhotoLibraryService(),
+          ),
+        ],
+        child: Column(
+          children: [
+            CoverRow(
+              coverAssetId: 'x',
+              name: 'Iceland 2026',
+              count: 128,
+              onTap: () {},
+            ),
+            CoverRow(
+              coverAssetId: null,
+              name: 'Camera',
+              count: 1,
+              fallbackIcon: Icons.photo_album_outlined,
+              onTap: () {},
+            ),
+            CoverRow(coverAssetId: null, name: 'Family', onTap: () {}),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  goldenTest(
+    'SectionHeader — tappable variant with count and chevron',
+    fileName: 'section_header_tappable',
+    builder: () => themedGroup(
+      SectionHeader(
+        label: 'July 2026',
+        trailing: const Text('12 items'),
+        onTap: () {},
+      ),
+    ),
+  );
+
+  goldenTest(
+    'AppCard — single child and divided rows',
+    fileName: 'app_card',
+    builder: () => themedGroup(
+      const Column(
+        children: [
+          AppCard(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Search runs entirely on this device. Labels, text (OCR) and '
+                'faces are indexed locally and never leave your phone.',
+              ),
+            ),
+          ),
+          SizedBox(height: 16),
+          AppCard.divided(
+            children: [
+              Padding(padding: EdgeInsets.all(16), child: Text('Photos')),
+              Padding(padding: EdgeInsets.all(16), child: Text('Videos')),
+              Padding(padding: EdgeInsets.all(16), child: Text('People')),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+
+  // Two discs on a photo-grey band, so the over-media variant is judged against
+  // something other than the page background it never sits on.
+  goldenTest(
+    'CircleIconButton — over-media and surface',
+    fileName: 'circle_icon_button',
+    builder: () => themedGroup(
+      Row(
+        children: [
+          ColoredBox(
+            color: const Color(0xFF7A7A72),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  CircleIconButton.overMedia(
+                    icon: Icons.arrow_back_rounded,
+                    tooltip: 'Back',
+                    onPressed: () {},
+                  ),
+                  const SizedBox(width: 8),
+                  CircleIconButton.overMedia(
+                    icon: Icons.favorite_rounded,
+                    tooltip: 'Favorite',
+                    onPressed: () {},
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          CircleIconButton.surface(
+            icon: Icons.settings_rounded,
+            tooltip: 'Settings',
+            onPressed: () {},
+          ),
+        ],
+      ),
+    ),
+  );
+
+  goldenTest(
+    'SegmentedControl — first, middle and last selected',
+    fileName: 'segmented_control',
+    builder: () => themedGroup(
+      Column(
+        children: [
+          for (final selected in ThemeMode.values) ...[
+            SegmentedControl<ThemeMode>(
+              options: ThemeMode.values,
+              value: selected,
+              labelBuilder: (m) => switch (m) {
+                ThemeMode.system => 'System',
+                ThemeMode.light => 'Light',
+                ThemeMode.dark => 'Dark',
+              },
+              onChanged: (_) {},
+            ),
+            const SizedBox(height: 12),
+          ],
+        ],
+      ),
+    ),
+  );
+
+  goldenTest(
+    'AppButton — compact primary with a leading icon',
+    fileName: 'app_button_compact',
+    builder: () => themedGroup(
+      Row(
+        children: [
+          AppButton.primary(
+            label: 'New',
+            icon: Icons.add_rounded,
+            compact: true,
+            onPressed: () {},
+          ),
+        ],
       ),
     ),
   );

@@ -6,6 +6,7 @@ import '../../services/paged_assets_notifier.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
 import '../albums/albums_providers.dart';
+import '../memories/domain/memory_builder.dart';
 import '../saved/saved_providers.dart';
 import 'domain/search_date.dart';
 
@@ -79,6 +80,30 @@ final searchAlbumsProvider = Provider.autoDispose<List<AlbumSummary>>((ref) {
     for (final a in all)
       if (a.name.toLowerCase().contains(query)) a,
   ];
+});
+
+/// How many browse-label chips the idle screen offers. Ten is what fits as a
+/// scannable block above the privacy note without turning into a tag cloud.
+const browseLabelCount = 10;
+
+/// The browse chips on the idle screen: the [browseLabelCount] labels this
+/// library actually carries most often, most photos first.
+///
+/// Candidates are [MemoryBuilder.presentableLabels] — ML Kit's raw label set is
+/// too coarse to browse ("Person", "Room", "Event"), and keeping the one
+/// allowlist means "browsable" and "presentable as a memory" can't drift apart.
+/// Empty while nothing is labeled yet (fresh library, indexer still running, or
+/// content search declined), which hides the section rather than offering chips
+/// that match no photo.
+final topBrowseLabelsProvider =
+    StreamProvider.autoDispose<List<String>>((ref) {
+  return ref
+      .watch(indexDaoProvider)
+      .watchTopLabels(
+        allow: MemoryBuilder.presentableLabels,
+        limit: browseLabelCount,
+      )
+      .map((rows) => [for (final r in rows) r.label]);
 });
 
 /// The photo results grid, newest first. Two sources depending on the query:

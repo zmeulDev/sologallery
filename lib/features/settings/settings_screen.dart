@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/database/database_provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../widgets/app_card.dart';
+import '../../widgets/app_dialog.dart';
 import '../../services/indexing_service.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
@@ -22,10 +25,24 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final styles = Theme.of(context).extension<AppTextStyles>()!;
+    final colors = Theme.of(context).extension<AppColors>()!;
     return Scaffold(
-      appBar: AppBar(title: Text('Settings', style: styles.pageTitle)),
+      appBar: AppBar(
+        title: Text('Settings', style: styles.pageTitle),
+        // Settings is the one screen that is a list all the way down, with no
+        // photo to establish where the header ends — the hairline does it.
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: colors.border),
+        ),
+      ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpace.s16,
+          AppSpace.s8,
+          AppSpace.s16,
+          AppSpace.s32,
+        ),
         children: const [
           _PhotoAccessGroup(),
           _LibraryGroup(),
@@ -50,7 +67,7 @@ class _PhotoAccessGroup extends ConsumerWidget {
     final controller = ref.read(permissionProvider.notifier);
     return _Group(
       label: 'Photo access',
-      child: _Card(
+      child: AppCard.divided(
         children: [
           _InfoRow(label: _accessTitle(access), value: null),
           _CaptionRow(_accessCaption(access)),
@@ -70,18 +87,18 @@ class _PhotoAccessGroup extends ConsumerWidget {
   }
 
   static String _accessTitle(PhotoAccess access) => switch (access) {
-        PhotoAccess.granted => 'Full access',
-        PhotoAccess.limited => 'Limited access',
-        PhotoAccess.denied => 'No access',
-        PhotoAccess.notDetermined => 'Not set',
-      };
+    PhotoAccess.granted => 'Full access',
+    PhotoAccess.limited => 'Limited access',
+    PhotoAccess.denied => 'No access',
+    PhotoAccess.notDetermined => 'Not set',
+  };
 
   static String _accessCaption(PhotoAccess access) => switch (access) {
-        PhotoAccess.granted => 'SoloGallery can see your whole library.',
-        PhotoAccess.limited => 'Only the photos you selected are visible.',
-        PhotoAccess.denied => "SoloGallery can't see your photos.",
-        PhotoAccess.notDetermined => 'Grant access to browse your photos.',
-      };
+    PhotoAccess.granted => 'SoloGallery can see your whole library.',
+    PhotoAccess.limited => 'Only the photos you selected are visible.',
+    PhotoAccess.denied => "SoloGallery can't see your photos.",
+    PhotoAccess.notDetermined => 'Grant access to browse your photos.',
+  };
 }
 
 // --- Library stats ---------------------------------------------------------
@@ -115,7 +132,7 @@ class _LibraryGroup extends ConsumerWidget {
 
     return _Group(
       label: 'Library',
-      child: _Card(
+      child: AppCard.divided(
         children: [
           _InfoRow(label: 'Photos', value: images ?? '—'),
           _InfoRow(label: 'Videos', value: videos ?? '—'),
@@ -142,29 +159,44 @@ class _OnDeviceGroup extends ConsumerWidget {
     final faces = ref.watch(facesEnabledProvider).value ?? false;
     final indexing = ref.read(indexingServiceProvider);
 
+    // One card per toggle, unlike every other group on this screen. These three
+    // are independent grants, not facets of one setting, and a divided stack
+    // reads as a single block the user accepts or refuses wholesale — exactly
+    // the impression a consent surface must not give.
     return _Group(
       label: 'On-device analysis',
-      child: _Card(
+      child: Column(
         children: [
-          _SwitchRow(
-            label: 'Content search',
-            caption: 'Find photos by what is in them, and by text they '
-                'contain. Turning this off deletes what was found.',
-            value: search,
-            onChanged: indexing.setSearchEnabled,
+          AppCard(
+            child: _SwitchRow(
+              label: 'Content search',
+              caption:
+                  'Find photos by what is in them, and by text they '
+                  'contain. Turning this off deletes what was found.',
+              value: search,
+              onChanged: indexing.setSearchEnabled,
+            ),
           ),
-          _SwitchRow(
-            label: 'Memories',
-            caption: 'Occasional highlights built from photos you already have.',
-            value: memories,
-            onChanged: indexing.setMemoriesEnabled,
+          const SizedBox(height: AppSpace.s8),
+          AppCard(
+            child: _SwitchRow(
+              label: 'Memories',
+              caption:
+                  'Occasional highlights built from photos you already have.',
+              value: memories,
+              onChanged: indexing.setMemoriesEnabled,
+            ),
           ),
-          _SwitchRow(
-            label: 'Face detection',
-            caption: "Groups photos by who's in them. Turning this off deletes "
-                'the faces already found.',
-            value: faces,
-            onChanged: indexing.setFacesEnabled,
+          const SizedBox(height: AppSpace.s8),
+          AppCard(
+            child: _SwitchRow(
+              label: 'Face detection',
+              caption:
+                  "Groups photos by who's in them. Turning this off deletes "
+                  'the faces already found.',
+              value: faces,
+              onChanged: indexing.setFacesEnabled,
+            ),
           ),
         ],
       ),
@@ -181,7 +213,7 @@ class _IndexGroup extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return _Group(
       label: 'Index',
-      child: _Card(
+      child: AppCard.divided(
         children: [
           _ActionRow(
             label: 'Rebuild index',
@@ -201,30 +233,17 @@ class _IndexGroup extends ConsumerWidget {
       if (ref.read(searchEnabledProvider).value ?? false) 'labels and text',
       if (ref.read(facesEnabledProvider).value ?? false) 'people',
     ];
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Rebuild index?'),
-        content: Text(
-          enabled.isEmpty
-              ? 'Re-scans your whole library. No on-device analysis is turned '
-                  'on, so nothing is analyzed. Your photos are never changed.'
-              : 'Re-scans your whole library and re-runs on-device analysis — '
-                  '${enabled.join(' and ')}. Your photos are never changed.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Rebuild'),
-          ),
-        ],
-      ),
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: 'Rebuild index?',
+      message: enabled.isEmpty
+          ? 'Re-scans your whole library. No on-device analysis is turned '
+                'on, so nothing is analyzed. Your photos are never changed.'
+          : 'Re-scans your whole library and re-runs on-device analysis — '
+                '${enabled.join(' and ')}. Your photos are never changed.',
+      confirmLabel: 'Rebuild',
     );
-    if (confirmed ?? false) {
+    if (confirmed) {
       await ref.read(indexingServiceProvider).rebuild();
     }
   }
@@ -238,19 +257,13 @@ class _AppearanceGroup extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(themeModeProvider).value ?? ThemeMode.system;
+    // No card around this one: the segmented control brings its own recessed
+    // track, and a card would be a container inside a container.
     return _Group(
       label: 'Appearance',
-      child: _Card(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: ThemeModePicker(
-              mode: mode,
-              onChanged: (next) =>
-                  ref.read(settingsDaoProvider).setThemeMode(next),
-            ),
-          ),
-        ],
+      child: ThemeModePicker(
+        mode: mode,
+        onChanged: (next) => ref.read(settingsDaoProvider).setThemeMode(next),
       ),
     );
   }
@@ -266,7 +279,7 @@ class _AboutGroup extends ConsumerWidget {
     final version = ref.watch(appVersionProvider).whenOrNull(data: (v) => v);
     return _Group(
       label: 'About',
-      child: _Card(
+      child: AppCard.divided(
         children: [
           _InfoRow(label: 'SoloGallery', value: version ?? '—'),
           _CaptionRow(
@@ -291,50 +304,22 @@ class _Group extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final styles = Theme.of(context).extension<AppTextStyles>()!;
-    final scheme = Theme.of(context).colorScheme;
+    final colors = Theme.of(context).extension<AppColors>()!;
     return Padding(
-      padding: const EdgeInsets.only(top: 20),
+      padding: const EdgeInsets.only(top: AppSpace.s20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 10),
+            padding: const EdgeInsets.only(left: AppSpace.s4, bottom: 10),
             child: Text(
               label.toUpperCase(),
-              style: styles.sectionLabel.copyWith(color: scheme.onSurface),
+              // Quieter than a Library section header: these label a settings
+              // group the reader is scanning past, not content they came for.
+              style: styles.sectionLabel.copyWith(color: colors.textSecondary),
             ),
           ),
           child,
-        ],
-      ),
-    );
-  }
-}
-
-/// A rounded surface card that hairline-divides its [children].
-class _Card extends StatelessWidget {
-  const _Card({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colors.border),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var i = 0; i < children.length; i++) ...[
-            if (i > 0) Divider(height: 1, thickness: 1, color: colors.border),
-            children[i],
-          ],
         ],
       ),
     );
@@ -354,7 +339,10 @@ class _InfoRow extends StatelessWidget {
     final colors = Theme.of(context).extension<AppColors>()!;
     final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.s16,
+        vertical: 14,
+      ),
       child: Row(
         children: [
           Expanded(
@@ -385,7 +373,7 @@ class _CaptionRow extends StatelessWidget {
     final styles = Theme.of(context).extension<AppTextStyles>()!;
     final colors = Theme.of(context).extension<AppColors>()!;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+      padding: const EdgeInsets.fromLTRB(AppSpace.s16, 0, AppSpace.s16, 14),
       child: Text(
         text,
         style: styles.caption.copyWith(color: colors.textMuted),
@@ -416,7 +404,10 @@ class _SwitchRow extends StatelessWidget {
     final colors = Theme.of(context).extension<AppColors>()!;
     final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.s16,
+        vertical: 14,
+      ),
       child: Row(
         children: [
           Expanded(
@@ -435,7 +426,7 @@ class _SwitchRow extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: AppSpace.s16),
           ConsentSwitch(
             value: value,
             onChanged: onChanged,
@@ -463,7 +454,10 @@ class _ActionRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpace.s16,
+          vertical: 14,
+        ),
         child: Row(
           children: [
             Expanded(
@@ -484,7 +478,11 @@ class _ActionRow extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, size: 20, color: colors.textMuted),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: colors.textMuted,
+            ),
           ],
         ),
       ),

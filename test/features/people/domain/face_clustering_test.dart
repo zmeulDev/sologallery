@@ -41,21 +41,45 @@ void main() {
       expect(IncrementalClusterer().nearest(vec([1, 0, 0])), isNull);
     });
 
-    test('centroid tracks the running mean', () {
-      final c = IncrementalClusterer(threshold: 0.99);
-      c.add(1, vec([1, 0]));
-      c.add(1, vec([0, 1])); // centroid now ~ (0.5, 0.5)
-      // A vector along the mean direction matches; one orthogonal-ish does not.
-      expect(c.nearest(vec([1, 1])), 1);
-      expect(c.nearest(vec([1, -1])), isNull);
+    test('matches the nearest exemplar, not the mean of them', () {
+      // The mean of these two is ~(0.5, 0.5, 0) — far from either. A centroid
+      // assigner loses the person here; scoring against the faces themselves
+      // is what keeps recall up as a person accumulates varied photos.
+      final c = IncrementalClusterer(threshold: 0.9);
+      c.add(1, vec([1, 0, 0]));
+      c.add(1, vec([0, 1, 0]));
+      expect(c.nearest(vec([0.99, 0.1, 0])), 1);
+      expect(c.nearest(vec([0.1, 0.99, 0])), 1);
+      expect(c.nearest(vec([0, 0, 1])), isNull);
     });
 
-    test('picks the nearest of several clusters', () {
+    test('picks the person holding the single most similar exemplar', () {
       final c = IncrementalClusterer(threshold: 0.5);
       c.add(1, vec([1, 0, 0]));
       c.add(2, vec([0, 1, 0]));
       expect(c.nearest(vec([0.1, 0.9, 0])), 2);
       expect(c.nearest(vec([0.9, 0.1, 0])), 1);
+    });
+
+    test('seeds from stored faces per person', () {
+      final c = IncrementalClusterer(
+        threshold: 0.9,
+        initial: {
+          7: [vec([1, 0, 0])],
+        },
+      );
+      expect(c.nearest(vec([0.99, 0.05, 0])), 7);
+    });
+
+    test('caps exemplars per person, keeping the spread', () {
+      final c = IncrementalClusterer(threshold: 0.9, maxExemplars: 2);
+      c.add(1, vec([1, 0, 0]));
+      c.add(1, vec([0, 1, 0]));
+      c.add(1, vec([1, 0.01, 0])); // near-duplicate of the first
+      // One of the two near-identical vectors was evicted, not the outlier: the
+      // orthogonal pose still matches.
+      expect(c.nearest(vec([0.05, 1, 0])), 1);
+      expect(c.nearest(vec([1, 0.05, 0])), 1);
     });
   });
 
@@ -82,6 +106,49 @@ void main() {
 
     test('returns nothing for no faces', () {
       expect(clusterAll(const []), isEmpty);
+    });
+
+    test('reunites two clusters of one person that a greedy pass would split',
+        () {
+      // Two tight sub-groups of the same person (each pair ~0.995 similar to
+      // itself, the two sides ~0.6 to each other). A single greedy pass that
+      // creates both and never merges leaves the person duplicated; average
+      // linkage joins them.
+      final groups = clusterAll([
+        (id: 1, embedding: vec([1, 0, 0])),
+        (id: 2, embedding: vec([1, 0.1, 0])),
+        (id: 3, embedding: vec([0.8, 0.6, 0])),
+        (id: 4, embedding: vec([0.75, 0.66, 0])),
+      ]);
+      expect(groups, hasLength(1));
+      expect(groups.single, [1, 2, 3, 4]);
+    });
+
+    test('does not chain two people through a borderline in-between face', () {
+      // A—B and B—C each clear the threshold, A—C does not. Single linkage
+      // would fuse all three; average linkage must keep A and C apart.
+      final groups = clusterAll(
+        [
+          (id: 1, embedding: vec([1, 0, 0])),
+          (id: 2, embedding: vec([0.71, 0.71, 0])),
+          (id: 3, embedding: vec([0, 1, 0])),
+        ],
+        threshold: 0.6,
+      );
+      expect(groups, hasLength(2));
+      expect(groups.map((g) => g.length).toList()..sort(), [1, 2]);
+      expect(groups.expand((g) => g).toSet(), {1, 2, 3});
+    });
+
+    test('keeps every face exactly once', () {
+      final faces = [
+        for (var i = 1; i <= 12; i++)
+          (id: i, embedding: vec([i.isEven ? 1.0 : 0.0, i % 3, i % 5])),
+      ];
+      final groups = clusterAll(faces);
+      expect(groups.expand((g) => g).toList()..sort(), [
+        for (var i = 1; i <= 12; i++) i,
+      ]);
     });
   });
 

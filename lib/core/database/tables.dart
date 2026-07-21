@@ -163,6 +163,26 @@ class Persons extends Table {
   TextColumn get coverAssetId => text().nullable()();
 
   DateTimeColumn get createdAt => dateTime()();
+
+  /// Set when the user has declared this cluster to be the same person as
+  /// another one: every read resolves through to that person instead.
+  ///
+  /// Clustering cannot reunite one person across a strong appearance change
+  /// (glasses, a beard) without also fusing genuinely different people — no
+  /// global threshold separates the two cases (see
+  /// `docs/plans/people-merge-action.md`), so the user gets to say so.
+  ///
+  /// The merge is a **redirect, not a move**: the absorbed row keeps its faces
+  /// and stays in the table. That is what makes it survive the periodic global
+  /// re-cluster, which reassigns every face from scratch — `planClusters`
+  /// re-derives the same two groups and each re-claims its own person row, so
+  /// the redirect still points where it did. Moving the faces instead would let
+  /// the next re-cluster silently split them apart again.
+  ///
+  /// `setNull` rather than cascade: if the survivor is deleted, the absorbed
+  /// person must resurface on its own rather than disappear with it.
+  IntColumn get mergedInto =>
+      integer().nullable().references(Persons, #id, onDelete: KeyAction.setNull)();
 }
 
 /// An auto-curated "memory" — a titled collection the app generates from

@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
+import 'app_radius.dart';
+import 'app_space.dart';
 import 'app_text_styles.dart';
 
 export 'app_colors.dart';
+export 'app_motion.dart';
+export 'app_radius.dart';
+export 'app_space.dart';
 export 'app_text_styles.dart';
 
 /// Light and dark [ThemeData] for SoloGallery, built from the CLAUDE.md
@@ -45,8 +50,11 @@ abstract final class AppTheme {
       onSurface: textPrimary,
       surfaceContainerHighest: colors.surface2,
       outline: colors.border,
-      error: const Color(0xFFB3261E),
-      onError: const Color(0xFFFFFFFF),
+      // Errors are carried by copy, never by color: the chrome stays
+      // monochrome, so "error" renders as ordinary ink instead of introducing
+      // the app's only saturated hue.
+      error: textPrimary,
+      onError: background,
     );
 
     final textTheme = _textTheme(textPrimary, colors.textSecondary);
@@ -59,6 +67,13 @@ abstract final class AppTheme {
       canvasColor: background,
       textTheme: textTheme,
       splashFactory: InkSparkle.splashFactory,
+      // Icon-family normalization (Material rounded): automatic AppBar
+      // BackButtons would otherwise render the default square-cornered
+      // arrow_back, off-family from every hand-placed rounded glyph.
+      actionIconTheme: ActionIconThemeData(
+        backButtonIconBuilder: (context) =>
+            const Icon(Icons.arrow_back_rounded),
+      ),
       appBarTheme: AppBarTheme(
         backgroundColor: background,
         surfaceTintColor: Colors.transparent,
@@ -75,6 +90,80 @@ abstract final class AppTheme {
         color: colors.border,
         thickness: 1,
         space: 1,
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: AppRadius.br20,
+          side: BorderSide(color: colors.border),
+        ),
+        titleTextStyle: AppTextStyles.standard.body.copyWith(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          color: textPrimary,
+        ),
+        contentTextStyle: AppTextStyles.standard.body.copyWith(
+          color: colors.textSecondary,
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: textPrimary,
+          shape: const StadiumBorder(),
+          textStyle: AppTextStyles.standard.button.copyWith(fontSize: 14),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpace.s16,
+            vertical: AppSpace.s8,
+          ),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: colors.surface2,
+        border: const OutlineInputBorder(
+          borderRadius: AppRadius.br12,
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: AppRadius.br12,
+          borderSide: BorderSide(color: colors.textMuted),
+        ),
+        hintStyle: AppTextStyles.standard.body.copyWith(
+          color: colors.textMuted,
+        ),
+        counterStyle: AppTextStyles.standard.caption.copyWith(
+          color: colors.textMuted,
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: surface,
+        modalBackgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(AppRadius.r20),
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: colors.pillActiveBg,
+        contentTextStyle: AppTextStyles.standard.body.copyWith(
+          color: colors.pillActiveText,
+        ),
+        shape: const StadiumBorder(),
+        insetPadding: const EdgeInsets.fromLTRB(
+          AppSpace.s16,
+          0,
+          AppSpace.s16,
+          AppSpace.s16,
+        ),
       ),
       extensions: [colors, AppTextStyles.standard],
     );

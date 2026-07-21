@@ -78,6 +78,23 @@ class IndexingService {
   /// `app_settings` key holding the face count at the last global re-cluster.
   static const _reclusterBaselineKey = 'faces_at_last_recluster';
 
+  /// `app_settings` key + value identifying the clustering algorithm the stored
+  /// person assignments were produced by. Bump the version whenever grouping
+  /// changes so existing installs re-cluster once instead of keeping the groups
+  /// the old algorithm decided on.
+  static const _clusterAlgoKey = 'cluster_algo_version';
+  static const _clusterAlgoVersion = '2';
+
+  /// `app_settings` key + value identifying the face *pipeline* — detector
+  /// options, quality gate, crop — that produced the stored embeddings. Bump it
+  /// whenever any of those change: unlike a clustering change, which the global
+  /// re-cluster can heal from the embeddings it already has, a pipeline change
+  /// makes the embeddings themselves stale and they can only be recovered by
+  /// re-analyzing the images. Without this an existing install keeps its
+  /// pre-gate faces forever, since `pendingMlIds` only offers unstamped rows.
+  static const _facePipelineKey = 'face_pipeline_version';
+  static const _facePipelineVersion = '2';
+
   /// New faces since the last global re-cluster before one is triggered. Small
   /// in tests.
   final int reclusterThreshold;
@@ -395,6 +412,23 @@ class IndexingService {
           (facesEnabled && ranWithFaces == false)) {
         await dao.resetMlPending();
       }
+      // Same problem, different cause: when the face pipeline itself changed,
+      // every stored embedding was produced by the old detector/gate/crop and
+      // is not comparable with what this build produces. Re-analyzing is the
+      // only way back, so unstamp everything once and let the pass redo it.
+      // Only for an install that has already indexed under an older version —
+      // a fresh one has nothing stale, and stamping it here keeps the next
+      // pipeline change detectable.
+      if (facesEnabled && ranWithFaces == null) {
+        final stamped = await settings.read(_facePipelineKey);
+        if (stamped != _facePipelineVersion) {
+          if (stamped != null || await faces.faceCount() > 0) {
+            _log.info('Face pipeline changed — re-analyzing every asset');
+            await dao.resetMlPending();
+          }
+          await settings.put(_facePipelineKey, _facePipelineVersion);
+        }
+      }
       ranWithSearch = searchEnabled;
       ranWithFaces = facesEnabled;
       // Labels/OCR and faces are the only things ML produces. With both
@@ -429,13 +463,19 @@ class IndexingService {
           );
           await Future<void>.delayed(Duration.zero); // keep the UI isolate smooth
         }
-        if (facesEnabled) {
-          await _clusterNewFaces();
-          if (_cancelled) return;
-          await _maybeGlobalRecluster();
-          if (_cancelled) return;
-        }
         _log.info('Indexing pass complete (${todo.length} asset(s))');
+      }
+
+      // Outside the `todo` branch for the same reason as memories below: on a
+      // fully indexed library `todo` is empty every launch, and the periodic
+      // global re-cluster — the only thing that heals a grouping an older
+      // algorithm left behind — would never run again. Both calls open with a
+      // cheap DB check and return immediately when there is nothing to do.
+      if (facesEnabled) {
+        await _clusterNewFaces();
+        if (_cancelled) return;
+        await _maybeGlobalRecluster();
+        if (_cancelled) return;
       }
 
       // Outside the `todo` branch on purpose: on a typical launch there is no
@@ -508,7 +548,7 @@ class IndexingService {
     final unclustered = await faces.unclusteredFaces();
     if (unclustered.isEmpty) return;
     final clusterer =
-        IncrementalClusterer(initial: await faces.clusteredCentroids());
+        IncrementalClusterer(initial: await faces.clusteredExemplars());
     for (final f in unclustered) {
       if (_cancelled) return;
       var personId = clusterer.nearest(f.embedding);
@@ -520,20 +560,28 @@ class IndexingService {
   }
 
   /// Periodically re-clusters *all* faces from scratch to undo the order-drift of
-  /// incremental assignment (one person splitting into several). Runs only once
-  /// [_reclusterThreshold] new faces have accrued since the last re-cluster
-  /// (baseline persisted in `app_settings`), preserving user renames/covers.
-  /// DB-only work — no ML — so it stays cheap.
+  /// incremental assignment (one person splitting into several). Runs once
+  /// [reclusterThreshold] new faces have accrued since the last re-cluster
+  /// (baseline persisted in `app_settings`), or once after an algorithm change,
+  /// preserving user renames/covers. No ML — but the agglomeration itself goes
+  /// to a worker isolate, since it is quadratic in the face count and the UI
+  /// isolate must never carry it.
   Future<void> _maybeGlobalRecluster() async {
     final total = await faces.faceCount();
-    final baseline =
-        int.tryParse(await settings.read(_reclusterBaselineKey) ?? '') ?? 0;
-    if (total - baseline < reclusterThreshold) return;
+    final baselineRaw = await settings.read(_reclusterBaselineKey);
+    final baseline = int.tryParse(baselineRaw ?? '') ?? 0;
+    // A clustering-algorithm change makes every stored grouping stale, so the
+    // first pass after an upgrade re-clusters regardless of the baseline. Only
+    // for an install that has actually clustered before (baseline written) —
+    // a fresh one has nothing to heal and reaches the threshold on its own.
+    final staleAlgo = baselineRaw != null &&
+        await settings.read(_clusterAlgoKey) != _clusterAlgoVersion;
+    if (!staleAlgo && total - baseline < reclusterThreshold) return;
 
     final all = await faces.allFacesForClustering();
     if (all.isEmpty) return;
-    final groups =
-        clusterAll([for (final f in all) (id: f.id, embedding: f.embedding)]);
+    final input = [for (final f in all) (id: f.id, embedding: f.embedding)];
+    final groups = await Isolate.run(() => clusterAll(input));
     final plan = planClusters(
       groups: groups,
       faceMeta: {
@@ -547,6 +595,7 @@ class IndexingService {
     if (_cancelled) return;
     await faces.rebuildClusters(plan);
     await settings.put(_reclusterBaselineKey, total.toString());
+    await settings.put(_clusterAlgoKey, _clusterAlgoVersion);
     _log.info(
       'Global re-cluster: ${all.length} face(s) -> ${groups.length} person(s)',
     );

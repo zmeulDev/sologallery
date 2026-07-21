@@ -83,10 +83,21 @@ final faceThumbProvider =
 /// placeholder circle while loading, if there's no cover face, or if the
 /// thumbnail can't be decoded.
 class FaceAvatar extends ConsumerWidget {
-  const FaceAvatar({super.key, required this.personId, this.size = 64});
+  const FaceAvatar({
+    super.key,
+    required this.personId,
+    this.size = 64,
+    this.borderRadius,
+  });
 
   final int personId;
   final double size;
+
+  /// Rounds the crop to a rectangle instead of a circle. Null — the default —
+  /// keeps the circle the People grid and the person screen use; the People
+  /// strip passes `AppRadius.br12` so a name can sit on a scrim inside the
+  /// tile rather than on a caption line beneath it.
+  final BorderRadius? borderRadius;
 
   /// Over-zoom past just fitting the box so the face fills the circle. Tunable —
   /// raise to crop closer, lower to show more surround.
@@ -99,8 +110,11 @@ class FaceAvatar extends ConsumerWidget {
     Widget placeholder() => Container(
           width: size,
           height: size,
-          decoration:
-              BoxDecoration(color: colors.surface2, shape: BoxShape.circle),
+          decoration: BoxDecoration(
+            color: colors.surface2,
+            shape: borderRadius == null ? BoxShape.circle : BoxShape.rectangle,
+            borderRadius: borderRadius,
+          ),
         );
 
     final cover = ref.watch(personCoverProvider(personId)).value;
@@ -120,8 +134,7 @@ class FaceAvatar extends ConsumerWidget {
       fill: _faceFill,
     );
 
-    return ClipOval(
-      child: SizedBox(
+    final clipped = SizedBox(
         width: size,
         height: size,
         child: Stack(
@@ -140,7 +153,9 @@ class FaceAvatar extends ConsumerWidget {
             ),
           ],
         ),
-      ),
     );
+    return borderRadius == null
+        ? ClipOval(child: clipped)
+        : ClipRRect(borderRadius: borderRadius!, child: clipped);
   }
 }

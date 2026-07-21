@@ -51,6 +51,10 @@ dependencies:
   tflite_flutter: ^0.12.1
   image: ^4.9.1
   package_info_plus: ^10.2.1
+  # Direct dependency only so `features/detail/domain/zoom_transform.dart` can
+  # build a Matrix4 without importing Flutter (pure-Dart domain rule). Pure
+  # Dart, no platform artifacts — adds nothing to the merged manifest.
+  vector_math: ^2.2.0
 
 dev_dependencies:
   flutter_test:

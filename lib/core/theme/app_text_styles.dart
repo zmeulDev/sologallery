@@ -10,14 +10,19 @@ import 'package:flutter/material.dart';
 @immutable
 class AppTextStyles extends ThemeExtension<AppTextStyles> {
   const AppTextStyles({
+    required this.display,
     required this.pageTitle,
     required this.sectionLabel,
     required this.filterPill,
     required this.body,
+    required this.button,
     required this.exifValue,
     required this.exifKey,
     required this.caption,
   });
+
+  /// Hero headline (onboarding). 34 / 700, tightened.
+  final TextStyle display;
 
   /// Screen title in the app bar. 22 / 700.
   final TextStyle pageTitle;
@@ -31,6 +36,9 @@ class AppTextStyles extends ThemeExtension<AppTextStyles> {
   /// Default body & list text. 14 / 400.
   final TextStyle body;
 
+  /// Primary action label (CTA pill). 15 / 600.
+  final TextStyle button;
+
   /// EXIF metadata value. 12 / 600.
   final TextStyle exifValue;
 
@@ -41,6 +49,12 @@ class AppTextStyles extends ThemeExtension<AppTextStyles> {
   final TextStyle caption;
 
   static const AppTextStyles standard = AppTextStyles(
+    display: TextStyle(
+      fontSize: 34,
+      fontWeight: FontWeight.w700,
+      letterSpacing: -0.4,
+      height: 1.08,
+    ),
     pageTitle: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, height: 1.1),
     sectionLabel: TextStyle(
       fontSize: 11,
@@ -50,6 +64,7 @@ class AppTextStyles extends ThemeExtension<AppTextStyles> {
     ),
     filterPill: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
     body: TextStyle(fontSize: 14, fontWeight: FontWeight.w400, height: 1.4),
+    button: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
     exifValue: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
     exifKey: TextStyle(
       fontSize: 9,
@@ -61,19 +76,23 @@ class AppTextStyles extends ThemeExtension<AppTextStyles> {
 
   @override
   AppTextStyles copyWith({
+    TextStyle? display,
     TextStyle? pageTitle,
     TextStyle? sectionLabel,
     TextStyle? filterPill,
     TextStyle? body,
+    TextStyle? button,
     TextStyle? exifValue,
     TextStyle? exifKey,
     TextStyle? caption,
   }) {
     return AppTextStyles(
+      display: display ?? this.display,
       pageTitle: pageTitle ?? this.pageTitle,
       sectionLabel: sectionLabel ?? this.sectionLabel,
       filterPill: filterPill ?? this.filterPill,
       body: body ?? this.body,
+      button: button ?? this.button,
       exifValue: exifValue ?? this.exifValue,
       exifKey: exifKey ?? this.exifKey,
       caption: caption ?? this.caption,
@@ -84,10 +103,12 @@ class AppTextStyles extends ThemeExtension<AppTextStyles> {
   AppTextStyles lerp(AppTextStyles? other, double t) {
     if (other == null) return this;
     return AppTextStyles(
+      display: TextStyle.lerp(display, other.display, t)!,
       pageTitle: TextStyle.lerp(pageTitle, other.pageTitle, t)!,
       sectionLabel: TextStyle.lerp(sectionLabel, other.sectionLabel, t)!,
       filterPill: TextStyle.lerp(filterPill, other.filterPill, t)!,
       body: TextStyle.lerp(body, other.body, t)!,
+      button: TextStyle.lerp(button, other.button, t)!,
       exifValue: TextStyle.lerp(exifValue, other.exifValue, t)!,
       exifKey: TextStyle.lerp(exifKey, other.exifKey, t)!,
       caption: TextStyle.lerp(caption, other.caption, t)!,

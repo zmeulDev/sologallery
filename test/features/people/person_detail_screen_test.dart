@@ -16,10 +16,15 @@ import '../../support/asset_fixtures.dart';
 import '../../support/fake_photo_library_service.dart';
 
 void main() {
+  late List<(int id, int from)> separations;
+
+  setUp(() => separations = []);
+
   Future<void> pump(
     WidgetTester tester, {
     Person? person,
     List<AssetRef> assets = const [],
+    List<Person> merged = const [],
   }) async {
     final router = GoRouter(
       initialLocation: '/person/1',
@@ -37,6 +42,9 @@ void main() {
               .overrideWithValue(FakePhotoLibraryService(assets: assets)),
           personProvider.overrideWith((ref, id) => Stream.value(person)),
           personAssetsProvider.overrideWith((ref, id) async => assets),
+          mergedPeopleProvider.overrideWith((ref, id) async => merged),
+          peopleActionsProvider
+              .overrideWithValue(_RecordingActions(separations)),
         ],
         child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
       ),
@@ -106,7 +114,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
 
     // Open the rename dialog.
-    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.tap(find.byIcon(Icons.edit_rounded));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Name this person'), findsOneWidget);
@@ -124,4 +132,84 @@ void main() {
         .getSingleOrNull();
     expect(person?.displayName, 'Charlie'); // rename persisted
   });
+
+  testWidgets('offers no separate action for a person nobody was merged into',
+      (tester) async {
+    await pump(tester, person: named('Alice'), assets: assetsInMonth(2026, 8, 1));
+    expect(find.byTooltip('Separate people'), findsNothing);
+  });
+
+  testWidgets('separates the people the user merged in', (tester) async {
+    await pump(
+      tester,
+      person: named('Zml'),
+      assets: assetsInMonth(2026, 8, 1),
+      merged: [
+        Person(
+          id: 2,
+          displayName: 'ZmlG',
+          coverAssetId: null,
+          createdAt: DateTime(2026, 8, 1),
+        ),
+      ],
+    );
+
+    await tester.tap(find.byTooltip('Separate people'));
+    await tester.pump();
+    expect(find.text('Separate people?'), findsOneWidget);
+    expect(
+      find.textContaining('split back into two people'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Separate'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(separations, [(2, 1)]);
+  });
+
+  testWidgets('cancelling separates nothing', (tester) async {
+    await pump(
+      tester,
+      person: named('Zml'),
+      assets: assetsInMonth(2026, 8, 1),
+      merged: [
+        Person(
+          id: 2,
+          displayName: 'ZmlG',
+          coverAssetId: null,
+          createdAt: DateTime(2026, 8, 1),
+        ),
+      ],
+    );
+
+    await tester.tap(find.byTooltip('Separate people'));
+    await tester.pump();
+    await tester.tap(find.text('Cancel'));
+    await tester.pump();
+
+    expect(separations, isEmpty);
+  });
+}
+
+/// Records separations without a database — see the People-screen test for why
+/// this is implemented rather than extended.
+class _RecordingActions implements PeopleActions {
+  _RecordingActions(this.separations);
+
+  final List<(int id, int from)> separations;
+
+  @override
+  Future<void> separate(int personId, {required int from}) async =>
+      separations.add((personId, from));
+
+  @override
+  Future<void> merge({required int into, required int from}) async {}
+
+  @override
+  Future<void> rename(int personId, String? name) async {}
+
+  @override
+  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

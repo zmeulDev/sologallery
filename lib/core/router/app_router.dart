@@ -21,6 +21,7 @@ import '../../features/settings/settings_screen.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
 import '../../widgets/app_shell.dart';
+import 'fade_through_page.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -66,42 +67,65 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/month/:key',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) =>
-            MonthGridScreen(monthKey: state.pathParameters['key']!),
+        pageBuilder: (context, state) => fadeThroughPage(
+          context: context,
+          key: state.pageKey,
+          child: MonthGridScreen(monthKey: state.pathParameters['key']!),
+        ),
       ),
       GoRoute(
         path: '/older',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const OlderGridScreen(),
+        pageBuilder: (context, state) => fadeThroughPage(
+          context: context,
+          key: state.pageKey,
+          child: const OlderGridScreen(),
+        ),
       ),
       GoRoute(
         path: '/settings',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const SettingsScreen(),
+        pageBuilder: (context, state) => fadeThroughPage(
+          context: context,
+          key: state.pageKey,
+          child: const SettingsScreen(),
+        ),
       ),
       GoRoute(
         path: '/people',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const PeopleScreen(),
+        pageBuilder: (context, state) => fadeThroughPage(
+          context: context,
+          key: state.pageKey,
+          child: const PeopleScreen(),
+        ),
       ),
       GoRoute(
         path: '/person/:id',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final id = int.tryParse(state.pathParameters['id'] ?? '');
-          if (id == null) {
-            return const _NotFound(message: 'That person couldn\'t be found.');
-          }
-          return PersonDetailScreen(personId: id);
+          return fadeThroughPage(
+            context: context,
+            key: state.pageKey,
+            child: id == null
+                ? const _NotFound(message: 'That person couldn\'t be found.')
+                : PersonDetailScreen(personId: id),
+          );
         },
       ),
       GoRoute(
         path: '/album/:id',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final id = int.tryParse(state.pathParameters['id'] ?? '');
-          if (id == null) return const _InvalidAlbum();
-          return AlbumDetailScreen(albumId: id);
+          return fadeThroughPage(
+            context: context,
+            key: state.pageKey,
+            child: id == null
+                ? const _InvalidAlbum()
+                : AlbumDetailScreen(albumId: id),
+          );
         },
       ),
       GoRoute(
@@ -111,25 +135,35 @@ final routerProvider = Provider<GoRouter>((ref) {
         // the app bar, so a deep link may omit it.
         path: '/folder',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final id = state.uri.queryParameters['id'];
-          if (id == null || id.isEmpty) {
-            return const _NotFound(message: 'That folder couldn\'t be found.');
-          }
-          return FolderDetailScreen(
-            folderId: id,
-            folderName: state.uri.queryParameters['name'],
+          return fadeThroughPage(
+            context: context,
+            key: state.pageKey,
+            child: id == null || id.isEmpty
+                ? const _NotFound(message: 'That folder couldn\'t be found.')
+                : FolderDetailScreen(
+                    folderId: id,
+                    folderName: state.uri.queryParameters['name'],
+                  ),
           );
         },
       ),
       GoRoute(
         path: '/photo/:id',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => PhotoDetailScreen(
-          // `extra` carries the swipe sequence; a deep link / restore (no extra)
-          // falls back to a single-asset viewer built from the path id.
-          args: state.extra as PhotoViewerArgs? ??
-              PhotoViewerArgs([state.pathParameters['id']!], 0),
+        pageBuilder: (context, state) => heroMediaPage(
+          context: context,
+          key: state.pageKey,
+          // The Hero flight is the whole animation — an opaque page with no
+          // fade/scale, so the lighter shell never bleeds around the photo.
+          child: PhotoDetailScreen(
+            // `extra` carries the swipe sequence; a deep link / restore (no
+            // extra) falls back to a single-asset viewer built from the path id.
+            args:
+                state.extra as PhotoViewerArgs? ??
+                PhotoViewerArgs([state.pathParameters['id']!], 0),
+          ),
         ),
       ),
       GoRoute(
@@ -137,13 +171,36 @@ final routerProvider = Provider<GoRouter>((ref) {
         // the nav bar would break the story.
         path: '/memory/:id',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => MemoryPlayerScreen(
-          memoryId: int.parse(state.pathParameters['id']!),
+        pageBuilder: (context, state) => heroMediaPage(
+          context: context,
+          key: state.pageKey,
+          // Same Hero-only page as the photo route: the player draws its title
+          // card on its first frame (the cover comes from the summary the
+          // carousel already holds, not from the photo list it still has to
+          // load), so the flight has a destination and the stage stays opaque
+          // black throughout — no fade or scale for the light shell to bleed
+          // around.
+          child: MemoryPlayerScreen(
+            memoryId: int.parse(state.pathParameters['id']!),
+          ),
         ),
       ),
-      StatefulShellRoute.indexedStack(
+      StatefulShellRoute(
         builder: (context, state, navigationShell) =>
             AppShell(navigationShell: navigationShell),
+        // Same indexed-stack layout as the `.indexedStack` constructor, but each
+        // branch is wrapped in `HeroMode` so only the visible tab exposes its
+        // asset Heroes. The detail route is pushed on the *root* navigator, so
+        // its Hero flight scans the whole shell subtree — with every built
+        // branch live, a photo that appears in two tabs (a favorite shown in
+        // both Library and Saved) would present the same `asset-<id>` tag twice
+        // and throw "multiple heroes share the same tag". Disabling heroes in
+        // the offstage branches leaves exactly one per flight.
+        navigatorContainerBuilder: (context, navigationShell, children) =>
+            _BranchContainer(
+              navigationShell: navigationShell,
+              children: children,
+            ),
         branches: [
           StatefulShellBranch(
             routes: [
@@ -182,6 +239,34 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+/// The shell's branch host: an [IndexedStack] (so every visited branch keeps
+/// its state and scroll position) with each branch gated by [HeroMode] so only
+/// the current tab participates in Hero flights. Mirrors go_router's built-in
+/// `.indexedStack` container, adding the HeroMode gate — see the
+/// `navigatorContainerBuilder` note above.
+class _BranchContainer extends StatelessWidget {
+  const _BranchContainer({
+    required this.navigationShell,
+    required this.children,
+  });
+
+  final StatefulNavigationShell navigationShell;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = navigationShell.currentIndex;
+    return IndexedStack(
+      index: current,
+      sizing: StackFit.expand,
+      children: [
+        for (var i = 0; i < children.length; i++)
+          HeroMode(enabled: i == current, child: children[i]),
+      ],
+    );
+  }
+}
 
 /// Shown when `/album/:id` carries a non-integer id (a malformed deep link).
 class _InvalidAlbum extends StatelessWidget {

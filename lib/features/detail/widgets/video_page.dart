@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_motion.dart';
+import '../../../core/theme/app_space.dart';
 import '../detail_providers.dart';
 
 /// One swipeable page in the detail viewer for a **video** asset: the clip on
@@ -89,7 +92,7 @@ class _PlayerState extends State<_Player> {
                 valueListenable: _controller,
                 builder: (context, value, _) => AnimatedOpacity(
                   opacity: value.isPlaying ? 0 : 1,
-                  duration: const Duration(milliseconds: 150),
+                  duration: AppMotion.of(context, AppMotion.short),
                   child: const _PlayGlyph(),
                 ),
               ),
@@ -100,11 +103,11 @@ class _PlayerState extends State<_Player> {
                 child: VideoProgressIndicator(
                   _controller,
                   allowScrubbing: true,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  padding: const EdgeInsets.symmetric(vertical: AppSpace.s12),
                   colors: const VideoProgressColors(
-                    playedColor: Colors.white,
-                    bufferedColor: Colors.white24,
-                    backgroundColor: Colors.white12,
+                    playedColor: AppOverMedia.glyph,
+                    bufferedColor: AppOverMedia.glyphDim,
+                    backgroundColor: AppOverMedia.glyphGhost,
                   ),
                 ),
               ),
@@ -125,10 +128,14 @@ class _PlayGlyph extends StatelessWidget {
       width: 64,
       height: 64,
       decoration: const BoxDecoration(
-        color: Color(0x66000000),
+        color: AppOverMedia.playScrim,
         shape: BoxShape.circle,
       ),
-      child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 40),
+      child: const Icon(
+        Icons.play_arrow_rounded,
+        color: AppOverMedia.glyph,
+        size: 40,
+      ),
     );
   }
 }
@@ -144,7 +151,7 @@ class _Loading extends StatelessWidget {
         height: 26,
         child: CircularProgressIndicator(
           strokeWidth: 2,
-          valueColor: AlwaysStoppedAnimation(Colors.white24),
+          valueColor: AlwaysStoppedAnimation(AppOverMedia.glyphDim),
         ),
       ),
     );
@@ -157,7 +164,11 @@ class _Unavailable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Center(
-      child: Icon(Icons.videocam_off_outlined, color: Colors.white24, size: 44),
+      child: Icon(
+        Icons.videocam_off_outlined,
+        color: AppOverMedia.glyphDim,
+        size: 44,
+      ),
     );
   }
 }

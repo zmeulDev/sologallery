@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme/app_colors.dart';
+import '../core/theme/app_motion.dart';
+import '../core/theme/app_radius.dart';
 import '../services/thumbnail_provider.dart';
 
 /// A single photo thumbnail, resolved by asset id through [thumbnailProvider].
@@ -36,18 +38,30 @@ class AssetThumbnail extends ConsumerWidget {
     final async = ref.watch(
       thumbnailProvider(ThumbnailRequest(assetId, width: size, height: size)),
     );
-    final image = async.when(
+    // Placeholder and image are keyed so the switcher fades exactly once per
+    // asset: placeholder → first bytes. A byte refresh for the same asset keeps
+    // the same key (no re-fade; gaplessPlayback swaps in place), and an initial
+    // build with already-cached bytes shows instantly (AnimatedSwitcher never
+    // animates its first child). Pure opacity on the decoded thumbnail — no
+    // extra decode, no per-frame allocation.
+    final resolved = async.when(
       data: (bytes) => bytes == null
-          ? _Placeholder(colors)
+          ? _Placeholder(colors, key: const ValueKey('ph'))
           : Image.memory(
               bytes,
+              key: ValueKey(assetId),
               fit: BoxFit.cover,
               gaplessPlayback: true,
               width: double.infinity,
               height: double.infinity,
             ),
-      loading: () => _Placeholder(colors),
-      error: (e, st) => _Placeholder(colors),
+      loading: () => _Placeholder(colors, key: const ValueKey('ph')),
+      error: (e, st) => _Placeholder(colors, key: const ValueKey('ph')),
+    );
+    final image = AnimatedSwitcher(
+      duration: AppMotion.of(context, AppMotion.medium),
+      layoutBuilder: _fillLayout,
+      child: resolved,
     );
     if (!showVideoBadge) return image;
 
@@ -63,6 +77,19 @@ class AssetThumbnail extends ConsumerWidget {
           child: DurationBadge(duration: duration),
         ),
       ],
+    );
+  }
+
+  /// The default switcher layout centers children in a loose [Stack]; this one
+  /// keeps the widget's fill-the-cell geometry ([StackFit.expand]) so the
+  /// outgoing placeholder and incoming image both cover the cell exactly.
+  static Widget _fillLayout(
+    Widget? currentChild,
+    List<Widget> previousChildren,
+  ) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [...previousChildren, ?currentChild],
     );
   }
 }
@@ -88,21 +115,25 @@ class DurationBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0x99000000),
-        borderRadius: BorderRadius.circular(4),
+      decoration: const BoxDecoration(
+        color: AppOverMedia.scrim,
+        borderRadius: AppRadius.br4,
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.play_arrow_rounded, size: 12, color: Colors.white),
+            const Icon(
+              Icons.play_arrow_rounded,
+              size: 12,
+              color: AppOverMedia.glyph,
+            ),
             const SizedBox(width: 2),
             Text(
               format(duration),
               style: const TextStyle(
-                color: Colors.white,
+                color: AppOverMedia.glyph,
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
                 height: 1,
@@ -116,7 +147,7 @@ class DurationBadge extends StatelessWidget {
 }
 
 class _Placeholder extends StatelessWidget {
-  const _Placeholder(this.colors);
+  const _Placeholder(this.colors, {super.key});
   final AppColors colors;
 
   @override

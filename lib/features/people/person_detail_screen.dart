@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/database/app_database.dart' show Person;
+import '../../widgets/app_dialog.dart';
 import '../../widgets/asset_grid.dart';
-import '../library/month_grid_screen.dart' show CenteredNote;
+import '../../widgets/empty_state.dart';
 import 'people_providers.dart';
 
 /// One person's photos (`/person/:id`), reached from the People grid. The
@@ -17,13 +19,22 @@ class PersonDetailScreen extends ConsumerWidget {
     final person = ref.watch(personProvider(personId)).value;
     final assets = ref.watch(personAssetsProvider(personId));
     final name = person?.displayName;
+    // Almost always empty, so the action only shows where it does something.
+    final merged =
+        ref.watch(mergedPeopleProvider(personId)).value ?? const <Person>[];
 
     return Scaffold(
       appBar: AppBar(
         title: Text(name ?? 'Person'),
         actions: [
+          if (merged.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.call_split_rounded),
+              tooltip: 'Separate people',
+              onPressed: () => _separate(context, ref, merged),
+            ),
           IconButton(
-            icon: const Icon(Icons.edit_outlined),
+            icon: const Icon(Icons.edit_rounded),
             tooltip: 'Rename',
             onPressed: () => _rename(context, ref, name),
           ),
@@ -31,9 +42,9 @@ class PersonDetailScreen extends ConsumerWidget {
       ),
       body: assets.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, st) => const CenteredNote('Couldn\'t load these photos.'),
+        error: (e, st) => const EmptyState.note('Couldn\'t load these photos.'),
         data: (items) => items.isEmpty
-            ? const CenteredNote('No photos for this person.')
+            ? const EmptyState.note('No photos for this person.')
             : AssetGrid(items: items, hasMore: false, onLoadMore: _noop),
       ),
     );
@@ -46,60 +57,37 @@ class PersonDetailScreen extends ConsumerWidget {
     WidgetRef ref,
     String? current,
   ) async {
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => _RenameDialog(initial: current),
+    final result = await showAppTextInputDialog(
+      context,
+      title: 'Name this person',
+      hint: 'Name',
+      initial: current,
+      confirmLabel: 'Save',
     );
     if (result != null) {
       await ref.read(peopleActionsProvider).rename(personId, result);
     }
   }
-}
 
-/// The rename dialog. A [StatefulWidget] so its [TextEditingController] is
-/// disposed in [State.dispose] — *after* the route fully unmounts. Disposing it
-/// eagerly right after `showDialog` returns crashes the exit animation ("a
-/// TextEditingController was used after being disposed").
-class _RenameDialog extends StatefulWidget {
-  const _RenameDialog({required this.initial});
-
-  final String? initial;
-
-  @override
-  State<_RenameDialog> createState() => _RenameDialogState();
-}
-
-class _RenameDialogState extends State<_RenameDialog> {
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.initial ?? '');
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Name this person'),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        textCapitalization: TextCapitalization.words,
-        decoration: const InputDecoration(hintText: 'Name'),
-        onSubmitted: (v) => Navigator.of(context).pop(v),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(_controller.text),
-          child: const Text('Save'),
-        ),
-      ],
+  /// Undoes every merge into this person, putting the absorbed clusters back on
+  /// the People grid as entries of their own.
+  Future<void> _separate(
+    BuildContext context,
+    WidgetRef ref,
+    List<Person> merged,
+  ) async {
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: 'Separate people?',
+      message: merged.length == 1
+          ? 'These photos split back into two people.'
+          : 'These photos split back into ${merged.length + 1} people.',
+      confirmLabel: 'Separate',
     );
+    if (!confirmed) return;
+    final actions = ref.read(peopleActionsProvider);
+    for (final other in merged) {
+      await actions.separate(other.id, from: personId);
+    }
   }
 }
