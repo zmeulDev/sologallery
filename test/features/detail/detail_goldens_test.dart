@@ -46,8 +46,7 @@ void main() {
                 child: DetailActionBar(
                   isFavorite: fav,
                   onFavorite: () {},
-                  onShare: () {},
-                  onAddToAlbum: () {},
+                  onInfo: () {},
                   onDelete: () {},
                 ),
               ),

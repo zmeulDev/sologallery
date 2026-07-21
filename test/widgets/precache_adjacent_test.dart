@@ -108,6 +108,37 @@ void main() {
     expect(warmed, unorderedEquals(['a', 'c', 'd', 'e']));
   });
 
+  testWidgets('warms three each way — the detail viewer\'s window', (
+    tester,
+  ) async {
+    // A free swipe can outrun a one-deep window in a second, so the viewer
+    // asks for three; the payload is encoded bytes, not decoded bitmaps.
+    await pump(
+      tester,
+      ids: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'],
+      index: 4, // 'e'
+      ahead: 3,
+      behind: 3,
+    );
+    expect(warmed, unorderedEquals(['b', 'c', 'd', 'f', 'g', 'h']));
+    expect(warmed, isNot(contains('e'))); // the visible page
+    expect(warmed, isNot(contains('a'))); // outside the window
+    expect(warmed, isNot(contains('i')));
+  });
+
+  testWidgets('a three-each-way window clamps at the front edge', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      ids: ['a', 'b', 'c', 'd', 'e'],
+      index: 1, // 'b' — only one page behind it exists
+      ahead: 3,
+      behind: 3,
+    );
+    expect(warmed, unorderedEquals(['a', 'c', 'd', 'e']));
+  });
+
   testWidgets('renders nothing', (tester) async {
     await pump(tester, ids: ['a', 'b'], index: 0);
     // Given a choice it takes no space at all — which is exactly why it has to

@@ -3,8 +3,13 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_space.dart';
 
-/// The detail viewer's bottom action bar: favorite · share · add to album ·
-/// delete, laid over a bottom scrim so white icons stay legible on any photo.
+/// The detail viewer's bottom action bar: favorite · details · delete, laid
+/// over a bottom scrim so white icons stay legible on any photo.
+///
+/// The bar carries the actions that act on *this* photo — its state (favorite,
+/// delete) and the way into everything else known about it (details). The two
+/// outbound actions that send the photo somewhere else, share and add-to-album,
+/// live in the top bar instead.
 ///
 /// A pure widget — state (favorite) and behavior come in as inputs, so it is
 /// golden-testable in isolation. Favorite reads as a filled vs. outline heart
@@ -14,15 +19,13 @@ class DetailActionBar extends StatelessWidget {
     super.key,
     required this.isFavorite,
     required this.onFavorite,
-    required this.onShare,
-    required this.onAddToAlbum,
+    required this.onInfo,
     required this.onDelete,
   });
 
   final bool isFavorite;
   final VoidCallback onFavorite;
-  final VoidCallback onShare;
-  final VoidCallback onAddToAlbum;
+  final VoidCallback onInfo;
   final VoidCallback onDelete;
 
   @override
@@ -55,14 +58,9 @@ class DetailActionBar extends StatelessWidget {
                 onTap: onFavorite,
               ),
               _ActionButton(
-                icon: Icons.ios_share_rounded,
-                label: 'Share',
-                onTap: onShare,
-              ),
-              _ActionButton(
-                icon: Icons.add_to_photos_outlined,
-                label: 'Add to album',
-                onTap: onAddToAlbum,
+                icon: Icons.info_outline_rounded,
+                label: 'Details',
+                onTap: onInfo,
               ),
               _ActionButton(
                 icon: Icons.delete_outline_rounded,

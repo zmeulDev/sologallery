@@ -72,46 +72,76 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('renders the action bar and top-bar affordances', (tester) async {
+  testWidgets('splits the chrome into outbound actions on top and actions on '
+      'this photo at the bottom', (tester) async {
     await pump(tester);
-    expect(find.byType(DetailActionBar), findsOneWidget);
-    // Back, add-to-album and favorite ride on discs in the top bar.
+
+    // Top: back, plus the two ways of sending this photo elsewhere. Each rides
+    // its own scrim disc.
     expect(find.byType(CircleIconButton), findsNWidgets(3));
     expect(find.byTooltip('Back'), findsOneWidget);
-    // Favorite is reachable from both bars, deliberately — the top one is the
-    // thumb-reachable copy, the bottom one keeps the action set complete.
-    expect(find.byIcon(Icons.favorite_border_rounded), findsNWidgets(2));
-    await settleTeardown(tester);
-  });
-
-  testWidgets('the swipe-up hint advertises the details gesture', (
-    tester,
-  ) async {
-    // The gesture is otherwise undiscoverable on a full-bleed photo.
-    await pump(tester);
-    expect(find.text('SWIPE UP FOR DETAILS'), findsOneWidget);
-    await settleTeardown(tester);
-  });
-
-  testWidgets('favorite from the top bar toggles the heart and persists', (
-    tester,
-  ) async {
-    await pump(tester);
-    await tester.tap(
+    expect(
       find.descendant(
         of: find.byType(CircleIconButton),
-        matching: find.byIcon(Icons.favorite_border_rounded),
+        matching: find.byTooltip('Add to album'),
       ),
+      findsOneWidget,
     );
-    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(CircleIconButton),
+        matching: find.byTooltip('Share'),
+      ),
+      findsOneWidget,
+    );
 
-    // Both copies follow the one provider — neither can drift out of sync.
-    expect(find.byIcon(Icons.favorite_rounded), findsNWidgets(2));
-    expect(await db.favoritesDao.isFavorite('a1'), isTrue);
+    // Bottom: the three that act on the photo itself.
+    expect(find.byType(DetailActionBar), findsOneWidget);
+    for (final tooltip in const ['Favorite', 'Details', 'Delete']) {
+      expect(
+        find.descendant(
+          of: find.byType(DetailActionBar),
+          matching: find.byTooltip(tooltip),
+        ),
+        findsOneWidget,
+        reason: '$tooltip belongs in the action bar',
+      );
+    }
     await settleTeardown(tester);
   });
 
-  testWidgets('favorite from the action bar toggles the same state', (
+  testWidgets('each action appears exactly once, in one bar or the other', (
+    tester,
+  ) async {
+    await pump(tester);
+    // Guards against an action quietly reappearing in both bars: favorite used
+    // to be duplicated, and share and add-to-album used to sit at the bottom.
+    for (final tooltip in const [
+      'Favorite',
+      'Share',
+      'Add to album',
+      'Details',
+      'Delete',
+    ]) {
+      expect(find.byTooltip(tooltip), findsOneWidget, reason: tooltip);
+    }
+    expect(find.byIcon(Icons.ios_share_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.favorite_border_rounded), findsOneWidget);
+    await settleTeardown(tester);
+  });
+
+  testWidgets('no swipe-up caption sits over the photo any more', (
+    tester,
+  ) async {
+    // The details button is the affordance now; the gesture stays as a
+    // shortcut, so the caption is just chrome over the image.
+    await pump(tester);
+    expect(find.textContaining('SWIPE UP'), findsNothing);
+    expect(find.textContaining('Swipe up'), findsNothing);
+    await settleTeardown(tester);
+  });
+
+  testWidgets('favorite from the action bar toggles the heart and persists', (
     tester,
   ) async {
     await pump(tester);
@@ -123,7 +153,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byIcon(Icons.favorite_rounded), findsNWidgets(2));
+    expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.favorite_border_rounded), findsNothing);
     expect(await db.favoritesDao.isFavorite('a1'), isTrue);
     await settleTeardown(tester);
   });
@@ -151,7 +182,32 @@ void main() {
     await settleTeardown(tester);
   });
 
-  testWidgets('swiping up is what opens the EXIF sheet', (tester) async {
+  testWidgets('the details button opens the EXIF sheet', (tester) async {
+    await pump(
+      tester,
+      details: {
+        'a1': AssetDetail(
+          id: 'a1',
+          width: 4000,
+          height: 3000,
+          createdAt: DateTime(2026, 7, 12, 14, 33),
+          orientationDegrees: 0,
+          isVideo: false,
+          mimeType: 'image/jpeg',
+        ),
+      },
+    );
+
+    await tester.tap(find.byIcon(Icons.info_outline_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.text('DETAILS'), findsOneWidget);
+    expect(find.text('4000 × 3000'), findsOneWidget);
+    await settleTeardown(tester);
+  });
+
+  testWidgets('swiping up still opens the EXIF sheet — the gesture survives '
+      'as a shortcut', (tester) async {
     await pump(
       tester,
       details: {
@@ -171,6 +227,56 @@ void main() {
 
     expect(find.text('DETAILS'), findsOneWidget);
     expect(find.text('4000 × 3000'), findsOneWidget);
+    await settleTeardown(tester);
+  });
+
+  testWidgets('a photo with GPS shows where it was taken', (tester) async {
+    await pump(
+      tester,
+      details: {
+        'a1': AssetDetail(
+          id: 'a1',
+          width: 4000,
+          height: 3000,
+          createdAt: DateTime(2026, 7, 12, 14, 33),
+          orientationDegrees: 0,
+          isVideo: false,
+          mimeType: 'image/jpeg',
+          latitude: 37.7749,
+          longitude: -122.4194,
+        ),
+      },
+    );
+
+    await tester.tap(find.byIcon(Icons.info_outline_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.text('LOCATION'), findsOneWidget);
+    expect(find.text('37.7749, -122.4194'), findsOneWidget);
+    await settleTeardown(tester);
+  });
+
+  testWidgets('a photo without GPS shows no location chip', (tester) async {
+    await pump(
+      tester,
+      details: {
+        'a1': AssetDetail(
+          id: 'a1',
+          width: 4000,
+          height: 3000,
+          createdAt: DateTime(2026, 7, 12, 14, 33),
+          orientationDegrees: 0,
+          isVideo: false,
+          mimeType: 'image/jpeg',
+        ),
+      },
+    );
+
+    await tester.tap(find.byIcon(Icons.info_outline_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.text('DETAILS'), findsOneWidget);
+    expect(find.text('LOCATION'), findsNothing);
     await settleTeardown(tester);
   });
 
@@ -194,9 +300,11 @@ void main() {
     await settleTeardown(tester);
   });
 
-  testWidgets('add-to-album creates a new album and confirms', (tester) async {
+  testWidgets('add-to-album from the top bar creates an album and confirms', (
+    tester,
+  ) async {
     await pump(tester);
-    await tester.tap(find.byIcon(Icons.add_to_photos_outlined));
+    await tester.tap(find.byTooltip('Add to album'));
     // Bounded pumps throughout — the sheet's TextField cursor-blink is a
     // periodic timer, so pumpAndSettle would never settle.
     await tester.pump();

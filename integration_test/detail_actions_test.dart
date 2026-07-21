@@ -3,7 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:patrol/patrol.dart';
 import 'package:sologallery/app.dart';
+import 'package:sologallery/features/detail/domain/asset_detail_display.dart';
+import 'package:sologallery/features/detail/domain/zoom_transform.dart';
 import 'package:sologallery/features/detail/widgets/detail_action_bar.dart';
+import 'package:sologallery/features/detail/widgets/photo_page.dart';
+import 'package:sologallery/services/photo_library_service.dart';
 import 'package:sologallery/widgets/asset_thumbnail.dart';
 
 /// On-device detail viewer + actions, driving the *real* `photo_manager`,
@@ -46,8 +50,8 @@ void main() {
     await $.tester.tapAt(const Offset(20, 20));
     await $.pumpAndSettle();
 
-    // Add to a freshly created album.
-    await $.tester.tap(find.byIcon(Icons.add_to_photos_outlined));
+    // Add to a freshly created album — the disc in the top bar.
+    await $.tester.tap(find.byTooltip('Add to album'));
     await $.pumpAndSettle();
     await $.tester.enterText(find.byType(TextField), 'Patrol Trip');
     await $.tester.tap(find.text('Create'));
@@ -60,12 +64,85 @@ void main() {
     expect($('Library'), findsWidgets);
   });
 
+  patrolTest('double tap zooms in on a real photo, and back out', ($) async {
+    await bootAndGrant($);
+    await $(AssetThumbnail).first.tap();
+    await $.pumpAndSettle();
+
+    Matrix4 transform() =>
+        $.tester.widget<PhotoPage>(find.byType(PhotoPage)).transformController!
+            .value;
+
+    expect(transform(), Matrix4.identity(), reason: 'opens at fit');
+
+    final centre = $.tester.getCenter(find.byType(PhotoPage));
+    // Raw down/up pairs with nothing in between: under the live binding a
+    // pumpAndSettle here would burn past kDoubleTapTimeout and the two taps
+    // would read as two singles.
+    Future<void> doubleTap() async {
+      for (var i = 0; i < 2; i++) {
+        final gesture = await $.tester.startGesture(centre);
+        await gesture.up();
+      }
+      await $.pumpAndSettle();
+    }
+
+    // This is the assertion host tests structurally cannot make: on host,
+    // detailImageProvider is stubbed to null so no InteractiveViewer ever
+    // renders and nothing competes for the gesture. Against a real decoded
+    // photo it does — which is exactly how the arena-starvation bug hid.
+    await doubleTap();
+    expect(transform(), isNot(Matrix4.identity()), reason: 'zoomed in');
+    expect(transform().entry(0, 0), closeTo(kDoubleTapZoomScale, 1e-6));
+
+    await doubleTap();
+    expect(transform(), Matrix4.identity(), reason: 'back to fit');
+  });
+
+  patrolTest('a photo library reports coordinates for at least one asset', (
+    $,
+  ) async {
+    // The Location chip's data path — AssetEntity.latlngAsync — is a platform
+    // round-trip that host fakes stub out entirely, and on Android 10+ the
+    // *synchronous* getters always return null, so only a device run proves it.
+    // Rendering is covered by the host widget test and the exif_sheet golden.
+    await bootAndGrant($);
+    final service = PhotoLibraryService();
+    final page = await service.libraryMetadataPage(
+      dated: true,
+      page: 0,
+      pageSize: 60,
+    );
+    expect(page, isNotEmpty, reason: 'no assets on device — seed test_assets/');
+
+    String? located;
+    for (final asset in page) {
+      final detail = await service.assetDetail(asset.id);
+      final coords = formatCoordinates(detail?.latitude, detail?.longitude);
+      if (coords != null) {
+        located = coords;
+        break;
+      }
+    }
+    // Fail loudly rather than pass vacuously: "no photo had GPS" and "GPS
+    // reading is broken" are indistinguishable from a silent skip.
+    if (located == null) {
+      fail(
+        'No asset in the first 60 reported coordinates. Either GPS reading '
+        'regressed, or the device library has no geotagged photo — seed the '
+        'GPS JPEG from test_assets/ and re-run.',
+      );
+    }
+    expect(located, matches(RegExp(r'^-?\d+\.\d{4}, -?\d+\.\d{4}$')));
+  });
+
   patrolTest('share opens the OS share sheet', ($) async {
     await bootAndGrant($);
     await $(AssetThumbnail).first.tap();
     await $.pumpAndSettle();
 
-    await $.tester.tap(find.byIcon(Icons.ios_share_rounded));
+    // Share lives in the top bar now, on its own scrim disc.
+    await $.tester.tap(find.byTooltip('Share'));
     await $.pumpAndSettle();
     // The OS share sheet is a system surface; enable per device and assert its
     // labels via the platform automator (labels are device/locale-specific).

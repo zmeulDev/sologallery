@@ -40,9 +40,12 @@ class PrecacheAdjacent extends ConsumerWidget {
   final int index;
 
   /// How many pages forward and back to warm — see [adjacentIds] on why the
-  /// two differ. One each way is the useful default: each extra step is
-  /// another screen-sized preview held in memory for a page that may never be
-  /// reached.
+  /// two differ. One each way is the default, for callers that advance a page
+  /// at a time on their own schedule (the memory player): each extra step is
+  /// another screen-capped preview held for a page that may never be reached.
+  /// The detail viewer overrides both to 3, because a free swipe can outrun a
+  /// one-deep window in a second and the payload is encoded bytes rather than
+  /// decoded bitmaps.
   final int ahead;
   final int behind;
 

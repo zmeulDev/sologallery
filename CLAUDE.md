@@ -13,11 +13,13 @@ analytics, no network calls after install.
 - **Main view:** gallery grouped by month — first 6 photos per month,
   newest first; the section header row itself opens the full month (label,
   count and chevron are one tap target, not a separate "view all" button)
-- **Detail view (on tap):** full-screen viewer with horizontal swipe; top bar
-  carries back · add-to-album · favorite as scrim discs, the action bar below
-  carries favorite · share · add-to-album · delete (favorite is deliberately in
-  both — one thumb-reachable, one keeping the action set complete), and swiping
-  up reveals EXIF metadata
+- **Detail view (on tap):** full-screen viewer. Chrome splits by direction of
+  travel: the top bar carries back · add-to-album · share as scrim discs (the
+  outbound actions), the action bar below carries favorite · info · delete (the
+  ones acting on the photo itself). Gestures: swipe left/right for
+  previous/next, swipe down to close, swipe up for details, pinch and
+  double-tap (2× at the tap point) to zoom, single tap to toggle chrome.
+  Neighbours ±3 are pre-warmed
 - **Bottom nav:** Home Gallery · Search · Saved · Albums
 
 ---
@@ -340,8 +342,7 @@ Theme-invariant consts for content over photos/video: scrims
 - Icons = Material rounded family; `ios_share_rounded` for share.
   Outlined-style glyphs with no rounded-outline variant stay on the
   default family (nav inactive `photo_library_outlined`/
-  `photo_album_outlined`, `add_to_photos_outlined`,
-  `videocam_off_outlined`, `broken_image_outlined`).
+  `photo_album_outlined`, `videocam_off_outlined`, `broken_image_outlined`).
 - Shared components: `AppButton` (primary/secondary/quiet; primary takes
   `compact` for the 40-high app-bar metric and an optional leading icon),
   `AppCard` (surface + r12 + hairline; `.divided` for hairline-separated rows —

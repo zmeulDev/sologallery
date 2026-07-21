@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_motion.dart';
-import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_space.dart';
-import '../../core/theme/app_text_styles.dart';
 import '../../widgets/app_dialog.dart';
 import '../../widgets/circle_icon_button.dart';
 import '../../widgets/precache_adjacent.dart';
@@ -17,10 +14,14 @@ import 'widgets/dismissible_photo.dart';
 import 'widgets/exif_sheet.dart';
 
 /// Full-screen photo viewer (`/photo/:id`). Swipes horizontally through the
-/// originating sequence; tap toggles the chrome; swiping up opens the details
-/// sheet and swiping down dismisses; the action bar favorites, shares, adds to
-/// an album, or deletes. The photo is the hero on a black
-/// stage — all chrome stays quiet and translucent (Design system).
+/// originating sequence; swiping down dismisses and swiping up opens the
+/// details sheet; tap toggles the chrome and double-tap zooms.
+///
+/// The chrome splits by direction of travel rather than by category: the top
+/// bar carries the outbound actions that send this photo somewhere else (an
+/// album, another app), the bottom bar the ones that act on the photo itself
+/// (favorite, details, delete). The photo is the hero on a black stage — all
+/// chrome stays quiet and translucent (Design system).
 class PhotoDetailScreen extends ConsumerStatefulWidget {
   const PhotoDetailScreen({super.key, required this.args});
 
@@ -137,33 +138,36 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
+          // No GestureDetector wrapping the PageView: tap and double-tap are
+          // resolved inside DismissiblePhoto, where the zoom transform lives
+          // and where the raw-pointer path already avoids the gesture arena.
           Positioned.fill(
-            child: GestureDetector(
-              onTap: _toggleChrome,
-              child: PageView.builder(
-                controller: _controller,
-                itemCount: _ids.length,
-                onPageChanged: (i) => setState(() => _index = i),
-                itemBuilder: (context, i) => _DetailPage(
-                  assetId: _ids[i],
-                  onDragProgress: (p) => _dragProgress.value = p,
-                  onDismissed: () => Navigator.of(context).maybePop(),
-                  onSwipeUp: _onExif,
-                ),
+            child: PageView.builder(
+              controller: _controller,
+              itemCount: _ids.length,
+              onPageChanged: (i) => setState(() => _index = i),
+              itemBuilder: (context, i) => _DetailPage(
+                assetId: _ids[i],
+                onDragProgress: (p) => _dragProgress.value = p,
+                onDismissed: () => Navigator.of(context).maybePop(),
+                onSwipeUp: _onExif,
+                onTap: _toggleChrome,
               ),
             ),
           ),
           // Zero-size; warms the neighbouring pages' bytes. Sits in the Stack
           // so it rebuilds with _index, without the stage rebuilding with it.
-          PrecacheAdjacent(assetIds: _ids, index: _index),
+          // Three each way: the payload is encoded bytes capped at
+          // kDetailImageMaxEdge, not decoded bitmaps, so six neighbours cost
+          // ~10-15MB resident and buy a run of spinner-free swipes.
+          PrecacheAdjacent(assetIds: _ids, index: _index, ahead: 3, behind: 3),
           _dragFadedChrome(
             child: _Chrome(
               visible: _chromeVisible,
               alignment: Alignment.topCenter,
               child: _TopBar(
-                isFavorite: isFavorite,
-                onFavorite: _onFavorite,
                 onAddToAlbum: _onAddToAlbum,
+                onShare: _onShare,
               ),
             ),
           ),
@@ -171,19 +175,11 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
             child: _Chrome(
               visible: _chromeVisible,
               alignment: Alignment.bottomCenter,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const _SwipeUpHint(),
-                  const SizedBox(height: AppSpace.s16),
-                  DetailActionBar(
-                    isFavorite: isFavorite,
-                    onFavorite: _onFavorite,
-                    onShare: _onShare,
-                    onAddToAlbum: _onAddToAlbum,
-                    onDelete: _onDelete,
-                  ),
-                ],
+              child: DetailActionBar(
+                isFavorite: isFavorite,
+                onFavorite: _onFavorite,
+                onInfo: _onExif,
+                onDelete: _onDelete,
               ),
             ),
           ),
@@ -204,12 +200,14 @@ class _DetailPage extends ConsumerWidget {
     required this.onDragProgress,
     required this.onDismissed,
     required this.onSwipeUp,
+    required this.onTap,
   });
 
   final String assetId;
   final ValueChanged<double> onDragProgress;
   final VoidCallback onDismissed;
   final VoidCallback onSwipeUp;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -220,6 +218,7 @@ class _DetailPage extends ConsumerWidget {
       onProgress: onDragProgress,
       onDismissed: onDismissed,
       onSwipeUp: onSwipeUp,
+      onTap: onTap,
     );
   }
 }
@@ -252,21 +251,16 @@ class _Chrome extends StatelessWidget {
   }
 }
 
-/// The viewer's top chrome: back, plus the two actions worth reaching without
-/// travelling to the bottom bar. Each glyph sits on its own scrim disc rather
-/// than bare over the photo — a white glyph alone disappears against a bright
-/// sky, and a full-width scrim would dim the top of every photo to protect
-/// three icons.
+/// The viewer's top chrome: back, plus the two outbound actions — send this
+/// photo to an album, or to another app. Each glyph sits on its own scrim disc
+/// rather than bare over the photo — a white glyph alone disappears against a
+/// bright sky, and a full-width scrim would dim the top of every photo to
+/// protect three icons.
 class _TopBar extends StatelessWidget {
-  const _TopBar({
-    required this.isFavorite,
-    required this.onFavorite,
-    required this.onAddToAlbum,
-  });
+  const _TopBar({required this.onAddToAlbum, required this.onShare});
 
-  final bool isFavorite;
-  final VoidCallback onFavorite;
   final VoidCallback onAddToAlbum;
+  final VoidCallback onShare;
 
   @override
   Widget build(BuildContext context) {
@@ -292,50 +286,12 @@ class _TopBar extends StatelessWidget {
             ),
             const SizedBox(width: AppSpace.s8),
             CircleIconButton.overMedia(
-              icon: isFavorite
-                  ? Icons.favorite_rounded
-                  : Icons.favorite_border_rounded,
-              tooltip: isFavorite ? 'Unfavorite' : 'Favorite',
-              onPressed: onFavorite,
+              icon: Icons.ios_share_rounded,
+              tooltip: 'Share',
+              onPressed: onShare,
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// The hint that there is more under the photo: a grab handle over a tracked
-/// caption, centered above the action bar.
-///
-/// Swipe-up-for-details is otherwise undiscoverable — there is nothing on a
-/// full-bleed photo to suggest it — and it is the gesture that reveals EXIF, so
-/// it earns one quiet line. Purely decorative: the gesture itself is owned by
-/// [DismissiblePhoto], and this never intercepts a touch.
-class _SwipeUpHint extends StatelessWidget {
-  const _SwipeUpHint();
-
-  @override
-  Widget build(BuildContext context) {
-    final styles = Theme.of(context).extension<AppTextStyles>()!;
-    return IgnorePointer(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 36,
-            height: 4,
-            decoration: const BoxDecoration(
-              color: AppOverMedia.glyphFaint,
-              borderRadius: BorderRadius.all(Radius.circular(AppRadius.r2)),
-            ),
-          ),
-          const SizedBox(height: AppSpace.s8),
-          Text(
-            'Swipe up for details'.toUpperCase(),
-            style: styles.sectionLabel.copyWith(color: AppOverMedia.glyphSoft),
-          ),
-        ],
       ),
     );
   }

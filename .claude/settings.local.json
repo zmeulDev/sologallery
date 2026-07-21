@@ -45,7 +45,8 @@
       "Bash(git stash *)",
       "Bash(grep -cE \"^  /Users.*: .*$\")",
       "Bash(~/Library/Android/sdk/platform-tools/adb install *)",
-      "Bash(grep -E \"\\\\[E\\\\]$\")"
+      "Bash(grep -E \"\\\\[E\\\\]$\")",
+      "Bash(flutter pub *)"
     ]
   }
 }
