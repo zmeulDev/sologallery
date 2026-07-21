@@ -22,7 +22,8 @@ analytics, no network calls after install.
   Neighbours ±3 are pre-warmed
 - **Bottom nav:** Home Gallery · Search · Saved · Albums — a floating
   inverted-ink capsule over the content, active destination marked by a
-  sliding circular knob
+  sliding circular knob; while background analysis runs, a small dial rides at
+  the capsule's right with the number of photos left, and goes when it finishes
 
 ---
 
@@ -259,7 +260,8 @@ lib/
   widgets/
     app_shell.dart              # bottom nav shell (StatefulShellRoute)
     nav_pill_bar.dart           # floating nav capsule + sliding knob (golden-tested)
-    indexing_banner.dart        # app-wide "analyzing" strip, mounted in app_shell
+                                #   `trailing` pins a companion right of the capsule
+    indexing_dial.dart          # app-wide "analyzing" dial, the capsule's trailing
 test/                           # unit + widget + golden (mirrors lib/)
 integration_test/               # on-device tests (patrol)
 test_assets/                    # seeded device assets (Test strategy)
@@ -361,10 +363,13 @@ Theme-invariant consts for content over photos/video: scrims
   `SectionHeader` (uppercase section label; `onTap` makes the whole row the
   destination and adds a chevron), `EmptyState`, `CoverRow` (`showChevron` for
   rows that stand alone in a card), `AppSheet`/`AppSheetNote`, `app_dialog`
-  helpers, `Pressable` (cards only — never grid cells), `IndexingBanner` (the
-  app-wide "analysis is running" strip; mounted once in `AppShell` above the
-  branch, collapses to nothing when idle — never say it a second time on an
-  individual screen).
+  helpers, `Pressable` (cards only — never grid cells), `IndexingDial` (the
+  app-wide "analysis is running" indicator: a 44 disc in the capsule's own
+  inverted ink carrying the remaining count and a progress ring, mounted once as
+  `NavPillBar`'s `trailing` in `AppShell`, shows nothing when idle — never say it
+  a second time on an individual screen. It rides *beside* the capsule, not as a
+  slot inside it, so no destination shifts under the thumb when a pass starts or
+  ends).
 - Grids differ by job: Library and Search are square multi-column grids for
   *finding* a photo among thousands (uniform scan pattern); Saved is a
   two-column aspect-preserving masonry (`layoutMasonry` + `MasonryGridDelegate`)

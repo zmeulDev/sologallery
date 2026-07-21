@@ -5,6 +5,7 @@ import 'package:patrol/patrol.dart';
 import 'package:sologallery/app.dart';
 import 'package:sologallery/features/library/widgets/year_header.dart';
 import 'package:sologallery/widgets/asset_thumbnail.dart';
+import 'package:sologallery/widgets/indexing_dial.dart';
 import 'package:sologallery/widgets/section_header.dart';
 import 'package:sologallery/widgets/nav_pill_bar.dart';
 
@@ -150,6 +151,75 @@ void main() {
       'Library',
       const [AssetThumbnail, SectionHeader, YearHeader],
     );
+  });
+
+  /// The count inside the dial — the only thing it renders while a pass runs.
+  Finder dialCount() => find.descendant(
+        of: find.byType(IndexingDial),
+        matching: find.byType(Text),
+      );
+
+  // The dial's geometry only exists on a real screen: host tests can't prove it
+  // clears the capsule at the device's actual width, inside its safe area.
+  // Paired with the negative case below — "no dial" means nothing unless a
+  // same-file run shows the dial does appear when there is work (CLAUDE.md:
+  // a device-only assertion needs a positive control).
+  patrolTest('the indexing dial rides right of the capsule while analysing',
+      ($) async {
+    await $.pumpWidgetAndSettle(const ProviderScope(child: SoloGalleryApp()));
+    await $('Allow photo access').tap();
+    await $.platform.mobile.grantPermissionWhenInUse();
+    await $.pumpAndSettle();
+    // Accept content search, so the pass has real work and the dial has a
+    // reason to show.
+    await $(Switch).at(0).tap();
+    await $('Continue').tap();
+    await $.pumpAndSettle();
+
+    // The pass sweeps the whole library before it knows what is pending, so
+    // poll to a deadline rather than assuming the dial is up on frame one.
+    final deadline = DateTime.now().add(const Duration(minutes: 3));
+    while (dialCount().evaluate().isEmpty && DateTime.now().isBefore(deadline)) {
+      await $.tester.pump(const Duration(milliseconds: 250));
+    }
+    expect(dialCount(), findsOneWidget,
+        reason: 'With content search accepted, analysis should be running and '
+            'the dial showing how many photos are left.');
+
+    final dial = $.tester.getRect(find.byType(IndexingDial));
+    final capsule = $.tester.getRect(
+      find.descendant(
+        of: find.byType(NavPillBar),
+        matching: find.byWidgetPredicate(
+          (w) => w is Container && w.decoration is ShapeDecoration,
+        ),
+      ),
+    );
+    final screen = $.tester.getSize(find.byType(MaterialApp));
+
+    expect(dial.left, greaterThan(capsule.right),
+        reason: 'The dial overlaps the capsule at this screen width.');
+    expect(dial.right, lessThan(screen.width),
+        reason: 'The dial runs off the right edge.');
+    expect(dial.center.dy, closeTo(capsule.center.dy, 1),
+        reason: 'The dial should share the capsule\'s baseline.');
+    // Bottom chrome, not a band at the top of the screen.
+    expect(dial.top, greaterThan(screen.height / 2));
+  });
+
+  patrolTest('with analysis declined the dial never shows', ($) async {
+    await bootAndGrant($); // declines every consent at the onboarding step
+
+    expect(find.byType(IndexingDial), findsOneWidget,
+        reason: 'The dial is always mounted; it just shows nothing when idle.');
+    expect(dialCount(), findsNothing);
+    // Give a pass that might be starting a moment to prove itself, so this is
+    // not just "we looked too early".
+    for (var i = 0; i < 20; i++) {
+      await $.tester.pump(const Duration(milliseconds: 250));
+    }
+    expect(dialCount(), findsNothing,
+        reason: 'Nothing was consented to, so there is no analysis to report.');
   });
 
   patrolTest('Library app bar opens Settings and comes back', ($) async {

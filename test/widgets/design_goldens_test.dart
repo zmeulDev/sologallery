@@ -15,7 +15,7 @@ import 'package:sologallery/features/memories/widgets/memory_card.dart';
 import 'package:sologallery/features/settings/widgets/theme_mode_picker.dart';
 import 'package:sologallery/services/indexing_service.dart';
 import 'package:sologallery/services/permission_provider.dart';
-import 'package:sologallery/widgets/indexing_banner.dart';
+import 'package:sologallery/widgets/indexing_dial.dart';
 import 'package:sologallery/widgets/app_button.dart';
 import 'package:sologallery/widgets/app_card.dart';
 import 'package:sologallery/widgets/app_sheet.dart';
@@ -504,12 +504,12 @@ void main() {
     ),
   );
 
-  // The app-wide analysis strip: a caption on `surface2` with a hairline rule
-  // and the progress line along its bottom edge. Pinned in both themes because
-  // it sits above every screen, so a contrast slip would show everywhere.
+  // The app-wide analysis dial: the capsule's own inverted ink, the count, and
+  // the ring three quarters round. Pinned in both themes because it floats over
+  // every screen, so a contrast slip would show everywhere.
   goldenTest(
-    'IndexingBanner — a pass three quarters done',
-    fileName: 'indexing_banner',
+    'IndexingDial — a pass three quarters done',
+    fileName: 'indexing_dial',
     builder: () => themedGroup(
       ProviderScope(
         overrides: [
@@ -517,7 +517,7 @@ void main() {
             const AsyncData(IndexingStatus(remaining: 250, total: 1000)),
           ),
         ],
-        child: const IndexingBanner(),
+        child: const Align(child: IndexingDial()),
       ),
     ),
   );

@@ -7,7 +7,8 @@ import 'package:sologallery/core/database/app_database.dart';
 import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/services/indexing_service.dart';
 import 'package:sologallery/services/permission_provider.dart';
-import 'package:sologallery/widgets/indexing_banner.dart';
+import 'package:sologallery/widgets/indexing_dial.dart';
+import 'package:sologallery/widgets/nav_pill_bar.dart';
 
 import '../support/fake_photo_library_service.dart';
 
@@ -88,29 +89,41 @@ void main() {
   testWidgets('says nothing about analysis while the indexer is idle',
       (tester) async {
     await pumpApp(tester);
-    expect(tester.getSize(find.byType(IndexingBanner)).height, 0);
+    expect(find.byType(IndexingDial), findsOneWidget);
     expect(find.textContaining('Analyzing'), findsNothing);
+    expect(
+      find.descendant(of: find.byType(IndexingDial), matching: find.byType(Text)),
+      findsNothing,
+    );
     await disposeTree(tester);
   });
 
-  testWidgets('the indexing strip rides above every tab', (tester) async {
+  testWidgets('the indexing dial rides beside the nav capsule on every tab', (
+    tester,
+  ) async {
     await pumpApp(
       tester,
       indexing: const AsyncData(IndexingStatus(remaining: 42, total: 100)),
     );
 
-    expect(find.text('Analyzing your photos — 42 left'), findsOneWidget);
-    // Above the branch, not over it: the strip's bottom is at or above the
-    // active screen's app bar.
-    final strip = tester.getRect(find.byType(IndexingBanner));
+    expect(
+      find.descendant(of: find.byType(IndexingDial), matching: find.text('42')),
+      findsOneWidget,
+    );
+    // Bottom chrome, not a band at the top: it sits below the active screen's
+    // app bar, down with the nav capsule.
+    final dial = tester.getRect(find.byType(IndexingDial));
     final appBar = tester.getRect(find.byType(AppBar).first);
-    expect(strip.bottom, lessThanOrEqualTo(appBar.top));
+    final capsule = tester.getRect(find.byType(NavPillBar));
+    expect(dial.top, greaterThan(appBar.bottom));
+    expect(capsule.contains(dial.center), isTrue);
 
     // ...and it stays put when the user changes tab.
     await tester.tap(find.byTooltip('Albums'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
-    expect(find.text('Analyzing your photos — 42 left'), findsOneWidget);
+    expect(tester.getRect(find.byType(IndexingDial)), dial);
+    expect(find.text('42'), findsOneWidget);
 
     await disposeTree(tester);
   });

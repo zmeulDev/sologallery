@@ -6,7 +6,8 @@ import 'package:sologallery/widgets/nav_pill_bar.dart';
 void main() {
   /// Wraps the bar the way the shell does — bottom of a Scaffold whose body is
   /// extended under it.
-  Widget host(int currentIndex, ValueChanged<int> onTap, {bool reduced = false}) {
+  Widget host(int currentIndex, ValueChanged<int> onTap,
+      {bool reduced = false, Widget? trailing}) {
     return MaterialApp(
       theme: AppTheme.light,
       home: MediaQuery(
@@ -17,11 +18,22 @@ void main() {
           bottomNavigationBar: NavPillBar(
             currentIndex: currentIndex,
             onTap: onTap,
+            trailing: trailing,
           ),
         ),
       ),
     );
   }
+
+  /// The capsule is the bar's only `ShapeDecoration`.
+  Rect capsuleRect(WidgetTester tester) => tester.getRect(
+        find.descendant(
+          of: find.byType(NavPillBar),
+          matching: find.byWidgetPredicate(
+            (w) => w is Container && w.decoration is ShapeDecoration,
+          ),
+        ),
+      );
 
   /// The knob is the only circular `Container` in the bar.
   Rect knobRect(WidgetTester tester) {
@@ -116,6 +128,37 @@ void main() {
       ),
     );
     expect(screen.height - capsule.bottom, AppSpace.s12 + systemInset);
+  });
+
+  // The indexing dial rides here. It must not cost the bar any height (the
+  // body's bottom inset is the bar's height), must not move the capsule, and
+  // must clear it on the narrowest phone we target.
+  testWidgets('a trailing companion sits right of the centred capsule', (
+    tester,
+  ) async {
+    const trailing = SizedBox.square(dimension: 44, key: ValueKey('dial'));
+    // 360 logical px — the narrowest of the target devices.
+    tester.view.physicalSize = const Size(360 * 3, 800 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(host(0, (_) {}));
+    await tester.pump(const Duration(milliseconds: 500));
+    final bare = tester.getRect(find.byType(NavPillBar));
+    final bareCapsule = capsuleRect(tester);
+
+    await tester.pumpWidget(host(0, (_) {}, trailing: trailing));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    // The capsule stays exactly where it was — no destination shifts under the
+    // thumb when a pass starts, which is why the dial is beside it, not in it.
+    expect(capsuleRect(tester), bareCapsule);
+    expect(tester.getRect(find.byType(NavPillBar)), bare);
+
+    final dial = tester.getRect(find.byKey(const ValueKey('dial')));
+    expect(dial.left, greaterThan(bareCapsule.right)); // clears the capsule
+    expect(dial.right, 360 - AppSpace.s12);
+    expect(dial.center.dy, closeTo(bareCapsule.center.dy, 0.01));
   });
 
   testWidgets('reduced motion lands the knob with no animation', (tester) async {

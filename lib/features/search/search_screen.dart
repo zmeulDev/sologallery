@@ -118,7 +118,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           // actual invitation.
           if (!idle) _FilterBar(type: type, favoritesOnly: favoritesOnly),
           // "Still analyzing" is an app-wide condition, not a Search one — the
-          // shell's `IndexingBanner` says it once, above every screen.
+          // shell's `IndexingDial` says it once, beside the nav capsule.
           Expanded(
             child: idle
                 ? _IdleView(onBrowseLabel: _search)

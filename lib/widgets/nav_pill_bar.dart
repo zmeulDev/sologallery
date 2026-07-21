@@ -33,10 +33,21 @@ const _destinations = <_Destination>[
 /// The capsule floats over the page ([Scaffold.extendBody]), so every scroller
 /// in a shell branch pads its bottom by `MediaQuery.paddingOf(context).bottom`.
 class NavPillBar extends StatelessWidget {
-  const NavPillBar({super.key, required this.currentIndex, required this.onTap});
+  const NavPillBar({
+    super.key,
+    required this.currentIndex,
+    required this.onTap,
+    this.trailing,
+  });
 
   final int currentIndex;
   final ValueChanged<int> onTap;
+
+  /// Optional companion pinned to the right of the capsule, on its baseline —
+  /// the indexing dial. It rides beside the capsule rather than inside it so
+  /// the destinations never shift; the capsule stays centred either way, and
+  /// the bar's height is the capsule's whatever this is.
+  final Widget? trailing;
 
   /// Capsule height, and — because each destination's slot is square — the
   /// width of one slot too. The knob is [_knobSize], so it clears the capsule
@@ -61,6 +72,51 @@ class NavPillBar extends StatelessWidget {
     final colors = Theme.of(context).extension<AppColors>()!;
     final duration = AppMotion.of(context, AppMotion.nav);
 
+    final capsule = Container(
+      width: _pillWidth,
+      height: _pillHeight,
+      decoration: ShapeDecoration(
+        color: colors.pillActiveBg,
+        shape: const StadiumBorder(),
+      ),
+      child: Stack(
+        children: [
+          // Beneath the icons, so the active glyph reads on top of it.
+          AnimatedPositioned(
+            duration: duration,
+            curve: AppMotion.curve,
+            left: _slotWidth * currentIndex + _knobInset,
+            top: _knobInset,
+            child: Container(
+              width: _knobSize,
+              height: _knobSize,
+              decoration: BoxDecoration(
+                color: colors.pillActiveText,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              for (var i = 0; i < _destinations.length; i++)
+                SizedBox(
+                  width: _slotWidth,
+                  child: _NavItem(
+                    destination: _destinations[i],
+                    selected: i == currentIndex,
+                    activeColor: colors.pillActiveBg,
+                    inactiveColor: colors.pillActiveText
+                        .withValues(alpha: _inactiveOpacity),
+                    duration: duration,
+                    onTap: () => onTap(i),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+
     return SafeArea(
       top: false,
       child: Padding(
@@ -72,47 +128,22 @@ class NavPillBar extends StatelessWidget {
         // bar exactly as tall as the capsule, above the safe-area inset.
         child: Align(
           heightFactor: 1,
-          child: Container(
-            width: _pillWidth,
+          // Full width so [trailing] can sit at the screen's right edge while
+          // the capsule stays centred. The band is still exactly the capsule's
+          // height, so the body's bottom inset doesn't move.
+          child: SizedBox(
+            width: double.infinity,
             height: _pillHeight,
-            decoration: ShapeDecoration(
-              color: colors.pillActiveBg,
-              shape: const StadiumBorder(),
-            ),
             child: Stack(
               children: [
-                // Beneath the icons, so the active glyph reads on top of it.
-                AnimatedPositioned(
-                  duration: duration,
-                  curve: AppMotion.curve,
-                  left: _slotWidth * currentIndex + _knobInset,
-                  top: _knobInset,
-                  child: Container(
-                    width: _knobSize,
-                    height: _knobSize,
-                    decoration: BoxDecoration(
-                      color: colors.pillActiveText,
-                      shape: BoxShape.circle,
-                    ),
+                Align(child: capsule),
+                if (trailing != null)
+                  Positioned(
+                    right: AppSpace.s12,
+                    top: 0,
+                    bottom: 0,
+                    child: Center(child: trailing),
                   ),
-                ),
-                Row(
-                  children: [
-                    for (var i = 0; i < _destinations.length; i++)
-                      SizedBox(
-                        width: _slotWidth,
-                        child: _NavItem(
-                          destination: _destinations[i],
-                          selected: i == currentIndex,
-                          activeColor: colors.pillActiveBg,
-                          inactiveColor: colors.pillActiveText
-                              .withValues(alpha: _inactiveOpacity),
-                          duration: duration,
-                          onTap: () => onTap(i),
-                        ),
-                      ),
-                  ],
-                ),
               ],
             ),
           ),
