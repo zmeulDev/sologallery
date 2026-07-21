@@ -46,7 +46,31 @@
       "Bash(grep -cE \"^  /Users.*: .*$\")",
       "Bash(~/Library/Android/sdk/platform-tools/adb install *)",
       "Bash(grep -E \"\\\\[E\\\\]$\")",
-      "Bash(flutter pub *)"
+      "Bash(flutter pub *)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb exec-out *)",
+      "Bash(sqlite3 db.sqlite \".tables\")",
+      "Bash(sqlite3 -header -column db.sqlite \"SELECT count\\(*\\) faces, count\\(distinct person_id\\) persons FROM face_embeddings;\" \"SELECT p.id, p.display_name, count\\(f.id\\) n FROM persons p LEFT JOIN face_embeddings f ON f.person_id=p.id GROUP BY p.id ORDER BY n DESC;\" \".schema face_embeddings\" \".schema persons\")",
+      "Bash(python3 -c \"import numpy; print\\(numpy.__version__\\)\")",
+      "Bash(python3 an.py)",
+      "Bash(sqlite3 -header -column db.sqlite \"SELECT * FROM app_settings;\" \"SELECT count\\(*\\) assets, sum\\(indexed_at IS NOT NULL\\) indexed FROM photo_assets;\")",
+      "Bash(python3 sim.py)",
+      "Bash(sqlite3 -header -column db.sqlite \"SELECT id, person_id, round\\(right-left,3\\) w, round\\(bottom-top,3\\) h, round\\(\\(right-left\\)/\\(bottom-top\\),2\\) ar FROM face_embeddings ORDER BY id LIMIT 15;\" \"SELECT round\\(avg\\(\\(right-left\\)/\\(bottom-top\\)\\),3\\) mean_ar, min\\(round\\(\\(right-left\\)/\\(bottom-top\\),2\\)\\) minar, max\\(round\\(\\(right-left\\)/\\(bottom-top\\),2\\)\\) maxar FROM face_embeddings;\")",
+      "Bash(sqlite3 -header -column db.sqlite \".schema photo_assets\" \"SELECT CASE WHEN a.width>a.height THEN 'landscape' ELSE 'portrait' END o, count\\(*\\) n, round\\(avg\\(\\(\\(f.right-f.left\\)*a.width\\)/\\(\\(f.bottom-f.top\\)*a.height\\)\\),3\\) mean_px_ar, round\\(min\\(\\(\\(f.right-f.left\\)*a.width\\)/\\(\\(f.bottom-f.top\\)*a.height\\)\\),2\\) mn, round\\(max\\(\\(\\(f.right-f.left\\)*a.width\\)/\\(\\(f.bottom-f.top\\)*a.height\\)\\),2\\) mx FROM face_embeddings f JOIN photo_assets a ON a.asset_id=f.asset_id GROUP BY o;\")",
+      "Bash(sqlite3 -header -column db.sqlite \"SELECT f.id, f.asset_id, a.width, a.height, round\\(f.left,3\\) l, round\\(f.top,3\\) t, round\\(f.right,3\\) r, round\\(f.bottom,3\\) b, round\\(\\(\\(f.right-f.left\\)*a.width\\)/\\(\\(f.bottom-f.top\\)*a.height\\),2\\) px_ar FROM face_embeddings f JOIN photo_assets a ON a.asset_id=f.asset_id WHERE a.width>a.height ORDER BY px_ar DESC LIMIT 5;\" \"SELECT f.id, f.asset_id, a.width, a.height, round\\(f.left,3\\) l, round\\(f.top,3\\) t, round\\(f.right,3\\) r, round\\(f.bottom,3\\) b, round\\(\\(\\(f.right-f.left\\)*a.width\\)/\\(\\(f.bottom-f.top\\)*a.height\\),2\\) px_ar FROM face_embeddings f JOIN photo_assets a ON a.asset_id=f.asset_id WHERE a.width<a.height ORDER BY px_ar DESC LIMIT 3;\")",
+      "Bash(~/Library/Android/sdk/platform-tools/adb pull *)",
+      "Bash(sips -g pixelWidth -g pixelHeight -g orientation orig.jpg)",
+      "Bash(cp orig.jpg thumb.jpg)",
+      "Bash(sips --resampleHeight 911 thumb.jpg)",
+      "Bash(sips -g pixelWidth -g pixelHeight thumb.jpg)",
+      "Bash(cp orig.jpg tl.jpg)",
+      "Bash(sips --resampleHeight 512 tl.jpg)",
+      "Bash(sips -g pixelWidth -g pixelHeight tl.jpg)",
+      "Bash(sips -c 118 381 --cropOffset 270 93 tl.jpg --out f91_land.jpg)",
+      "Bash(sips -g pixelWidth -g pixelHeight f91_land.jpg f91_90.jpg)",
+      "Bash(sqlite3 db.sqlite \"SELECT id,left,top,right,bottom FROM face_embeddings WHERE asset_id='1000004169';\")",
+      "Bash(cp orig.jpg v_orig.jpg)",
+      "Bash(sips --resampleWidth 400 v_orig.jpg)",
+      "Bash(sips -g pixelWidth -g pixelHeight v_orig.jpg v_t90.jpg)"
     ]
   }
 }

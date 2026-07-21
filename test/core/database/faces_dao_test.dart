@@ -50,7 +50,7 @@ void main() {
     expect(await db.facesDao.unclusteredFaces(), hasLength(1));
   });
 
-  test('assignPersonToFace + centroids + summaries', () async {
+  test('assignPersonToFace + exemplars + summaries', () async {
     await asset('a');
     await asset('b', at: DateTime(2026, 7, 1));
     await db.facesDao.insertFaces('a', [face([1, 0])]);
@@ -62,9 +62,10 @@ void main() {
     }
 
     expect(await db.facesDao.unclusteredFaces(), isEmpty);
-    final centroids = await db.facesDao.clusteredCentroids();
-    expect(centroids.keys, [personId]);
-    expect(centroids[personId]!.count, 2);
+    final exemplars = await db.facesDao.clusteredExemplars();
+    expect(exemplars.keys, [personId]);
+    expect(exemplars[personId], hasLength(2));
+    expect(exemplars[personId]!.first, [1, 0]);
 
     final summaries = await db.facesDao.watchPersonSummaries().first;
     expect(summaries, hasLength(1));

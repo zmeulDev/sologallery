@@ -574,6 +574,9 @@ void main() {
       () async {
     final (p1, _) = await seedTwoDriftedPersons();
     await consentTo(faces: true);
+    // This is about clustering, not the pipeline upgrade: stamp the current
+    // pipeline so nothing re-analyzes (and so discards) the seeded faces.
+    await db.settingsDao.put('face_pipeline_version', '2');
     final service = serviceFor(
       photosWithAbAnd('c'),
       FakeMlWorker(), // no thumbnail bytes → c indexed, adds no faces
@@ -604,6 +607,76 @@ void main() {
     await service.start();
 
     expect(await db.select(db.persons).get(), hasLength(2)); // untouched
+  });
+
+  test('an install clustered by an older algorithm re-clusters once', () async {
+    // Baseline written but no algorithm stamp — what an upgrade from the
+    // centroid pass looks like. The stale grouping must be healed on the next
+    // pass rather than waiting for another `reclusterThreshold` faces.
+    await seedTwoDriftedPersons();
+    await db.settingsDao.put('faces_at_last_recluster', '2');
+    await db.settingsDao.put('face_pipeline_version', '2');
+    await consentTo(faces: true);
+    // Library holds only the two already-indexed assets — a fully indexed
+    // install is the case that has to heal, and it is the one with no ML work
+    // for the re-cluster to hang off.
+    final service = serviceFor(
+      FakePhotoLibraryService(assets: [
+        AssetRef(id: 'a', createdAt: DateTime(2026, 8, 3)),
+        AssetRef(id: 'b', createdAt: DateTime(2026, 8, 2)),
+      ]),
+      FakeMlWorker(),
+      reclusterThreshold: 100, // 2 faces never reaches it
+    );
+    addTearDown(service.dispose);
+
+    await service.start();
+
+    expect(await db.select(db.persons).get(), hasLength(1));
+    expect(await db.settingsDao.read('cluster_algo_version'), '2');
+  });
+
+  test('a face-pipeline change re-analyzes an already-indexed library',
+      () async {
+    // Stored embeddings came from the old detector/gate/crop, so they are not
+    // comparable with what this build produces — only re-analyzing recovers
+    // them, and `pendingMlIds` would otherwise never offer these assets again.
+    await seedTwoDriftedPersons();
+    await consentTo(faces: true);
+    final worker = FakeMlWorker();
+    final service = serviceFor(
+      FakePhotoLibraryService(
+        assets: [
+          AssetRef(id: 'a', createdAt: DateTime(2026, 8, 3)),
+          AssetRef(id: 'b', createdAt: DateTime(2026, 8, 2)),
+        ],
+        thumbnailBytes: Uint8List.fromList([1, 2, 3]),
+      ),
+      worker,
+    );
+    addTearDown(service.dispose);
+
+    await service.start();
+
+    expect(
+      worker.calls,
+      hasLength(2),
+      reason: 'both already-indexed assets should have been re-analyzed',
+    );
+    expect(await db.settingsDao.read('face_pipeline_version'), '2');
+  });
+
+  test('a fresh install is stamped without a pointless re-analysis', () async {
+    await consentTo(faces: true);
+    final service = serviceFor(
+      FakePhotoLibraryService(thumbnailBytes: Uint8List(0)),
+      FakeMlWorker(),
+    );
+    addTearDown(service.dispose);
+
+    await service.start();
+
+    expect(await db.settingsDao.read('face_pipeline_version'), '2');
   });
 
   test('dispose stops the change listener', () async {

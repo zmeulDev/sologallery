@@ -85,27 +85,19 @@ class FacesDao extends DatabaseAccessor<AppDatabase> with _$FacesDaoMixin {
     ];
   }
 
-  /// Current per-person centroids computed from all clustered faces — the
-  /// starting state for incremental clustering.
-  Future<Map<int, Centroid>> clusteredCentroids() async {
+  /// Every already-clustered face grouped by person — the starting state for
+  /// incremental clustering. [IncrementalClusterer] thins each list down to its
+  /// exemplar budget; handing it the full set lets it pick which faces to keep.
+  Future<Map<int, List<Float32List>>> clusteredExemplars() async {
     final rows = await (select(faceEmbeddings)
-          ..where((f) => f.personId.isNotNull()))
+          ..where((f) => f.personId.isNotNull())
+          ..orderBy([(f) => OrderingTerm.asc(f.id)]))
         .get();
-    final centroids = <int, Centroid>{};
+    final byPerson = <int, List<Float32List>>{};
     for (final r in rows) {
-      final emb = _floats(r.embedding);
-      final id = r.personId!;
-      final c = centroids[id];
-      if (c == null) {
-        centroids[id] = Centroid(Float32List.fromList(emb), 1);
-      } else {
-        for (var i = 0; i < c.mean.length; i++) {
-          c.mean[i] = (c.mean[i] * c.count + emb[i]) / (c.count + 1);
-        }
-        c.count++;
-      }
+      byPerson.putIfAbsent(r.personId!, () => []).add(_floats(r.embedding));
     }
-    return centroids;
+    return byPerson;
   }
 
   /// Creates a new (unnamed) person with an optional cover; returns its id.

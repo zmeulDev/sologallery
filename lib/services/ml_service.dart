@@ -210,15 +210,33 @@ void _workerMain(_WorkerInit init) {
 
         final faces = <DetectedFace>[];
         if (msg.faces) {
-          final detector =
-              faceDetector ??= FaceDetector(options: FaceDetectorOptions());
+          // Landmarks on, performance mode deliberately left at `fast`. See
+          // [faceIsUsable] for why `accurate` is not worth it despite reporting
+          // fewer false positives: it returns different (tighter) boxes, and the
+          // crop those produce embeds badly enough to undo the clustering.
+          final detector = faceDetector ??= FaceDetector(
+            options: FaceDetectorOptions(enableLandmarks: true),
+          );
           final interpreter = embedder ??= Interpreter.fromBuffer(
             init.modelBytes,
           );
           if (embeddingSize == 0) {
             embeddingSize = interpreter.getOutputTensor(0).shape.last;
           }
-          final detected = await detector.processImage(input);
+          // Drop unusable detections before anything else: the gate is free
+          // compared with decoding the thumbnail, so a photo whose only "faces"
+          // are a dog and a passer-by in profile costs nothing more.
+          final detected = [
+            for (final face in await detector.processImage(input))
+              if (faceIsUsable(
+                yawDegrees: face.headEulerAngleY,
+                rollDegrees: face.headEulerAngleZ,
+                hasLeftEye: face.landmarks[FaceLandmarkType.leftEye] != null,
+                hasRightEye: face.landmarks[FaceLandmarkType.rightEye] != null,
+                hasNoseBase: face.landmarks[FaceLandmarkType.noseBase] != null,
+              ))
+                face,
+          ];
           // Decoding the whole thumbnail is the expensive part, so it only
           // happens when there is actually a face to crop out of it.
           if (detected.isNotEmpty) {
@@ -257,6 +275,12 @@ void _workerMain(_WorkerInit init) {
 /// clustering can't group it and every such face becomes its own one-photo
 /// "person" flooding the People grid. Measured against the short edge so the
 /// threshold means the same thing in portrait and landscape.
+///
+/// Deliberately still 0.05. Raising it to 0.08 was proposed to clear the last
+/// small junk detections, but measuring the real library killed that: the
+/// surviving junk boxes are ~4% of the image width and the smallest *genuine*
+/// faces are 6–7%, which is not enough separation to cut between — especially
+/// as the two are measured against different edges depending on orientation.
 const minFaceFraction = 0.05;
 
 /// Whether a `w`×`h` face box in an `imageWidth`×`imageHeight` image is big
@@ -272,6 +296,55 @@ bool faceIsLargeEnough({
   final shortEdge = imageWidth < imageHeight ? imageWidth : imageHeight;
   final min = shortEdge * minFaceFraction;
   return w >= min && h >= min;
+}
+
+/// Largest head turn away from the camera (degrees, ML Kit's Euler Y) still
+/// worth embedding. Past this only one side of the face is visible, and
+/// MobileFaceNet — which compares frontal crops — reads the result as a
+/// stranger, so profiles cluster with each other rather than with the people
+/// they belong to.
+///
+/// 35° is measured, not guessed: re-detecting a real library's stored faces, the
+/// most frontal *profile* in the junk cluster sat at 42° and the most turned
+/// genuine face of the most-photographed person at 32°. This is the middle of
+/// that gap.
+const maxFaceYaw = 35.0;
+
+/// Largest in-plane head tilt (degrees, ML Kit's Euler Z) still worth
+/// embedding. The crop is axis-aligned and unrotated, so a strongly tilted face
+/// arrives at the model rotated, which it has no invariance to. On the measured
+/// library every rejection was already caught by [maxFaceYaw] (worst genuine
+/// tilt: 20°), so this only guards a case that library happens not to contain.
+const maxFaceRoll = 25.0;
+
+/// Whether a detection is a usable, roughly frontal human face.
+///
+/// **Pose is what this gate is for.** Profiles are what poisoned clustering: a
+/// face turned past [maxFaceYaw] does not match its own person and instead
+/// pools with every other profile in the library into one meaningless cluster.
+///
+/// The landmark requirement is a cheap precondition rather than the filter that
+/// does the work — the same anchors Phase 3 needs to align a crop. What actually
+/// removed the dog faces, the drawn face and the beer glass was moving the
+/// detector to [FaceDetectorMode.accurate]: those were `fast`-mode false
+/// positives and `accurate` does not report them at all. Do not conclude from
+/// this that the landmark check is redundant without re-measuring; it costs
+/// nothing and it is what makes an unlandmarked detection unusable rather than
+/// silently mis-cropped.
+///
+/// Pure, so the thresholds are testable without running the detector. Null
+/// angles mean the detector could not determine the pose, which is itself a
+/// sign the detection is not a clean face.
+bool faceIsUsable({
+  required double? yawDegrees,
+  required double? rollDegrees,
+  required bool hasLeftEye,
+  required bool hasRightEye,
+  required bool hasNoseBase,
+}) {
+  if (!hasLeftEye || !hasRightEye || !hasNoseBase) return false;
+  if (yawDegrees == null || rollDegrees == null) return false;
+  return yawDegrees.abs() <= maxFaceYaw && rollDegrees.abs() <= maxFaceRoll;
 }
 
 /// Crops [box] from [image], resizes to the model's 112×112 input, and returns

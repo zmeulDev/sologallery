@@ -759,6 +759,55 @@ Short form; full postmortems in `docs/postmortems/`.
   lands mid-pass is not enough on its own** — the rest of that round re-stamps
   over it, so `_run()` also tracks the flags each round ran with and calls
   `resetMlPending()` at the top of a round in which a feature switched on.
+- **Periodic maintenance work must sit *outside* `_run`'s `if (todo.isNotEmpty)`
+  branch.** `todo` is the list of assets still needing ML, so on a fully indexed
+  library it is empty on every launch and anything nested inside that branch
+  never runs again. Face clustering lived there and so the periodic global
+  re-cluster — the only thing that heals a grouping produced by an older
+  algorithm — was unreachable on exactly the installs that needed it. The
+  memories refresh was already outside for the same reason. Anything gated on its
+  own cheap DB check (`_clusterNewFaces`, `_maybeGlobalRecluster`,
+  `_maybeRegenerateMemories`) belongs next to it, not inside.
+- **Face clustering: compare against *faces*, never a running centroid, and note
+  that average linkage over normalized embeddings is just the dot product of the
+  cluster means.** A centroid drifts away from every individual member as a
+  cluster grows, so a nearest-centroid assigner loses recall precisely on the
+  most-photographed people (on a real 223-face library it split one person across
+  six "people"; two of his singletons scored 0.688 and 0.655 against a *member*
+  of his main cluster, above the 0.65 threshold, while the 34-face mean scored
+  below it). A single greedy pass also has no merge step, so once two clusters of
+  one person exist nothing can reunite them. `clusterAll` is average-linkage
+  agglomeration: because `Σ_{a∈A,b∈B} a·b = (ΣA)·(ΣB)` for L2-normalized vectors,
+  the average cross-pair similarity is `meanA · meanB` with **no re-normalization**
+  — re-normalizing the means turns it back into centroid linkage. Thresholds are
+  empirical and must be validated against pulled real embeddings, not reasoned
+  about: 0.45 is right for this pipeline, and 0.40 (which looked clean against
+  three probe clusters) fuses visibly different people once every merge it adds is
+  inspected. Single linkage chains — at 0.60 it produced one 129-face blob
+  including dog faces.
+- **The face detector, the crop and `clusterMergeThreshold` are one calibrated
+  system — changing how a face is detected invalidates the threshold.** Switching
+  `FaceDetectorOptions` to `performanceMode: accurate` looked like a pure win
+  (it does not report `fast`'s outright false positives — dog faces, a beer
+  glass, a patch of sky — so junk detections fell 23 → 3, total faces 223 → 161,
+  people 60 → 33, singletons 27 → 12). Every one of those aggregates was an
+  improvement and every one of them was hiding a regression: `accurate` returns
+  *different, tighter* boxes, so every crop and embedding changed, and the
+  most-photographed person went straight back to being split six ways
+  (24+16+3+1+2+1 of his 47 faces). Re-tuning could not rescue it — sweeping the
+  threshold went from "split 5–6 ways" at 0.35 to "one 92-face cluster with three
+  other people in it" at 0.30, with nothing usable between. Reverted to `fast`
+  with `enableLandmarks: true`; the pose gate alone gets junk 23 → 6 and keeps
+  46 of his 47 faces in one cluster. **Never evaluate a clustering change on
+  cluster counts, singleton counts or face totals — they all improve when a
+  person shatters into several tight clusters. Track a known person's faces
+  individually, end-to-end, and carry verified-distinct people as contamination
+  controls** (and note that "did anything bleed into X's cluster" does not catch
+  two *other* people fusing with each other). **And track the person, not a face
+  set:** "46 of his 48 reference faces cohere" scored as a fix while he still
+  appeared twice on the People screen, because the reference set was one of his
+  old clusters and by construction held none of his sunglasses faces. The metric
+  that matches the bug report is *how many People entries are this person*.
 - **`IndexingService` toggle methods kick a pass fire-and-forget, so `await
   start()` right after one returns immediately** (`start()` no-ops while
   `_running`). The Settings switch must not block on a full re-index, so

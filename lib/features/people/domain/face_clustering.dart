@@ -1,8 +1,10 @@
+import 'dart:math' show sqrt;
 import 'dart:typed_data';
 
-// Pure-Dart face clustering — cosine similarity + an incremental nearest-centroid
-// assigner. No Flutter/plugin imports (Float32List is dart:typed_data), so it is
-// unit-testable on the host. The DAO persists the assignments this decides.
+// Pure-Dart face clustering — average-linkage agglomeration for the global
+// re-cluster plus an exemplar-based incremental assigner. No Flutter/plugin
+// imports (Float32List is dart:typed_data), so it is unit-testable on the host.
+// The DAO persists the assignments this decides.
 
 /// Cosine similarity of two embedding vectors, in `[-1, 1]`. Returns 0 for a
 /// zero-magnitude vector. Handles un-normalized model output (divides by norms).
@@ -15,70 +17,144 @@ double cosineSimilarity(Float32List a, Float32List b) {
     nb += b[i] * b[i];
   }
   if (na == 0 || nb == 0) return 0;
-  return dot / (_sqrt(na) * _sqrt(nb));
+  return dot / (sqrt(na) * sqrt(nb));
 }
 
-double _sqrt(double x) {
-  // Local to avoid a dart:math import in this otherwise dependency-free file.
-  if (x <= 0) return 0;
-  var g = x;
-  for (var i = 0; i < 20; i++) {
-    g = 0.5 * (g + x / g);
+/// An L2-normalized copy of [v]. A zero vector comes back unchanged (all
+/// zeros), so it stays similarity-0 against everything.
+Float32List _normalized(Float32List v) {
+  var n = 0.0;
+  for (var i = 0; i < v.length; i++) {
+    n += v[i] * v[i];
   }
-  return g;
+  final out = Float32List(v.length);
+  if (n == 0) return out;
+  final inv = 1 / sqrt(n);
+  for (var i = 0; i < v.length; i++) {
+    out[i] = v[i] * inv;
+  }
+  return out;
 }
 
-/// A running cluster centroid: the mean embedding of its assigned faces.
-class Centroid {
-  Centroid(this.mean, this.count);
-  final Float32List mean;
-  int count;
+double _dot(Float32List a, Float32List b) {
+  var d = 0.0;
+  for (var i = 0; i < a.length; i++) {
+    d += a[i] * b[i];
+  }
+  return d;
 }
+
+/// Minimum *average-linkage* similarity for two clusters to be the same person.
+/// Measured against a real 223-face device library: 0.45 recovers 41 of the 42
+/// faces of the most-photographed person as one cluster with no contamination,
+/// where the old centroid pass split them across six (see
+/// `docs/plans/people-clustering-oversplit.md`).
+const double clusterMergeThreshold = 0.45;
+
+/// Minimum similarity to a person's *nearest stored exemplar* for the
+/// incremental assigner to hand a fresh face to that person. Higher than
+/// [clusterMergeThreshold] because a single-face match is a weaker signal than
+/// a whole-cluster average: between global re-clusters it is cheaper to mint a
+/// short-lived duplicate than to fuse two people.
+const double incrementalAssignThreshold = 0.62;
 
 /// One face for global clustering: a stable [id] and its [embedding].
 typedef FaceForClustering = ({int id, Float32List embedding});
 
-/// Clusters [faces] from scratch: greedy nearest-centroid over a stable id
-/// order (sorted by [FaceForClustering.id]), starting from no clusters. Returns
-/// the groups as lists of face ids, each group ordered as encountered; groups
-/// themselves are ordered by first-appearance. Deterministic — the same input
+/// Clusters [faces] from scratch with **average-linkage agglomeration**,
+/// merging while the closest pair of clusters is at least [threshold] similar.
+/// Returns the groups as lists of face ids (each sorted ascending), the groups
+/// themselves ordered by their lowest face id. Deterministic — the same input
 /// always yields the same grouping, so a periodic global re-cluster self-heals
 /// the order-dependent drift the incremental assigner accumulates.
 ///
-/// Reuses [cosineSimilarity]/[Centroid] and the same [threshold] as
-/// [IncrementalClusterer], so incremental and global agree on what "same
-/// person" means.
+/// Average linkage, not nearest-centroid: a cluster's mean drifts away from
+/// every individual face as it grows, so a centroid pass silently loses recall
+/// on exactly the people with the most photos, and — being a single greedy pass
+/// — can never reunite two clusters of the same person once both exist. It is
+/// also not single linkage, which chains unrelated people together through one
+/// borderline pair.
+///
+/// The cost of a merge test is a dot product, not a pairwise scan: for
+/// L2-normalized embeddings the average of all cross-pair cosine similarities
+/// equals the dot product of the two cluster *mean* vectors,
+/// `(ΣA/|A|)·(ΣB/|B|)`, so a cluster only carries a running sum and a count.
+/// (That dot product must stay un-normalized — re-normalizing the means is
+/// centroid linkage again, not average linkage.)
 List<List<int>> clusterAll(
   List<FaceForClustering> faces, {
-  double threshold = 0.65,
+  double threshold = clusterMergeThreshold,
 }) {
   final ordered = [...faces]..sort((a, b) => a.id.compareTo(b.id));
-  final centroids = <int, Centroid>{}; // group index -> centroid
-  final groups = <List<int>>[];
-  for (final f in ordered) {
-    int? best;
-    var bestSim = threshold;
-    centroids.forEach((group, c) {
-      final sim = cosineSimilarity(f.embedding, c.mean);
-      if (sim >= bestSim) {
-        bestSim = sim;
-        best = group;
+  final n = ordered.length;
+  if (n == 0) return [];
+
+  final members = [
+    for (final f in ordered) [f.id],
+  ];
+  final sums = [for (final f in ordered) _normalized(f.embedding)];
+  final counts = List<int>.filled(n, 1);
+  final alive = List<bool>.filled(n, true);
+
+  // Cached best partner per cluster. Merging can only ever *lower* a cluster's
+  // similarity to an outsider — the merged mean is a weighted average of its
+  // children's, so it is bounded by the larger of their two similarities —
+  // which means a cluster's cached best stays valid unless that best was one of
+  // the clusters just merged.
+  final bestOf = List<int>.filled(n, -1);
+  final bestSim = List<double>.filled(n, -2);
+  var stale = {for (var i = 0; i < n; i++) i};
+
+  while (true) {
+    for (final i in stale) {
+      if (!alive[i]) continue;
+      var partner = -1;
+      var best = -2.0;
+      final si = sums[i];
+      final ci = counts[i];
+      for (var j = 0; j < n; j++) {
+        if (j == i || !alive[j]) continue;
+        final s = _dot(si, sums[j]) / (ci * counts[j]);
+        if (s > best) {
+          best = s;
+          partner = j;
+        }
       }
-    });
-    if (best == null) {
-      best = groups.length;
-      groups.add(<int>[]);
-      centroids[best!] = Centroid(Float32List.fromList(f.embedding), 1);
-    } else {
-      final c = centroids[best]!;
-      for (var i = 0; i < c.mean.length; i++) {
-        c.mean[i] = (c.mean[i] * c.count + f.embedding[i]) / (c.count + 1);
-      }
-      c.count++;
+      bestOf[i] = partner;
+      bestSim[i] = best;
     }
-    groups[best!].add(f.id);
+
+    // Merge every reciprocal-nearest pair at or above the threshold. Each
+    // cluster names exactly one best partner, so the pairs are disjoint and can
+    // all be applied in this round.
+    final touched = <int>{};
+    for (var i = 0; i < n; i++) {
+      if (!alive[i] || bestSim[i] < threshold) continue;
+      final j = bestOf[i];
+      if (j <= i || !alive[j] || bestOf[j] != i) continue;
+      members[i] = [...members[i], ...members[j]]..sort();
+      final si = sums[i];
+      final sj = sums[j];
+      for (var k = 0; k < si.length; k++) {
+        si[k] += sj[k];
+      }
+      counts[i] += counts[j];
+      alive[j] = false;
+      touched.add(i);
+      touched.add(j);
+    }
+    if (touched.isEmpty) break;
+
+    stale = {
+      for (var i = 0; i < n; i++)
+        if (alive[i] && (touched.contains(i) || touched.contains(bestOf[i]))) i,
+    };
   }
-  return groups;
+
+  return [
+    for (var i = 0; i < n; i++)
+      if (alive[i]) members[i],
+  ];
 }
 
 /// A resolved instruction for one re-clustered group: which faces it contains,
@@ -160,48 +236,86 @@ List<PlannedCluster> planClusters({
   return [for (var i = 0; i < groups.length; i++) planned[i]!];
 }
 
-/// Greedy incremental face clustering. Each face is assigned to the nearest
-/// existing person centroid whose cosine similarity clears [threshold]; if none
-/// does, the caller mints a new person. Centroids update as faces are added.
+/// Greedy incremental face clustering against each person's stored **exemplar
+/// faces**: a face joins the person holding the single most similar exemplar at
+/// or above [threshold]; if none does, the caller mints a new person.
+///
+/// Scoring against individual faces rather than a running centroid is what
+/// keeps recall from decaying as a person accumulates photos — the mean of a
+/// large, varied cluster ends up further from every one of its own faces than
+/// the threshold allows, so a centroid assigner kept minting duplicates of the
+/// most-photographed people.
+///
+/// Each person keeps at most [maxExemplars] faces; when full, the more
+/// redundant half of the closest exemplar pair is dropped, so what is retained
+/// spans the person's appearance rather than repeating one pose.
 ///
 /// Deterministic given a fixed input order — the caller feeds faces in a stable
 /// order (e.g. by face id) so results are reproducible.
 class IncrementalClusterer {
-  IncrementalClusterer({this.threshold = 0.65, Map<int, Centroid>? initial})
-      : _centroids = initial ?? {};
+  IncrementalClusterer({
+    this.threshold = incrementalAssignThreshold,
+    this.maxExemplars = 12,
+    Map<int, List<Float32List>>? initial,
+  }) : _exemplars = {} {
+    if (initial != null) {
+      for (final e in initial.entries) {
+        _exemplars[e.key] = [for (final v in e.value) _normalized(v)];
+        _prune(_exemplars[e.key]!);
+      }
+    }
+  }
 
-  /// Minimum cosine similarity to join an existing cluster. ~0.65 balances
-  /// merging the same person against splitting different people (tunable).
+  /// Minimum cosine similarity to an exemplar to join that person.
   final double threshold;
 
-  final Map<int, Centroid> _centroids;
+  /// How many faces are kept per person to compare against.
+  final int maxExemplars;
 
-  /// The personId of the nearest centroid at or above [threshold], or null when
-  /// no cluster is close enough (caller should create a new person).
+  final Map<int, List<Float32List>> _exemplars;
+
+  /// The personId whose nearest exemplar clears [threshold] by the widest
+  /// margin, or null when no person is close enough (caller creates one).
   int? nearest(Float32List embedding) {
+    final v = _normalized(embedding);
     int? best;
     var bestSim = threshold;
-    _centroids.forEach((personId, c) {
-      final sim = cosineSimilarity(embedding, c.mean);
-      if (sim >= bestSim) {
-        bestSim = sim;
-        best = personId;
+    for (final person in _exemplars.keys.toList()..sort()) {
+      for (final e in _exemplars[person]!) {
+        final s = _dot(v, e);
+        if (s >= bestSim) {
+          bestSim = s;
+          best = person;
+        }
       }
-    });
+    }
     return best;
   }
 
-  /// Records that [embedding] joined [personId], updating that centroid's
-  /// running mean (creating it if new).
+  /// Records that [embedding] joined [personId], keeping it as an exemplar for
+  /// later faces (evicting a redundant one once the person is at capacity).
   void add(int personId, Float32List embedding) {
-    final c = _centroids[personId];
-    if (c == null) {
-      _centroids[personId] = Centroid(Float32List.fromList(embedding), 1);
-      return;
+    final list = _exemplars.putIfAbsent(personId, () => []);
+    list.add(_normalized(embedding));
+    _prune(list);
+  }
+
+  /// Drops the second half of the most-similar exemplar pair until the person
+  /// is back at [maxExemplars] — evicting redundancy, not history.
+  void _prune(List<Float32List> list) {
+    while (list.length > maxExemplars) {
+      var drop = list.length - 1;
+      var closest = -2.0;
+      for (var i = 0; i < list.length; i++) {
+        for (var j = i + 1; j < list.length; j++) {
+          final s = _dot(list[i], list[j]);
+          if (s > closest) {
+            closest = s;
+            drop = j;
+          }
+        }
+      }
+      list.removeAt(drop);
     }
-    for (var i = 0; i < c.mean.length; i++) {
-      c.mean[i] = (c.mean[i] * c.count + embedding[i]) / (c.count + 1);
-    }
-    c.count++;
   }
 }
