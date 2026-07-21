@@ -17,16 +17,10 @@ import '../../widgets/filter_pill.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/people_strip.dart';
 import '../../services/indexing_service.dart';
-import '../memories/domain/memory_builder.dart';
 import '../people/people_providers.dart';
 import '../settings/consent_provider.dart';
 import 'domain/search_date.dart';
 import 'search_providers.dart';
-
-/// A curated, alphabetized allowlist of on-device labels offered as browse
-/// chips. Reuses the memories theme allowlist so "browsable" and "presentable
-/// as a memory" stay one list.
-final _browseLabels = MemoryBuilder.presentableLabels.toList()..sort();
 
 /// Metadata + content search (`/search`, the second bottom-nav tab). Searches
 /// the library by capture date ("June 2026", "2026"), media type, favorites,
@@ -409,15 +403,22 @@ class _IdleView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final people = ref.watch(personSummariesProvider).value ?? const [];
     final searchOn = ref.watch(searchEnabledProvider).value ?? false;
+    // Only what the library actually carries: with content search off there is
+    // nothing to browse, and while the indexer is still working the list fills
+    // in as labels land.
+    final labels = searchOn
+        ? ref.watch(topBrowseLabelsProvider).value ?? const <String>[]
+        : const <String>[];
 
     return ListView(
       children: [
-        // Nothing to browse yet — a new library, or every analysis declined.
-        // The prompt explains what the field accepts instead of leaving a
-        // blank screen under it.
-        if (people.isEmpty && !searchOn) const _IdleHint(),
+        // Nothing to browse yet — a new library, an unfinished index, or every
+        // analysis declined. The prompt explains what the field accepts
+        // instead of leaving a blank screen under it.
+        if (people.isEmpty && labels.isEmpty) const _IdleHint(),
         if (people.isNotEmpty) PeopleStrip(people: people),
-        if (searchOn) _BrowseLabels(onTap: onBrowseLabel),
+        if (labels.isNotEmpty)
+          _BrowseLabels(labels: labels, onTap: onBrowseLabel),
         const _PrivacyNote(),
       ],
     );
@@ -456,11 +457,14 @@ class _PrivacyNote extends StatelessWidget {
   }
 }
 
-/// A wrap of label chips (from the curated allowlist) that each run a content
-/// search for their text — the tap-to-browse entry into ML labels.
+/// A wrap of label chips that each run a content search for their text — the
+/// tap-to-browse entry into ML labels. [labels] arrives ranked by how many
+/// photos carry it (see `topBrowseLabelsProvider`), so the widest doors are
+/// first; it is never empty, the caller drops the section instead.
 class _BrowseLabels extends StatelessWidget {
-  const _BrowseLabels({required this.onTap});
+  const _BrowseLabels({required this.labels, required this.onTap});
 
+  final List<String> labels;
   final void Function(String) onTap;
 
   @override
@@ -476,7 +480,7 @@ class _BrowseLabels extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (final label in _browseLabels)
+              for (final label in labels)
                 FilterPill(
                   label: label,
                   selected: false,

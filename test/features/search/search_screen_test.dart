@@ -31,6 +31,7 @@ void main() {
     List<FavoriteAsset> favorites = const [],
     List<DeviceFolder> folders = const [],
     bool searchEnabled = false,
+    List<String> browseLabels = const [],
   }) async {
     final fake = FakePhotoLibraryService(assets: assets, folders: folders);
     // Content search reads the DB; give it an empty in-memory one.
@@ -64,6 +65,11 @@ void main() {
           ),
           indexingStatusProvider.overrideWith(
             (ref) => Stream.value(const IndexingStatus.idle()),
+          ),
+          // The chip row is DB-derived (top labels by count); the ranking
+          // itself is covered by the DAO and provider tests.
+          topBrowseLabelsProvider.overrideWith(
+            (ref) => Stream.value(browseLabels),
           ),
         ],
         child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
@@ -215,19 +221,51 @@ void main() {
     tester,
   ) async {
     // Off: no browse section → the idle prompt stands alone.
-    await pump(tester);
+    await pump(tester, browseLabels: const ['Dog']);
     expect(find.text('ON-DEVICE LABELS'), findsNothing);
     await settle(tester);
 
-    // On: the curated allowlist renders as tappable chips.
-    await pump(tester, searchEnabled: true);
+    // On: this library's top labels render as tappable chips.
+    await pump(tester, searchEnabled: true, browseLabels: const ['Dog', 'Cat']);
     expect(find.text('ON-DEVICE LABELS'), findsOneWidget);
-    expect(find.text('Beach'), findsOneWidget);
+    expect(find.text('Dog'), findsOneWidget);
+    expect(find.text('Cat'), findsOneWidget);
+    await settle(tester);
+  });
+
+  testWidgets('the chips keep the order they arrive in (most photos first)', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      searchEnabled: true,
+      browseLabels: const ['Dog', 'Cat', 'Beach'],
+    );
+    final xs = [
+      for (final l in ['Dog', 'Cat', 'Beach'])
+        tester.getTopLeft(find.text(l)).dx,
+    ];
+    expect(xs[0], lessThan(xs[1]));
+    expect(xs[1], lessThan(xs[2]));
+    await settle(tester);
+  });
+
+  testWidgets('the label section is hidden while nothing is labeled yet', (
+    tester,
+  ) async {
+    // Fresh library or an indexer still working: chips that match no photo
+    // would be worse than none, so the idle prompt carries the screen.
+    await pump(tester, searchEnabled: true);
+    expect(find.text('ON-DEVICE LABELS'), findsNothing);
+    expect(
+      find.textContaining('Search your library by what is in a photo'),
+      findsOneWidget,
+    );
     await settle(tester);
   });
 
   testWidgets('tapping a label chip runs a content search', (tester) async {
-    await pump(tester, searchEnabled: true);
+    await pump(tester, searchEnabled: true, browseLabels: const ['Beach']);
     expect(find.text('Beach'), findsOneWidget);
 
     await tester.tap(find.text('Beach'));

@@ -409,6 +409,37 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
 
   // --- Search --------------------------------------------------------------
 
+  /// The [limit] most frequent labels in this library, restricted to [allow]
+  /// (the curated browsable set) and ordered by how many assets carry them,
+  /// ties alphabetical. Counts distinct assets, so a label the model emitted
+  /// twice for one photo still counts once.
+  ///
+  /// Reactive: the Search browse chips grow into place as the background
+  /// indexer labels more of the library, and a label nothing carries never
+  /// appears — a chip that returns no photos is worse than no chip.
+  Stream<List<({String label, int count})>> watchTopLabels({
+    required Set<String> allow,
+    int limit = 10,
+  }) {
+    // The aggregate has to be selected explicitly to be readable (CLAUDE.md).
+    final count = photoLabels.assetId.count(distinct: true);
+    final q = selectOnly(photoLabels)
+      ..addColumns([photoLabels.label, count])
+      ..where(photoLabels.label.isIn(allow.toList()))
+      ..groupBy([photoLabels.label])
+      ..orderBy([
+        OrderingTerm.desc(count),
+        OrderingTerm.asc(photoLabels.label),
+      ])
+      ..limit(limit);
+    return q.watch().map(
+      (rows) => [
+        for (final r in rows)
+          (label: r.read(photoLabels.label)!, count: r.read(count)!),
+      ],
+    );
+  }
+
   /// Assets whose ML labels **or** OCR text match [query] (case-insensitive
   /// substring), newest first, refined by the same facets as metadata Search:
   /// capture-date window `[min, max)`, media [type], and (when [favoritesOnly])

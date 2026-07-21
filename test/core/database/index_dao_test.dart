@@ -675,4 +675,102 @@ void main() {
     final labels = await db.select(db.photoLabels).get();
     expect(labels.where((l) => l.assetId == 'a'), isEmpty);
   });
+
+  // --- Browse labels (Search idle chips) ----------------------------------
+
+  /// Indexes [n] assets, each carrying every label in [labels].
+  Future<void> seedLabeled(int n, List<String> labels, {int from = 0}) async {
+    for (var i = from; i < from + n; i++) {
+      await db.indexDao.upsertIndexed(
+        assetId: 'x$i',
+        createdAt: DateTime(2026, 1, 1).add(Duration(days: i)),
+        isVideo: false,
+        width: 100,
+        height: 100,
+        labels: [for (final l in labels) (l, 0.9)],
+        text: '',
+      );
+    }
+  }
+
+  Future<List<({String label, int count})>> topLabels({
+    Set<String> allow = const {'Beach', 'Cat', 'Dog', 'Sunset'},
+    int limit = 10,
+  }) => db.indexDao.watchTopLabels(allow: allow, limit: limit).first;
+
+  test('watchTopLabels ranks by asset count, most first', () async {
+    await seedLabeled(3, ['Dog']);
+    await seedLabeled(2, ['Cat'], from: 10);
+    await seedLabeled(1, ['Beach'], from: 20);
+
+    expect(await topLabels(), [
+      (label: 'Dog', count: 3),
+      (label: 'Cat', count: 2),
+      (label: 'Beach', count: 1),
+    ]);
+  });
+
+  test('watchTopLabels breaks count ties alphabetically', () async {
+    await seedLabeled(2, ['Sunset']);
+    await seedLabeled(2, ['Cat'], from: 10);
+
+    expect(
+      [for (final r in await topLabels()) r.label],
+      ['Cat', 'Sunset'],
+    );
+  });
+
+  test('watchTopLabels keeps only allowlisted labels', () async {
+    // 'Grass' outnumbers everything but is not browsable.
+    await seedLabeled(5, ['Grass']);
+    await seedLabeled(1, ['Dog']);
+
+    expect(await topLabels(), [(label: 'Dog', count: 1)]);
+  });
+
+  test('watchTopLabels counts each asset once per label', () async {
+    // The same label emitted twice for one photo is still one photo.
+    await db.indexDao.upsertIndexed(
+      assetId: 'dup',
+      createdAt: DateTime(2026, 1, 1),
+      isVideo: false,
+      width: 100,
+      height: 100,
+      labels: const [('Dog', 0.9), ('Dog', 0.5)],
+      text: '',
+    );
+    expect(await topLabels(), [(label: 'Dog', count: 1)]);
+  });
+
+  test('watchTopLabels caps at the limit, keeping the biggest', () async {
+    await seedLabeled(3, ['Dog']);
+    await seedLabeled(2, ['Cat'], from: 10);
+    await seedLabeled(1, ['Beach'], from: 20);
+
+    expect(
+      [for (final r in await topLabels(limit: 2)) r.label],
+      ['Dog', 'Cat'],
+    );
+  });
+
+  test('watchTopLabels is empty on a library with no labels', () async {
+    expect(await topLabels(), isEmpty);
+  });
+
+  test('watchTopLabels re-emits as the indexer labels more photos', () async {
+    final emissions = <List<String>>[];
+    final sub = db.indexDao
+        .watchTopLabels(allow: const {'Cat', 'Dog'})
+        .listen((rows) => emissions.add([for (final r in rows) r.label]));
+    addTearDown(sub.cancel);
+
+    // Let the initial (empty) result land before mutating, or the two
+    // emissions coalesce (CLAUDE.md gotcha).
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await seedLabeled(1, ['Dog']);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(emissions.first, isEmpty);
+    expect(emissions.last, ['Dog']);
+  });
 }

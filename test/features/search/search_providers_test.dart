@@ -262,4 +262,77 @@ void main() {
       expect(await container.read(searchAssetsProvider.future), isEmpty);
     });
   });
+
+  group('topBrowseLabelsProvider', () {
+    late AppDatabase db;
+
+    setUp(() => db = AppDatabase(NativeDatabase.memory()));
+    tearDown(() => db.close());
+
+    /// Indexes one asset per entry, carrying that entry's label.
+    Future<void> seedLabels(Map<String, int> countByLabel) async {
+      var i = 0;
+      for (final entry in countByLabel.entries) {
+        for (var n = 0; n < entry.value; n++) {
+          await db.indexDao.upsertIndexed(
+            assetId: 'a${i++}',
+            createdAt: DateTime(2026, 1, 1),
+            isVideo: false,
+            width: 1,
+            height: 1,
+            labels: [(entry.key, 0.9)],
+            text: '',
+          );
+        }
+      }
+    }
+
+    /// Subscribes (never awaits an autoDispose stream's `.future` — CLAUDE.md)
+    /// and returns the emitted chip list.
+    Future<List<String>> read() async {
+      final container = ProviderContainer(
+        overrides: [databaseProvider.overrideWithValue(db)],
+      );
+      addTearDown(container.dispose);
+      container.listen(topBrowseLabelsProvider, (_, _) {});
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      return container.read(topBrowseLabelsProvider).value ?? const [];
+    }
+
+    test('offers the most-carried labels, most photos first', () async {
+      await seedLabels({'Beach': 1, 'Dog': 3, 'Cat': 2});
+      expect(await read(), ['Dog', 'Cat', 'Beach']);
+    });
+
+    test('drops labels outside the presentable allowlist', () async {
+      // ML Kit's coarse output must not reach the chips, however common.
+      await seedLabels({'Person': 9, 'Room': 8, 'Dog': 1});
+      expect(await read(), ['Dog']);
+    });
+
+    test('caps the row at ten chips', () async {
+      await seedLabels({
+        for (final l in [
+          'Beach',
+          'Bicycle',
+          'Bird',
+          'Boat',
+          'Bridge',
+          'Cat',
+          'Dog',
+          'Flower',
+          'Food',
+          'Forest',
+          'Garden',
+          'Lake',
+        ])
+          l: 1,
+      });
+      expect((await read()).length, browseLabelCount);
+    });
+
+    test('is empty while nothing is labeled yet', () async {
+      expect(await read(), isEmpty);
+    });
+  });
 }
