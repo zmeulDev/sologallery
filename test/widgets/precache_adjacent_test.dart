@@ -5,36 +5,53 @@ import 'package:sologallery/features/detail/detail_providers.dart';
 import 'package:sologallery/widgets/precache_adjacent.dart';
 
 void main() {
-  // Records which assets actually had their bytes requested, which is the
-  // whole observable effect of the widget — it renders nothing.
+  // Records which assets actually had their bytes requested, and which were
+  // let go again — the whole observable effect of the widget, since it renders
+  // nothing.
   late List<String> warmed;
+  late List<String> dropped;
 
-  setUp(() => warmed = []);
+  setUp(() {
+    warmed = [];
+    dropped = [];
+  });
 
+  /// Pumps one frame only. Nothing here waits on `isVideoProvider`: the point
+  /// of the widget is that the bytes are already in flight by the first frame.
   Future<void> pump(
     WidgetTester tester, {
     required List<String> ids,
     required int index,
-    int radius = 1,
+    int ahead = 1,
+    int behind = 1,
     Set<String> videos = const {},
   }) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          isVideoProvider.overrideWith((ref, id) => videos.contains(id)),
+          // Async on purpose: on device this is a platform round-trip that
+          // is still in flight on the first frame, which is the case that
+          // matters. A sync override would answer before the widget builds
+          // and hide the very behaviour under test.
+          isVideoProvider.overrideWith((ref, id) async => videos.contains(id)),
           detailImageProvider.overrideWith((ref, id) {
             warmed.add(id);
+            ref.onDispose(() => dropped.add(id));
             return null;
           }),
         ],
         child: MaterialApp(
-          home: PrecacheAdjacent(assetIds: ids, index: index, radius: radius),
+          home: Center(
+            child: PrecacheAdjacent(
+              assetIds: ids,
+              index: index,
+              ahead: ahead,
+              behind: behind,
+            ),
+          ),
         ),
       ),
     );
-    // isVideoProvider resolves before the bytes are requested, so the warm-up
-    // lands on the second build, not the first.
-    await tester.pump();
   }
 
   testWidgets('warms the neighbours and not the visible page', (tester) async {
@@ -43,31 +60,59 @@ void main() {
     expect(warmed, isNot(contains('b')));
   });
 
-  testWidgets('warms only the one existing neighbour at each end', (
+  testWidgets('warms without waiting on the video check', (tester) async {
+    // The fetch that matters starts on the first frame. Gating it on
+    // isVideoProvider first would serialize two platform round-trips on the
+    // one path that has to be fast.
+    await pump(tester, ids: ['a', 'b'], index: 0);
+    expect(warmed, ['b']);
+  });
+
+  testWidgets('at the front, warms only the neighbour that exists', (
     tester,
   ) async {
     await pump(tester, ids: ['a', 'b', 'c'], index: 0);
     expect(warmed, ['b']);
+  });
 
-    warmed.clear();
+  testWidgets('at the back, warms only the neighbour that exists', (
+    tester,
+  ) async {
     await pump(tester, ids: ['a', 'b', 'c'], index: 2);
     expect(warmed, ['b']);
   });
 
-  testWidgets('skips a video neighbour — its page is a player, not bytes', (
+  testWidgets('lets a video neighbour go once it is known to be one', (
     tester,
   ) async {
     await pump(tester, ids: ['a', 'v', 'c'], index: 2, videos: {'v'});
-    expect(warmed, isNot(contains('v')));
+    // Warmed optimistically on the first frame...
+    expect(warmed, contains('v'));
+
+    await tester.pump(const Duration(milliseconds: 10));
+    // ...and released as soon as the answer lands, so nothing holds a poster
+    // frame no page will ever display.
+    expect(dropped, contains('v'));
+    expect(dropped, isNot(contains('a')));
   });
 
-  testWidgets('warms a wider radius when asked', (tester) async {
-    await pump(tester, ids: ['a', 'b', 'c', 'd', 'e'], index: 2, radius: 2);
-    expect(warmed, unorderedEquals(['a', 'b', 'd', 'e']));
+  testWidgets('runs the window forward when asked', (tester) async {
+    // The memory player's shape: a story is played, not browsed.
+    await pump(
+      tester,
+      ids: ['a', 'b', 'c', 'd', 'e'],
+      index: 1,
+      ahead: 3,
+      behind: 1,
+    );
+    expect(warmed, unorderedEquals(['a', 'c', 'd', 'e']));
   });
 
   testWidgets('renders nothing', (tester) async {
     await pump(tester, ids: ['a', 'b'], index: 0);
+    // Given a choice it takes no space at all — which is exactly why it has to
+    // be a positioned child of any Stack it lives in, or the Stack sizes
+    // itself to this and clips everything else away.
     expect(tester.getSize(find.byType(PrecacheAdjacent)), Size.zero);
   });
 

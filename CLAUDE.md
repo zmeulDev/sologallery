@@ -822,10 +822,11 @@ Short form; full postmortems in `docs/postmortems/`.
   that first access, and creating a `Ticker` there throws** ("Looking up a
   deactivated widget's ancestor is unsafe" — `SingleTickerProviderStateMixin
   .createTicker` needs a live `TickerMode` ancestor lookup, which isn't safe
-  once the widget is already deactivating). `KenBurnsPhoto`'s first version
-  had exactly this: `late final _controller = AnimationController(...)`,
-  with `build()`'s reduced-motion branch returning early without ever
-  reading `_controller`. A host widget test pumping the reduced-motion case
+  once the widget is already deactivating). The memory player's since-removed
+  `KenBurnsPhoto` had exactly this: `late final _controller =
+  AnimationController(...)`, with `build()`'s reduced-motion branch returning
+  early without ever reading `_controller`. A host widget test pumping the
+  reduced-motion case
   and letting teardown dispose the tree caught it immediately. Fix: create
   the controller *unconditionally* in `initState()` (never as a lazy field
   initializer), and gate whether it ever actually `.forward()`s — checked
@@ -849,6 +850,41 @@ Short form; full postmortems in `docs/postmortems/`.
   exactly one motion. A host test asserting the callback fires with *no
   pump at all* is what proves this (the old version needed ~500ms of
   pumping before the flag went true).
+- **A zero-size *unpositioned* child collapses a full-screen `Stack` to 0x0 —
+  and it fails completely silently.** A `Stack` sizes itself to its largest
+  **non**-positioned child; only if it has none does it take
+  `constraints.biggest`. The memory player's stage is all `Positioned` children,
+  so dropping the zero-size `PrecacheAdjacent` warm-up in unpositioned made the
+  Stack 0x0, and `Clip.hardEdge` (the Stack default) then clipped the entire
+  story away — a **black screen** with no exception, no overflow stripe, and no
+  log line. The photo detail screen took the same widget without breaking,
+  because its chrome `Align`s are unpositioned children that expand, which is
+  what makes this look "impossible to be layout". Wrap any render-nothing helper
+  in a `Positioned`. In a widget test the tell is that the tree is fully built
+  but every `find.*` returns nothing while `skipOffstage: false` finds one:
+  sliver/viewport elements report children with zero extent as offstage. Assert
+  the stage's size, not just its contents.
+- **A full-screen route over the shell must be opaque and un-transformed, or the
+  light shell bleeds around it as a white frame.** `fadeThroughPage`'s fade
+  (partial opacity) + 0.96 scale means the background is visible *around and
+  behind* the incoming page for the whole flight — on a black media stage over
+  the off-white shell that reads as a white border on open and close.
+  `heroMediaPage` returns the child untouched (opaque from frame one) and lets
+  the Hero, drawn in the app overlay above the page, carry the motion. The
+  precondition is that the destination Hero exists on the **first** frame:
+  build the landing widget from state you already hold (the memory player takes
+  its cover from the `memoriesProvider` summary the carousel is keeping alive)
+  rather than from the screen's own async load, and let the load decide only
+  what comes *after*. A screen that opens on its `loading` branch has no Hero
+  destination, so the flight silently doesn't happen.
+- **`tester.tap` produces no frame, so an animation it starts records t=0 on the
+  *next* pump.** `tap(...)` then a single `pump(400ms)` lands exactly on that
+  zero-elapsed frame — `PageController.nextPage` looks like it did nothing and
+  the tap reads as ignored. Always `tap` → bare `pump()` → `pump(duration)`.
+  Same shape for a pushed route whose screen opens on an `AsyncValue` loading
+  branch: the future only resolves after the frame that subscribes to it, so
+  the pushed screen needs one more pump before its content exists.
+
 ---
 
 ## Environment notes

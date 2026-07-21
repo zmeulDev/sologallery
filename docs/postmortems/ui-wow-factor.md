@@ -409,3 +409,28 @@ messages instead, once print-based tracing came up empty twice.
   library/memories-carousel scroll parallax (Phase 2), and a custom Hero
   `flightShuttleBuilder` if the default cross-fade ever looks wrong on an
   unusual aspect ratio in practice.
+
+---
+
+## Follow-up — 2026-07-21: memory player reverted on two of these
+
+The hands-on "feel check" above happened, and two Phase-4 decisions did
+not survive it.
+
+- **Ken Burns removed.** `KenBurnsPhoto` and its test are deleted; the
+  memory player renders a plain `PhotoPage` again. The drift read as
+  restless on a story that already moves every 3s. The `late final
+  AnimationController` gotcha it produced (CLAUDE.md) is kept — the
+  lesson outlived the widget.
+- **`/memory/:id` moved to `heroMediaPage`.** Phase 4 kept the route on
+  `fadeThroughPage` because the title card's cover Hero sat behind the
+  `memoryAssetsProvider` load and so had no destination on the first
+  frame. The fade's partial opacity + 0.96 scale let the light shell
+  bleed around the black stage — a visible white frame on open *and*
+  close, which is the exact artifact `heroMediaPage` was written to kill
+  on `/photo/:id`. Fixed at the source instead: the player now draws its
+  title card from the `memoriesProvider` summary (already in memory —
+  the carousel is holding it), so the cover Hero is up on frame one and
+  the photo list only decides how many pages follow. `_pages` stays 0
+  until the photos land, which parks the clock, and `_advance` returns
+  early there so a tap on the opening card can't read as end-of-story.

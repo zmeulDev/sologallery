@@ -40,7 +40,12 @@
       "Bash(perl -pi -e \"s{^import 'package:sologallery/services/photo_library_service.dart';}{import 'package:sologallery/services/permission_provider.dart';}\" test/widgets/people_strip_test.dart)",
       "Bash(perl -pi -e \"s/find\\\\.text\\\\\\('FOLDERS'\\\\\\)/find.text\\('DEVICE FOLDERS'\\)/g\" test/features/albums/albums_screen_test.dart)",
       "Bash(grep '\\\\.dart$' /private/tmp/claude-501/-Users-zml-m4-Dev-sologallery/66c6b078-115b-4432-b8bb-bf8b2f351467/scratchpad/revert.txt)",
-      "Bash(xargs git checkout --)"
+      "Bash(xargs git checkout --)",
+      "Bash(git log *)",
+      "Bash(git stash *)",
+      "Bash(grep -cE \"^  /Users.*: .*$\")",
+      "Bash(~/Library/Android/sdk/platform-tools/adb install *)",
+      "Bash(grep -E \"\\\\[E\\\\]$\")"
     ]
   }
 }

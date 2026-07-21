@@ -21,7 +21,6 @@ import '../../features/settings/settings_screen.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
 import '../../widgets/app_shell.dart';
-import '../theme/app_motion.dart';
 import 'fade_through_page.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -172,15 +171,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         // the nav bar would break the story.
         path: '/memory/:id',
         parentNavigatorKey: _rootNavigatorKey,
-        pageBuilder: (context, state) => fadeThroughPage(
+        pageBuilder: (context, state) => heroMediaPage(
           context: context,
           key: state.pageKey,
-          // Stays on the fade (not the photo route's Hero-only page): the title
-          // card's cover Hero lives behind an async `assets.when` load, so it
-          // isn't in the tree when the flight starts — an opaque, un-faded page
-          // would leave it a black frame. The fade covers the load, and the
-          // bright cover hides the slight edge bleed the photo route removed.
-          base: AppMotion.long,
+          // Same Hero-only page as the photo route: the player draws its title
+          // card on its first frame (the cover comes from the summary the
+          // carousel already holds, not from the photo list it still has to
+          // load), so the flight has a destination and the stage stays opaque
+          // black throughout — no fade or scale for the light shell to bleed
+          // around.
           child: MemoryPlayerScreen(
             memoryId: int.parse(state.pathParameters['id']!),
           ),

@@ -8,11 +8,12 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../services/photo_library_service.dart' show AssetRef;
 import '../../widgets/asset_thumbnail.dart';
 import '../../widgets/precache_adjacent.dart';
+import '../detail/widgets/photo_page.dart';
 import 'memories_providers.dart';
 import 'memory_hero_tag.dart';
-import 'widgets/ken_burns_photo.dart';
 
 /// Plays one memory as a full-screen story: a title card, then each photo in
 /// turn, advancing on a timer.
@@ -72,6 +73,10 @@ class _MemoryPlayerScreenState extends ConsumerState<MemoryPlayerScreen> {
   /// than inheriting the remainder of this one's.
   void _advance() {
     if (!mounted) return;
+    // The photo list isn't in yet, so there is no "last page" to be past —
+    // without this a tap on the opening title card would read as the end of
+    // the story and close the player.
+    if (_pages == 0) return;
     if (_index >= _pages - 1) {
       Navigator.of(context).maybePop();
       return;
@@ -107,73 +112,102 @@ class _MemoryPlayerScreenState extends ConsumerState<MemoryPlayerScreen> {
         ?.where((m) => m.id == widget.memoryId)
         .firstOrNull;
 
+    final list = assets.value ?? const <AssetRef>[];
+
+    // Title card + one page per photo — but 0 until the photos are actually
+    // in, which parks both the clock and tap-to-advance on the title card
+    // instead of running a story whose length isn't known yet.
+    final pages = assets.hasValue ? list.length + 1 : 0;
+    if (_pages != pages) {
+      _pages = pages;
+      // The first timer can only start once we know how many pages there
+      // are; scheduling it during build would fight the frame.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _restartTimer());
+    }
+
+    // The cover comes from the summary the carousel already holds, so the
+    // title card is on screen from the player's *first* frame — the card's
+    // Hero has something to fly into and the route can stay opaque black
+    // rather than fading a light shell in around the stage. Only a deep link
+    // arrives with no summary, and it falls back to the opening photo.
+    final cover = summary?.coverAssetId ?? list.firstOrNull?.id;
+
     return Scaffold(
       backgroundColor: Colors.black,
-      body: assets.when(
-        loading: () => const _Stage(child: _Spinner()),
-        error: (_, _) => _Stage(child: _Message('This memory is unavailable.')),
-        data: (list) {
-          if (list.isEmpty) {
-            return _Stage(child: _Message('This memory has no photos left.'));
-          }
-          // Title card + one page per photo.
-          final pages = list.length + 1;
-          if (_pages != pages) {
-            _pages = pages;
-            // The first timer can only start once we know how many pages there
-            // are; scheduling it during build would fight the frame.
-            WidgetsBinding.instance.addPostFrameCallback(
-              (_) => _restartTimer(),
-            );
-          }
-
-          return Stack(
-            children: [
-              Positioned.fill(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  // Tap and long-press coexist: the press-down pauses
-                  // immediately, and a quick release cancels the long press
-                  // (un-pausing) before the tap advances.
-                  onTap: _advance,
-                  onLongPressDown: (_) => _setHeld(true),
-                  onLongPressUp: () => _setHeld(false),
-                  onLongPressCancel: () => _setHeld(false),
-                  child: PageView.builder(
-                    controller: _controller,
-                    onPageChanged: _onPageChanged,
-                    itemCount: pages,
-                    itemBuilder: (context, i) => i == 0
-                        ? _TitleCard(
-                            memoryId: widget.memoryId,
-                            title: summary?.title ?? 'Memory',
-                            subtitle: summary?.subtitle,
-                            count: list.length,
-                            // Falls back to the opening photo, so the title
-                            // card is never a bare black frame.
-                            coverAssetId:
-                                summary?.coverAssetId ?? list.first.id,
-                          )
-                        : KenBurnsPhoto(
-                            assetId: list[i - 1].id,
-                            duration: MemoryPlayerScreen.pageDuration,
-                          ),
-                  ),
+      body: switch ((assets, cover)) {
+        (AsyncError(), _) => const _Stage(
+          child: _Message('This memory is unavailable.'),
+        ),
+        (AsyncData(:final value), _) when value.isEmpty => const _Stage(
+          child: _Message('This memory has no photos left.'),
+        ),
+        // No summary and no photos yet: a deep link, still loading. The one
+        // case with nothing to show.
+        (_, null) => const _Stage(child: _Spinner()),
+        (_, final String cover) => Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                // Tap and long-press coexist: the press-down pauses
+                // immediately, and a quick release cancels the long press
+                // (un-pausing) before the tap advances.
+                onTap: _advance,
+                onLongPressDown: (_) => _setHeld(true),
+                onLongPressUp: () => _setHeld(false),
+                onLongPressCancel: () => _setHeld(false),
+                child: PageView.builder(
+                  controller: _controller,
+                  onPageChanged: _onPageChanged,
+                  // One page while the photos load — the title card, which is
+                  // what the memory opens on anyway.
+                  itemCount: list.length + 1,
+                  itemBuilder: (context, i) => i == 0
+                      ? _TitleCard(
+                          memoryId: widget.memoryId,
+                          title: summary?.title ?? 'Memory',
+                          subtitle: summary?.subtitle,
+                          count: summary?.assetCount ?? list.length,
+                          coverAssetId: cover,
+                        )
+                      : PhotoPage(assetId: list[i - 1].id),
                 ),
               ),
-              // Page 0 is the title card, so the photo under the cursor is
-              // _index - 1 — and on the title card itself that's -1, which
-              // warms the opening photo while the title is still up.
-              PrecacheAdjacent(
+            ),
+            // Page 0 is the title card, so the photo under the cursor is
+            // _index - 1 — and on the title card itself that's -1, which
+            // warms the opening photos while the title is still up.
+            //
+            // Weighted forward: a story is played, not browsed, and
+            // tap-to-advance outruns a one-page window (the tap lands on the
+            // spinner while N+1 is still being fetched). Three ahead keeps
+            // the fetches in front of the thumb; one back still covers a
+            // swipe to the previous photo.
+            //
+            // Positioned deliberately: a Stack sizes itself to its largest
+            // *non*-positioned child, and every other child here is
+            // positioned — so leaving this zero-size warm-up unpositioned
+            // collapses the whole stage to 0x0 and clips the story away to
+            // a black screen.
+            Positioned.fill(
+              child: PrecacheAdjacent(
                 assetIds: [for (final a in list) a.id],
                 index: _index - 1,
+                ahead: 3,
               ),
-              _Progress(pages: pages, index: _index, paused: _held),
-              const _CloseButton(),
-            ],
-          );
-        },
-      ),
+            ),
+            // Segments come from the summary's count while the photos load,
+            // so the spine opens at its real length instead of growing from
+            // one segment to the whole story a frame later.
+            _Progress(
+              pages: pages == 0 ? (summary?.assetCount ?? 0) + 1 : pages,
+              index: _index,
+              paused: _held,
+            ),
+            const _CloseButton(),
+          ],
+        ),
+      },
     );
   }
 }
