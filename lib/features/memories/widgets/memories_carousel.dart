@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../widgets/app_dialog.dart';
-import '../../../widgets/month_section_header.dart';
+import '../../../widgets/section_header.dart';
 import '../memories_providers.dart';
 import 'memory_card.dart';
 
@@ -32,7 +32,7 @@ class MemoriesCarousel extends ConsumerWidget {
         children: [
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 8, 16, 10),
-            child: MonthSectionHeader(label: 'Memories'),
+            child: SectionHeader(label: 'Memories'),
           ),
           // A horizontal ListView constrains children tightly on the cross
           // axis, so the row needs an explicit height.

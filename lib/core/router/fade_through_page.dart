@@ -18,6 +18,32 @@ import '../theme/app_motion.dart';
 /// [base] defaults to [AppMotion.medium]; the photo detail route passes
 /// [AppMotion.long] instead, since its [Hero] flight reads best with more
 /// room to travel than a plain screen swap.
+/// A transition for full-screen media routes (photo detail, memory player)
+/// whose [Hero] flight *is* the animation. The page is **opaque from the first
+/// frame** and neither fades nor scales — [fadeThroughPage]'s fade (partial
+/// opacity) and 0.96 scale both let the lighter shell beneath bleed through
+/// *around and behind* the flying photo, which reads as a white border/flash on
+/// open and close. Returning the child untouched leaves the black scaffold
+/// covering the shell while the Hero (drawn in the app overlay, above the page)
+/// carries the motion. The route's [transitionDuration] still sets how long the
+/// Hero has to travel, so reduced motion (duration zero) collapses it to a cut.
+CustomTransitionPage<T> heroMediaPage<T>({
+  required BuildContext context,
+  required LocalKey key,
+  required Widget child,
+  Duration base = AppMotion.long,
+}) {
+  final duration = AppMotion.of(context, base);
+  return CustomTransitionPage<T>(
+    key: key,
+    child: child,
+    transitionDuration: duration,
+    reverseTransitionDuration: duration,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+        child,
+  );
+}
+
 CustomTransitionPage<T> fadeThroughPage<T>({
   required BuildContext context,
   required LocalKey key,

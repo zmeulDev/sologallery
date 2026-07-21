@@ -7,6 +7,7 @@ import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../widgets/asset_thumbnail.dart';
 import '../../../widgets/pressable.dart';
+import '../domain/memory_kind.dart';
 import '../memory_hero_tag.dart';
 
 /// One memory in the Library carousel: a portrait cover with its title set
@@ -92,6 +93,21 @@ class MemoryCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        // Says what *sort* of memory this is, above the title
+                        // that says which one. Silent for a kind this build
+                        // doesn't recognise rather than showing a raw enum name.
+                        if (memoryKindFromName(memory.kind) case final kind?)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 3),
+                            child: Text(
+                              kind.label.toUpperCase(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: text.sectionLabel.copyWith(
+                                color: AppOverMedia.glyphSoft,
+                              ),
+                            ),
+                          ),
                         Text(
                           memory.title,
                           maxLines: 2,

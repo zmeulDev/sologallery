@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
-import '../../../widgets/filter_pill.dart';
+import '../../../widgets/segmented_control.dart';
 
-/// The Appearance theme control: a three-way segmented pill row (System / Light
-/// / Dark) built from the design-system [FilterPill], so it reads as the same
-/// facet control used in Search. Stateless — the selection and persistence live
-/// in the Settings screen / [SettingsDao].
+/// The Appearance theme control: System / Light / Dark as a full-width
+/// [SegmentedControl].
+///
+/// A segmented control rather than the pill row used in Search, because these
+/// three are one value with three mutually exclusive settings — not three
+/// independent facets that happen to sit in a row. Stateless; the selection and
+/// its persistence live in the Settings screen / `SettingsDao`.
 class ThemeModePicker extends StatelessWidget {
   const ThemeModePicker({
     super.key,
@@ -17,24 +20,18 @@ class ThemeModePicker extends StatelessWidget {
   final ValueChanged<ThemeMode> onChanged;
 
   static String _label(ThemeMode mode) => switch (mode) {
-        ThemeMode.system => 'System',
-        ThemeMode.light => 'Light',
-        ThemeMode.dark => 'Dark',
-      };
+    ThemeMode.system => 'System',
+    ThemeMode.light => 'Light',
+    ThemeMode.dark => 'Dark',
+  };
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        for (final option in ThemeMode.values) ...[
-          FilterPill(
-            label: _label(option),
-            selected: option == mode,
-            onTap: () => onChanged(option),
-          ),
-          if (option != ThemeMode.values.last) const SizedBox(width: 8),
-        ],
-      ],
+    return SegmentedControl<ThemeMode>(
+      options: ThemeMode.values,
+      value: mode,
+      labelBuilder: _label,
+      onChanged: onChanged,
     );
   }
 }

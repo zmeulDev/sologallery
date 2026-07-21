@@ -27,9 +27,9 @@ void main() {
   tearDown(() => db.close());
 
   List<AssetRef> assets(int n) => [
-        for (var i = 0; i < n; i++)
-          AssetRef(id: 'a$i', createdAt: DateTime(2025, 6, 1 + i)),
-      ];
+    for (var i = 0; i < n; i++)
+      AssetRef(id: 'a$i', createdAt: DateTime(2025, 6, 1 + i)),
+  ];
 
   /// The player runs on a repeating timer and shows a spinner while loading, so
   /// every pump here is bounded — `pumpAndSettle` would never return.
@@ -42,8 +42,9 @@ void main() {
       ProviderScope(
         overrides: [
           databaseProvider.overrideWithValue(db),
-          photoLibraryServiceProvider
-              .overrideWithValue(FakePhotoLibraryService()),
+          photoLibraryServiceProvider.overrideWithValue(
+            FakePhotoLibraryService(),
+          ),
           memoriesProvider.overrideWithValue(
             AsyncData([
               MemorySummary(
@@ -56,8 +57,9 @@ void main() {
               ),
             ]),
           ),
-          memoryAssetsProvider(memoryId)
-              .overrideWith((ref) async => assets(photos)),
+          memoryAssetsProvider(
+            memoryId,
+          ).overrideWith((ref) async => assets(photos)),
         ],
         // The player reads AppTextStyles off the theme, so the app must carry
         // one — a bare MaterialApp has no theme extensions.
@@ -83,12 +85,16 @@ void main() {
     expect(find.byType(PhotoPage), findsNothing);
   });
 
-  testWidgets('falls back to the first photo when there is no cover',
-      (tester) async {
+  testWidgets('falls back to the first photo when there is no cover', (
+    tester,
+  ) async {
     await pump(tester, cover: null);
 
-    expect(find.byType(AssetThumbnail), findsOneWidget,
-        reason: 'the title card must never be a bare black frame');
+    expect(
+      find.byType(AssetThumbnail),
+      findsOneWidget,
+      reason: 'the title card must never be a bare black frame',
+    );
   });
 
   testWidgets('advances to the first photo on its own', (tester) async {
@@ -109,15 +115,69 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
     await tester.pump(MemoryPlayerScreen.pageDuration * 2);
 
-    expect(find.text('Early June'), findsOneWidget,
-        reason: 'still on the title card while held');
+    expect(
+      find.text('Early June'),
+      findsOneWidget,
+      reason: 'still on the title card while held',
+    );
 
     await gesture.up();
     await tester.pump(MemoryPlayerScreen.pageDuration);
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(find.byType(PhotoPage), findsOneWidget,
-        reason: 'releasing resumes the timer');
+    expect(
+      find.byType(PhotoPage),
+      findsOneWidget,
+      reason: 'releasing resumes the timer',
+    );
+  });
+
+  testWidgets('tapping advances by hand, without waiting for the clock', (
+    tester,
+  ) async {
+    await pump(tester);
+    expect(find.text('Early June'), findsOneWidget);
+
+    await tester.tap(find.byType(PageView));
+    await tester.pump(const Duration(milliseconds: 400)); // page transition
+
+    expect(find.byType(PhotoPage), findsOneWidget);
+    expect(find.text('Early June'), findsNothing);
+  });
+
+  testWidgets('a tapped advance gives the next photo its full turn', (
+    tester,
+  ) async {
+    await pump(tester);
+
+    // Tap late in the title card's dwell, so an un-reset timer would fire
+    // almost immediately and double-step.
+    await tester.pump(MemoryPlayerScreen.pageDuration ~/ 2);
+    await tester.tap(find.byType(PageView));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(PhotoPage), findsOneWidget);
+
+    // Just short of a full page duration after the tap: still here.
+    await tester.pump(MemoryPlayerScreen.pageDuration ~/ 2);
+    expect(
+      find.byType(PhotoPage),
+      findsOneWidget,
+      reason: 'the tap restarted the clock rather than inheriting it',
+    );
+  });
+
+  testWidgets('a tapped advance drives the same page index as the clock', (
+    tester,
+  ) async {
+    await pump(tester);
+
+    await tester.tap(find.byType(PageView));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // The progress spine reads its filled-segment count off this index, so a
+    // tap path that tracked its own would desync the two.
+    final pageView = tester.widget<PageView>(find.byType(PageView));
+    expect(pageView.controller!.page!.round(), 1);
   });
 
   testWidgets('shows a message when every photo is gone', (tester) async {
@@ -126,17 +186,22 @@ void main() {
     expect(find.text('This memory has no photos left.'), findsOneWidget);
   });
 
-  testWidgets('closes itself after the last photo', (tester) async {
+  /// Opens the player on a pushed route, so there is something to pop back to
+  /// and leaving the story is observable.
+  Future<void> pumpPushed(WidgetTester tester, {int photos = 1}) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           databaseProvider.overrideWithValue(db),
-          photoLibraryServiceProvider
-              .overrideWithValue(FakePhotoLibraryService()),
+          photoLibraryServiceProvider.overrideWithValue(
+            FakePhotoLibraryService(),
+          ),
           memoriesProvider.overrideWithValue(
             const AsyncData<List<MemorySummary>>([]),
           ),
-          memoryAssetsProvider(memoryId).overrideWith((ref) async => assets(1)),
+          memoryAssetsProvider(
+            memoryId,
+          ).overrideWith((ref) async => assets(photos)),
         ],
         child: MaterialApp(
           theme: AppTheme.light,
@@ -160,16 +225,43 @@ void main() {
     );
     await tester.tap(find.text('open'));
     await tester.pump(const Duration(milliseconds: 400));
+  }
+
+  testWidgets('closes itself after the last photo', (tester) async {
+    await pumpPushed(tester);
 
     // Title card, then the single photo, then the pop. Bounded rather than
     // `pumpAndSettle`: the player always has a timer scheduled, so it would
     // never settle.
-    for (var i = 0; i < 6 && find.byType(MemoryPlayerScreen).evaluate().isNotEmpty; i++) {
+    for (
+      var i = 0;
+      i < 6 && find.byType(MemoryPlayerScreen).evaluate().isNotEmpty;
+      i++
+    ) {
       await tester.pump(MemoryPlayerScreen.pageDuration);
       await tester.pump(const Duration(milliseconds: 400));
     }
 
     expect(find.text('open'), findsOneWidget);
     expect(find.byType(MemoryPlayerScreen), findsNothing);
+  });
+
+  testWidgets('tapping past the last photo closes the player', (tester) async {
+    await pumpPushed(tester);
+
+    // Title card → the only photo → out, entirely by hand.
+    await tester.tap(find.byType(PageView));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(PhotoPage), findsOneWidget);
+
+    await tester.tap(find.byType(PageView));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(
+      find.byType(MemoryPlayerScreen),
+      findsNothing,
+      reason: 'a tap on the last photo ends the story, same as the clock',
+    );
+    expect(find.text('open'), findsOneWidget);
   });
 }

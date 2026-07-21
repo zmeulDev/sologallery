@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sologallery/core/database/app_database.dart';
 import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/core/theme/app_theme.dart';
+import 'package:sologallery/widgets/app_card.dart';
+import 'package:sologallery/widgets/consent_switch.dart';
 import 'package:sologallery/features/settings/settings_providers.dart';
 import 'package:sologallery/features/settings/settings_screen.dart';
 import 'package:sologallery/services/indexing_service.dart';
@@ -47,10 +49,12 @@ void main() {
       ProviderScope(
         overrides: [
           databaseProvider.overrideWithValue(db),
-          photoLibraryServiceProvider
-              .overrideWithValue(FakePhotoLibraryService(access: access)),
-          indexingStatusProvider
-              .overrideWithValue(const AsyncData(IndexingStatus.idle())),
+          photoLibraryServiceProvider.overrideWithValue(
+            FakePhotoLibraryService(access: access),
+          ),
+          indexingStatusProvider.overrideWithValue(
+            const AsyncData(IndexingStatus.idle()),
+          ),
           appVersionProvider.overrideWith((ref) async => '1.0.0 (1)'),
         ],
         child: MaterialApp(theme: AppTheme.light, home: const SettingsScreen()),
@@ -83,7 +87,7 @@ void main() {
     expect(find.text('3'), findsOneWidget); // 4 assets − 1 video
     expect(find.text('Rebuild index'), findsOneWidget);
     expect(find.text('1.0.0 (1)'), findsOneWidget);
-    // Theme picker pills.
+    // Theme picker segments.
     for (final t in const ['System', 'Light', 'Dark']) {
       expect(find.text(t), findsOneWidget);
     }
@@ -91,7 +95,7 @@ void main() {
     await disposeTree(tester);
   });
 
-  testWidgets('tapping a theme pill persists the choice', (tester) async {
+  testWidgets('tapping a theme segment persists the choice', (tester) async {
     await pump(tester);
 
     await tester.tap(find.text('Dark'));
@@ -104,8 +108,24 @@ void main() {
     await disposeTree(tester);
   });
 
-  testWidgets('limited-access actions show only when access is limited',
-      (tester) async {
+  testWidgets('each consent toggle gets its own card', (tester) async {
+    await seedCache();
+    await pump(tester);
+
+    // Three separate cards, not one divided block: these are independent
+    // grants, and a single stack reads as something you accept wholesale.
+    final consentCards = find.ancestor(
+      of: find.byType(ConsentSwitch),
+      matching: find.byType(AppCard),
+    );
+    expect(consentCards, findsNWidgets(3));
+
+    await disposeTree(tester);
+  });
+
+  testWidgets('limited-access actions show only when access is limited', (
+    tester,
+  ) async {
     await pump(tester, access: PhotoAccess.limited);
     expect(find.text('Limited access'), findsOneWidget);
     expect(find.text('Select more photos'), findsOneWidget);
@@ -122,8 +142,9 @@ void main() {
   });
 
   group('on-device analysis', () {
-    testWidgets('every toggle starts off, People hidden, Analysis reads Off',
-        (tester) async {
+    testWidgets('every toggle starts off, People hidden, Analysis reads Off', (
+      tester,
+    ) async {
       await pump(tester);
 
       expect(find.text('ON-DEVICE ANALYSIS'), findsOneWidget);
@@ -141,8 +162,9 @@ void main() {
       await disposeTree(tester);
     });
 
-    testWidgets('reflects stored settings and shows People when faces are on',
-        (tester) async {
+    testWidgets('reflects stored settings and shows People when faces are on', (
+      tester,
+    ) async {
       await db.settingsDao.setSearchEnabled(true);
       await db.settingsDao.setMemoriesEnabled(true);
       await db.settingsDao.setFacesEnabled(true);
@@ -156,8 +178,9 @@ void main() {
       await disposeTree(tester);
     });
 
-    testWidgets('toggling Content search on persists the choice',
-        (tester) async {
+    testWidgets('toggling Content search on persists the choice', (
+      tester,
+    ) async {
       await pump(tester);
 
       await tester.tap(find.byType(Switch).first);
@@ -170,8 +193,9 @@ void main() {
       await disposeTree(tester);
     });
 
-    testWidgets('turning face detection off deletes the faces already found',
-        (tester) async {
+    testWidgets('turning face detection off deletes the faces already found', (
+      tester,
+    ) async {
       await db.settingsDao.setFacesEnabled(true);
       await seedCache();
       await db.facesDao.insertFaces('p1', [

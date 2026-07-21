@@ -13,6 +13,7 @@ import 'package:sologallery/features/detail/widgets/photo_page.dart';
 import 'package:sologallery/features/detail/widgets/video_page.dart';
 import 'package:sologallery/services/permission_provider.dart';
 import 'package:sologallery/services/photo_library_service.dart';
+import 'package:sologallery/widgets/circle_icon_button.dart';
 
 import '../../support/fake_photo_library_service.dart';
 
@@ -28,8 +29,10 @@ void main() {
     Map<String, AssetDetail> details = const {},
     Map<String, Duration> videoDurations = const {},
   }) async {
-    final fake =
-        FakePhotoLibraryService(details: details, videoDurations: videoDurations);
+    final fake = FakePhotoLibraryService(
+      details: details,
+      videoDurations: videoDurations,
+    );
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -56,42 +59,138 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   }
 
+  /// Drags the photo up past the open threshold with a raw pointer sequence.
+  /// Not `tester.fling`, which coalesces down/move/up and would hide whether
+  /// the axis lock resolved on the intervening moves.
+  Future<void> swipeUp(WidgetTester tester) async {
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(PhotoPage)),
+    );
+    await gesture.moveBy(const Offset(0, -150)); // past the 15%-of-height mark
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('renders the action bar and top-bar affordances', (tester) async {
     await pump(tester);
     expect(find.byType(DetailActionBar), findsOneWidget);
-    expect(find.byIcon(Icons.info_outline_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.favorite_border_rounded), findsOneWidget);
+    // Back, add-to-album and favorite ride on discs in the top bar.
+    expect(find.byType(CircleIconButton), findsNWidgets(3));
+    expect(find.byTooltip('Back'), findsOneWidget);
+    // Favorite is reachable from both bars, deliberately — the top one is the
+    // thumb-reachable copy, the bottom one keeps the action set complete.
+    expect(find.byIcon(Icons.favorite_border_rounded), findsNWidgets(2));
     await settleTeardown(tester);
   });
 
-  testWidgets('favorite toggles the heart and persists', (tester) async {
+  testWidgets('the swipe-up hint advertises the details gesture', (
+    tester,
+  ) async {
+    // The gesture is otherwise undiscoverable on a full-bleed photo.
     await pump(tester);
-    await tester.tap(find.byIcon(Icons.favorite_border_rounded));
+    expect(find.text('SWIPE UP FOR DETAILS'), findsOneWidget);
+    await settleTeardown(tester);
+  });
+
+  testWidgets('favorite from the top bar toggles the heart and persists', (
+    tester,
+  ) async {
+    await pump(tester);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(CircleIconButton),
+        matching: find.byIcon(Icons.favorite_border_rounded),
+      ),
+    );
     await tester.pumpAndSettle();
 
-    expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
+    // Both copies follow the one provider — neither can drift out of sync.
+    expect(find.byIcon(Icons.favorite_rounded), findsNWidgets(2));
     expect(await db.favoritesDao.isFavorite('a1'), isTrue);
     await settleTeardown(tester);
   });
 
-  testWidgets('info opens the EXIF sheet with formatted fields', (tester) async {
-    await pump(tester, details: {
-      'a1': AssetDetail(
-        id: 'a1',
-        width: 4000,
-        height: 3000,
-        createdAt: DateTime(2026, 7, 12, 14, 33),
-        orientationDegrees: 0,
-        isVideo: false,
-        mimeType: 'image/jpeg',
+  testWidgets('favorite from the action bar toggles the same state', (
+    tester,
+  ) async {
+    await pump(tester);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(DetailActionBar),
+        matching: find.byIcon(Icons.favorite_border_rounded),
       ),
-    });
-    await tester.tap(find.byIcon(Icons.info_outline_rounded));
+    );
     await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.favorite_rounded), findsNWidgets(2));
+    expect(await db.favoritesDao.isFavorite('a1'), isTrue);
+    await settleTeardown(tester);
+  });
+
+  testWidgets('the EXIF sheet shows formatted fields', (tester) async {
+    await pump(
+      tester,
+      details: {
+        'a1': AssetDetail(
+          id: 'a1',
+          width: 4000,
+          height: 3000,
+          createdAt: DateTime(2026, 7, 12, 14, 33),
+          orientationDegrees: 0,
+          isVideo: false,
+          mimeType: 'image/jpeg',
+        ),
+      },
+    );
+    await swipeUp(tester);
 
     expect(find.text('DETAILS'), findsOneWidget);
     expect(find.text('4000 × 3000'), findsOneWidget);
     expect(find.text('JPEG'), findsOneWidget);
+    await settleTeardown(tester);
+  });
+
+  testWidgets('swiping up is what opens the EXIF sheet', (tester) async {
+    await pump(
+      tester,
+      details: {
+        'a1': AssetDetail(
+          id: 'a1',
+          width: 4000,
+          height: 3000,
+          createdAt: DateTime(2026, 7, 12, 14, 33),
+          orientationDegrees: 0,
+          isVideo: false,
+          mimeType: 'image/jpeg',
+        ),
+      },
+    );
+
+    await swipeUp(tester);
+
+    expect(find.text('DETAILS'), findsOneWidget);
+    expect(find.text('4000 × 3000'), findsOneWidget);
+    await settleTeardown(tester);
+  });
+
+  testWidgets('swiping down dismisses the viewer instead of opening details', (
+    tester,
+  ) async {
+    await pump(tester);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(PhotoPage)),
+    );
+    await gesture.moveBy(const Offset(0, 250));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.text('DETAILS'), findsNothing);
+    // Nothing to pop back to (PhotoDetailScreen is the MaterialApp home), so
+    // maybePop is a no-op and the viewer stays — the assertion that matters is
+    // that the downward drag did not reach the swipe-up path.
     await settleTeardown(tester);
   });
 

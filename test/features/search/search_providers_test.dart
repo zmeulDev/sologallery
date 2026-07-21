@@ -1,8 +1,11 @@
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sologallery/core/database/app_database.dart' show AppDatabase, Favorite;
-import 'package:sologallery/core/database/daos/albums_dao.dart' show AlbumSummary;
+import 'package:sologallery/core/database/app_database.dart' show AppDatabase;
+import 'package:sologallery/core/database/daos/index_dao.dart'
+    show FavoriteAsset;
+import 'package:sologallery/core/database/daos/albums_dao.dart'
+    show AlbumSummary;
 import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/features/albums/albums_providers.dart';
 import 'package:sologallery/features/saved/saved_providers.dart';
@@ -17,14 +20,14 @@ import '../../support/fake_photo_library_service.dart';
 void main() {
   // Aug 2026 (3 assets, the first a video) + Jul 2026 (2 assets), newest first.
   List<AssetRef> library() => [
-        ...assetsInMonth(2026, 8, 3),
-        ...assetsInMonth(2026, 7, 2),
-      ];
+    ...assetsInMonth(2026, 8, 3),
+    ...assetsInMonth(2026, 7, 2),
+  ];
 
   ProviderContainer makeContainer({
     List<AssetRef>? assets,
     Map<String, Duration> videoDurations = const {},
-    List<Favorite> favorites = const [],
+    List<FavoriteAsset> favorites = const [],
     List<AlbumSummary> albums = const [],
   }) {
     final fake = FakePhotoLibraryService(
@@ -80,8 +83,18 @@ void main() {
     test('favorites-only sources from the favorites set', () async {
       final container = makeContainer(
         favorites: [
-          Favorite(assetId: '2026-8-1', favoritedAt: DateTime(2026, 8, 1)),
-          Favorite(assetId: '2026-7-0', favoritedAt: DateTime(2026, 7, 1)),
+          (
+            assetId: '2026-8-1',
+            favoritedAt: DateTime(2026, 8, 1),
+            width: 1,
+            height: 1,
+          ),
+          (
+            assetId: '2026-7-0',
+            favoritedAt: DateTime(2026, 7, 1),
+            width: 1,
+            height: 1,
+          ),
         ],
       );
       container.read(searchFavoritesOnlyProvider.notifier).toggle();
@@ -95,8 +108,18 @@ void main() {
     test('favorites-only composes with the date window', () async {
       final container = makeContainer(
         favorites: [
-          Favorite(assetId: '2026-8-1', favoritedAt: DateTime(2026, 8, 1)),
-          Favorite(assetId: '2026-7-0', favoritedAt: DateTime(2026, 7, 1)),
+          (
+            assetId: '2026-8-1',
+            favoritedAt: DateTime(2026, 8, 1),
+            width: 1,
+            height: 1,
+          ),
+          (
+            assetId: '2026-7-0',
+            favoritedAt: DateTime(2026, 7, 1),
+            width: 1,
+            height: 1,
+          ),
         ],
       );
       container.read(searchFavoritesOnlyProvider.notifier).toggle();
@@ -113,8 +136,9 @@ void main() {
     ProviderContainer albumContainer(List<AlbumSummary> albums) {
       final container = ProviderContainer(
         overrides: [
-          photoLibraryServiceProvider
-              .overrideWithValue(FakePhotoLibraryService()),
+          photoLibraryServiceProvider.overrideWithValue(
+            FakePhotoLibraryService(),
+          ),
           albumSummariesProvider.overrideWith((ref) => Stream.value(albums)),
         ],
       );
@@ -125,13 +149,19 @@ void main() {
     }
 
     const albums = [
-      AlbumSummary(id: 1, name: 'Iceland 2026', entryCount: 12, coverAssetId: 'a'),
+      AlbumSummary(
+        id: 1,
+        name: 'Iceland 2026',
+        entryCount: 12,
+        coverAssetId: 'a',
+      ),
       AlbumSummary(id: 2, name: 'Family', entryCount: 4, coverAssetId: 'b'),
     ];
 
     // Let both the overridden stream emit and Riverpod's scheduler flush the
     // resulting recompute before reading (a microtask alone isn't enough).
-    Future<void> flush() => Future<void>.delayed(const Duration(milliseconds: 10));
+    Future<void> flush() =>
+        Future<void>.delayed(const Duration(milliseconds: 10));
 
     test('is empty while the query is blank', () async {
       final container = albumContainer(albums);
@@ -144,7 +174,9 @@ void main() {
       container.read(searchQueryProvider.notifier).set('ice');
       await flush();
 
-      final names = [for (final a in container.read(searchAlbumsProvider)) a.name];
+      final names = [
+        for (final a in container.read(searchAlbumsProvider)) a.name,
+      ];
       expect(names, ['Iceland 2026']);
     });
 
@@ -184,8 +216,9 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           databaseProvider.overrideWithValue(db),
-          photoLibraryServiceProvider
-              .overrideWithValue(FakePhotoLibraryService()),
+          photoLibraryServiceProvider.overrideWithValue(
+            FakePhotoLibraryService(),
+          ),
         ],
       );
       addTearDown(container.dispose);

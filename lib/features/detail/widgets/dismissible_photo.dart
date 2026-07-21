@@ -30,6 +30,11 @@ import 'detail_stage.dart';
 /// [onProgress] mirrors the live 0 (settled) → 1 (dismissed) value up to the
 /// parent screen so its chrome — a sibling of the [PageView], not a
 /// descendant of any one page — can fade in lockstep.
+///
+/// The same axis lock serves the opposite direction: an upward fling has
+/// nothing to dismiss, so it opens the details sheet via [onSwipeUp]. Both
+/// directions therefore go through one recognizer-free gesture path and
+/// can't starve each other in the arena.
 class DismissiblePhoto extends StatefulWidget {
   const DismissiblePhoto({
     super.key,
@@ -37,12 +42,14 @@ class DismissiblePhoto extends StatefulWidget {
     required this.isVideo,
     required this.onProgress,
     required this.onDismissed,
+    required this.onSwipeUp,
   });
 
   final String assetId;
   final bool isVideo;
   final ValueChanged<double> onProgress;
   final VoidCallback onDismissed;
+  final VoidCallback onSwipeUp;
 
   @override
   State<DismissiblePhoto> createState() => _DismissiblePhotoState();
@@ -60,6 +67,10 @@ class _DismissiblePhotoState extends State<DismissiblePhoto>
   Offset? _pointerStart;
   int? _activePointer;
   bool? _verticalIntent; // null = undecided; true/false once slop clears.
+  // Signed vertical travel of the current drag. Kept separately from
+  // _dismiss.value, which clamps at 0 and so can't tell "at rest" from
+  // "dragged upward".
+  double _totalDy = 0;
   VelocityTracker? _velocityTracker;
   // Read once per drag (didChangeDependencies), not per pointer-move event
   // or per animation frame — MediaQuery.sizeOf is cheap but there's no
@@ -96,6 +107,7 @@ class _DismissiblePhotoState extends State<DismissiblePhoto>
     _activePointer = event.pointer;
     _pointerStart = event.position;
     _verticalIntent = null;
+    _totalDy = 0;
     _velocityTracker = VelocityTracker.withKind(event.kind);
     _velocityTracker!.addPosition(event.timeStamp, event.position);
     _dismiss.stop();
@@ -109,21 +121,33 @@ class _DismissiblePhotoState extends State<DismissiblePhoto>
         ? total.dy.abs() > total.dx.abs()
         : null;
     if (_verticalIntent != true) return;
-    // Only downward drag dismisses; an upward flick just has nothing to do
-    // (clamped at 0), same feel as a normal photo-viewer sheet.
+    _totalDy = total.dy;
+    // Only downward drag moves the photo; an upward one leaves it in place
+    // (clamped at 0) and is resolved on release as a details-sheet swipe.
     _dismiss.value = (total.dy / _screenHeight).clamp(0.0, 1.0);
   }
 
   void _onPointerEnd(PointerEvent event) {
     if (event.pointer != _activePointer) return;
     final wasVertical = _verticalIntent == true;
-    final velocity =
-        _velocityTracker?.getVelocity().pixelsPerSecond.dy ?? 0.0;
+    final velocity = _velocityTracker?.getVelocity().pixelsPerSecond.dy ?? 0.0;
+    final totalDy = _totalDy;
     _activePointer = null;
     _pointerStart = null;
     _verticalIntent = null;
+    _totalDy = 0;
     _velocityTracker = null;
     if (!wasVertical) return;
+
+    // Upward: nothing was displaced (_dismiss stayed clamped at 0), so this
+    // resolves purely from the gesture — a flick, or a deliberate drag past
+    // a fraction of the screen.
+    if (totalDy < 0) {
+      if (velocity < -300 || totalDy < -_screenHeight * 0.15) {
+        widget.onSwipeUp();
+      }
+      return;
+    }
 
     final shouldDismiss = _dismiss.value > 0.3 || velocity > 800;
     if (shouldDismiss) {

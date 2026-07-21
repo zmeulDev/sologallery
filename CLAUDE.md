@@ -11,10 +11,13 @@ analytics, no network calls after install.
   handling for photo library access
 - **App bar:** settings (on Library)
 - **Main view:** gallery grouped by month — first 6 photos per month,
-  newest first, plus a per-month "view all" button
-- **Detail view (on tap):** full-screen viewer with horizontal swipe;
-  actions: favorite, delete, share, add to existing album; dedicated
-  button to reveal EXIF metadata
+  newest first; the section header row itself opens the full month (label,
+  count and chevron are one tap target, not a separate "view all" button)
+- **Detail view (on tap):** full-screen viewer with horizontal swipe; top bar
+  carries back · add-to-album · favorite as scrim discs, the action bar below
+  carries favorite · share · add-to-album · delete (favorite is deliberately in
+  both — one thumb-reachable, one keeping the action set complete), and swiping
+  up reveals EXIF metadata
 - **Bottom nav:** Home Gallery · Search · Saved · Albums
 
 ---
@@ -239,6 +242,8 @@ lib/
     database/                   # Drift DB, tables, DAOs
   features/
     library/ saved/ search/ albums/ detail/ people/ onboarding/ settings/
+    saved/domain/masonry_layout.dart  # pure-Dart column-balanced placement
+    saved/widgets/masonry_grid_delegate.dart # feeds it to a lazy SliverGrid
     memories/                   # auto-curated memories: builder, carousel, player
     # edit/ (non-destructive editor) is spec'd but not built yet
   services/
@@ -293,7 +298,10 @@ docs/
 
 ### Spacing (`AppSpace`)
 
-`s2 s4 s8 s12 s16 s20 s24 s32` — s2 photo-grid gutter, s16 screen inset.
+`s2 s4 s8 s12 s16 s20 s24 s32` — s2 edge-to-edge photo-grid gutter (Search
+results, month/folder grids), s4 gutter for *inset* preview grids (Library
+sections, which inset s8 rather than s16 so the grid runs wider than the
+header), s8 Saved masonry gutter, s16 screen inset.
 
 ### Radius (`AppRadius`)
 
@@ -334,9 +342,20 @@ Theme-invariant consts for content over photos/video: scrims
   default family (nav inactive `photo_library_outlined`/
   `photo_album_outlined`, `add_to_photos_outlined`,
   `videocam_off_outlined`, `broken_image_outlined`).
-- Shared components: `AppButton` (primary/secondary/quiet), `EmptyState`,
-  `CoverRow`, `AppSheet`/`AppSheetNote`, `app_dialog` helpers,
-  `Pressable` (cards only — never grid cells).
+- Shared components: `AppButton` (primary/secondary/quiet; primary takes
+  `compact` for the 40-high app-bar metric and an optional leading icon),
+  `AppCard` (surface + r12 + hairline; `.divided` for hairline-separated rows —
+  the one grouping container), `CircleIconButton` (`.overMedia` scrim disc /
+  `.surface` themed disc), `SegmentedControl<T>` (one value, mutually exclusive
+  choices — distinct from a `FilterPill` row of independent facets),
+  `SectionHeader` (uppercase section label; `onTap` makes the whole row the
+  destination and adds a chevron), `EmptyState`, `CoverRow` (`showChevron` for
+  rows that stand alone in a card), `AppSheet`/`AppSheetNote`, `app_dialog`
+  helpers, `Pressable` (cards only — never grid cells).
+- Grids differ by job: Library and Search are square multi-column grids for
+  *finding* a photo among thousands (uniform scan pattern); Saved is a
+  two-column aspect-preserving masonry (`layoutMasonry` + `MasonryGridDelegate`)
+  because it is a small, deliberately-kept set.
 
 ### Screens
 
@@ -650,6 +669,16 @@ Short form; full postmortems in `docs/postmortems/`.
   (Settings) lazily builds — assert off-screen sections/rows only after
   `tester.binding.setSurfaceSize(tall)` (reset with `setSurfaceSize(null)`), else
   `find.text` on a below-the-fold row returns nothing.
+- **A horizontal `ListView` constrains its children's height *tightly*, so the
+  strip's `SizedBox(height:)` is the child's height — not a maximum.** Adding a
+  caption under an avatar therefore squashes the avatar into an oval rather than
+  overflowing (no red stripe, no exception — it just looks subtly wrong). The
+  height has to be computed: `PeopleStrip` sums the avatar diameter, the gap and
+  `MediaQuery.textScalerOf(context).scale(fontSize) * lineHeight`, and adds the
+  caption band **only when at least one item actually has a caption**, so the
+  common all-unnamed row has no dead space under it. Same trap in
+  `MemoriesCarousel`, which derives its height from `MemoryCard.width /
+  aspectRatio`.
 - **Bottom-nav taps in widget tests need the shell's entry transition to finish.**
   `pumpApp` + a 50 ms pump leaves the shell route mid-slide — the whole nav bar
   sits ~176 px right of its final position, so `tap(find.byTooltip(...))` on a
@@ -660,6 +689,20 @@ Short form; full postmortems in `docs/postmortems/`.
   **offstage**, so asserting on a backgrounded tab's widgets needs
   `find.byType(X, skipOffstage: false)`. Branches are built lazily on first
   visit, not eagerly.
+- **A `Hero` in an offstage shell branch still collides with the same tag in the
+  active branch — gate inactive branches with `HeroMode`.** `/photo/:id` is a
+  root route (`parentNavigatorKey: _rootNavigatorKey`), so its Hero flight scans
+  the **whole shell subtree**, and `StatefulShellRoute.indexedStack` keeps every
+  *visited* branch alive (offstage, but present — `Hero._allHeroesFor` does not
+  skip offstage). A favorite shows in both Library and Saved with tag
+  `asset-<id>`; once the user has opened the Saved tab (building that branch),
+  opening that photo from Library throws "multiple heroes share the same tag"
+  during `_startHeroTransition`. Latent until a second tab is visited, which is
+  why it hid behind a single-tab session. Fix: the shell uses the general
+  `StatefulShellRoute` with a `navigatorContainerBuilder` that rebuilds the
+  indexed stack (`IndexedStack`, `StackFit.expand`) wrapping each branch in
+  `HeroMode(enabled: i == currentIndex)` (`_BranchContainer` in `app_router`), so
+  only the visible tab exposes Heroes — one per flight, state still preserved.
 - **On-device manual verification: `pm grant` does not get you past onboarding, and
   the app DB is the only readable state.** `PhotoManager` reports the permission
   as *not yet requested* until the in-app request flow actually runs, so an
@@ -830,3 +873,13 @@ Short form; full postmortems in `docs/postmortems/`.
   `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`
   (the `flutter` tool sets this itself).
 - **Primary device:** Pixel 9 Pro XL (`46121FDAS008AA`), Android 17 (API 37).
+- **Never run `dart format` on a directory — only on the files you edited.**
+  The committed tree predates the current `dart format` style, so
+  `dart format lib/ test/` rewrites **~115 files** (trailing-comma/argument
+  wrapping), burying a real change in thousands of lines of cosmetic diff.
+  Worse, it is unrecoverable where it lands on a file that already had
+  *uncommitted* edits: the pre-format content was never committed, so the
+  formatting can't be separated from the work afterwards, and `git checkout`
+  would take both. `tool/check.sh` deliberately does **not** run a format check,
+  so nothing forces the issue — reformat the whole tree only as its own
+  standalone commit, never as a side effect of a feature.

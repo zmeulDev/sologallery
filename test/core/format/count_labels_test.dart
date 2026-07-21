@@ -23,4 +23,15 @@ void main() {
       expect(photoCountLabel(2, zero: 'Empty'), '2 photos');
     });
   });
+
+  group('itemCountLabel', () {
+    test('counts items, since a month section mixes stills and video', () {
+      expect(itemCountLabel(12), '12 items');
+      expect(itemCountLabel(0), '0 items');
+    });
+
+    test('is singular for exactly one', () {
+      expect(itemCountLabel(1), '1 item');
+    });
+  });
 }

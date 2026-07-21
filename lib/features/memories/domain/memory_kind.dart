@@ -16,3 +16,27 @@ enum MemoryKind {
   /// A clustered, user-named person over time.
   person,
 }
+
+/// The persisted [MemoryKind.name] back to its enum value, or `null` if the
+/// string names no kind this build knows.
+///
+/// Nullable rather than throwing: `memories.kind` is on-disk data, and a row
+/// written by a newer build must degrade to "no kicker" instead of taking down
+/// the Library.
+MemoryKind? memoryKindFromName(String name) {
+  for (final kind in MemoryKind.values) {
+    if (kind.name == name) return kind;
+  }
+  return null;
+}
+
+extension MemoryKindLabel on MemoryKind {
+  /// Display text for the memory card's kicker — what *sort* of memory this is,
+  /// above the title that says which one.
+  String get label => switch (this) {
+    MemoryKind.onThisDay => 'On this day',
+    MemoryKind.trip => 'Trip',
+    MemoryKind.theme => 'Theme',
+    MemoryKind.person => 'Person',
+  };
+}

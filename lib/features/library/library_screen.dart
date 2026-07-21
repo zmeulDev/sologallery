@@ -2,45 +2,56 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/format/count_labels.dart';
+import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_space.dart';
+import '../../core/theme/app_text_styles.dart';
 import '../../services/indexing_service.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
-import '../../widgets/app_button.dart';
+import '../../widgets/asset_grid.dart';
 import '../../widgets/asset_hero_tag.dart';
 import '../../widgets/asset_thumbnail.dart';
+import '../../widgets/circle_icon_button.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/entrance_fade.dart';
 import '../../widgets/limited_access_banner.dart';
-import '../../widgets/month_section_header.dart';
+import '../../widgets/section_header.dart';
 import '../detail/photo_viewer_args.dart';
 import '../memories/widgets/memories_carousel.dart';
+import 'domain/library_filter.dart';
+import 'domain/library_timeline.dart';
+import 'domain/year_month.dart';
 import 'library_providers.dart';
+import 'widgets/library_filter_bar.dart';
+import 'widgets/year_header.dart';
 
-/// Home gallery: photos grouped by month, newest first, read from the
-/// `photo_asset` cache. Each month shows up to six previews and a "View all"
-/// control opening the full-month grid.
+/// Home gallery: photos grouped by time, newest first, read from the
+/// `photo_asset` cache. The filter bar sets how coarsely — every month, the
+/// last seven days, months under year heroes, or one section per year. Month
+/// and year sections show up to six previews and a "View all" control.
 class LibraryScreen extends ConsumerWidget {
   const LibraryScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final access = ref.watch(permissionProvider);
-    final months = ref.watch(libraryMonthCountsProvider);
-    final olderCount = ref.watch(olderCountProvider).value ?? 0;
-    // Until the first metadata sweep runs, an empty cache is "not loaded yet",
-    // not "no photos" — hold the spinner instead of flashing the empty state.
-    final cacheReady = ref.watch(libraryCacheReadyProvider).value ?? false;
+    final filter = ref.watch(libraryFilterProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Library'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_rounded),
-            tooltip: 'Settings',
-            onPressed: () => context.push('/settings'),
+          Padding(
+            padding: const EdgeInsets.only(right: AppSpace.s16),
+            child: Center(
+              child: CircleIconButton.surface(
+                icon: Icons.settings_rounded,
+                tooltip: 'Settings',
+                onPressed: () => context.push('/settings'),
+              ),
+            ),
           ),
         ],
       ),
@@ -51,27 +62,17 @@ class LibraryScreen extends ConsumerWidget {
               onSelectMore: () =>
                   ref.read(permissionProvider.notifier).presentLimited(),
             ),
+          const LibraryFilterBar(),
+          // Each filter owns its own query, and so its own loading and empty
+          // states — a shared `.when` would make the week wait on the month
+          // counts it never reads.
           Expanded(
-            child: months.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, st) => const EmptyState(
-                title: 'Couldn\'t load your photos',
-                detail: 'Something went wrong reading your library. Pull to try '
-                    'again.',
-              ),
-              data: (counts) {
-                if (counts.isEmpty && olderCount == 0) {
-                  return cacheReady
-                      ? const EmptyState(
-                          title: 'No photos yet',
-                          detail: 'Photos you take will appear here, grouped by '
-                              'month.',
-                        )
-                      : const Center(child: CircularProgressIndicator());
-                }
-                return _MonthList(counts: counts, olderCount: olderCount);
-              },
-            ),
+            child: switch (filter) {
+              LibraryFilter.thisWeek => const _ThisWeekGrid(),
+              LibraryFilter.year => const _YearList(),
+              LibraryFilter.all ||
+              LibraryFilter.months => _MonthTimeline(filter: filter),
+            },
           ),
         ],
       ),
@@ -79,34 +80,184 @@ class LibraryScreen extends ConsumerWidget {
   }
 }
 
+/// The month-grouped timeline, shown by both [LibraryFilter.all] and
+/// [LibraryFilter.months] — they share every query and differ only in whether
+/// years are announced and the memories carousel rides on top.
+class _MonthTimeline extends ConsumerWidget {
+  const _MonthTimeline({required this.filter});
+
+  final LibraryFilter filter;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final months = ref.watch(libraryMonthCountsProvider);
+    final olderCount = ref.watch(olderCountProvider).value ?? 0;
+    // Until the first metadata sweep runs, an empty cache is "not loaded yet",
+    // not "no photos" — hold the spinner instead of flashing the empty state.
+    final cacheReady = ref.watch(libraryCacheReadyProvider).value ?? false;
+
+    return months.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, st) => const EmptyState(
+        title: 'Couldn\'t load your photos',
+        detail:
+            'Something went wrong reading your library. Pull to try '
+            'again.',
+      ),
+      data: (counts) {
+        if (counts.isEmpty && olderCount == 0) {
+          return cacheReady
+              ? const EmptyState(
+                  title: 'No photos yet',
+                  detail:
+                      'Photos you take will appear here, grouped by '
+                      'month.',
+                )
+              : const Center(child: CircularProgressIndicator());
+        }
+        return _MonthList(
+          counts: counts,
+          olderCount: olderCount,
+          filter: filter,
+        );
+      },
+    );
+  }
+}
+
 class _MonthList extends StatelessWidget {
-  const _MonthList({required this.counts, required this.olderCount});
+  const _MonthList({
+    required this.counts,
+    required this.olderCount,
+    required this.filter,
+  });
 
   final List<MonthCount> counts;
   final int olderCount;
+  final LibraryFilter filter;
 
   @override
   Widget build(BuildContext context) {
-    final showOlder = olderCount > 0;
-    // Index 0 is the memories carousel; month sections shift down by one. The
-    // carousel collapses to zero height when there are no memories, so no
-    // special-casing is needed here.
+    final rows = buildTimelineRows(
+      counts: counts,
+      olderCount: olderCount,
+      filter: filter,
+    );
     return ListView.builder(
       padding: const EdgeInsets.only(top: AppSpace.s4, bottom: AppSpace.s24),
-      itemCount: 1 + counts.length + (showOlder ? 1 : 0),
+      itemCount: rows.length,
       itemBuilder: (context, i) {
-        if (i == 0) return const MemoriesCarousel();
-        final index = i - 1;
+        final row = rows[i];
+        final child = switch (row) {
+          MemoriesRow() => const MemoriesCarousel(),
+          YearRow(:final year, :final count) => YearHeader(
+            year: year,
+            count: count,
+          ),
+          MonthRow(:final month, :final count) => _MonthSection(
+            month: month,
+            count: count,
+          ),
+          OlderRow(:final count) => _OlderSection(count: count),
+        };
         // Each section plays its entrance once, the first time it scrolls
         // into view and gets built — index staggers the start, not the
-        // scroll position, so a fast scroll never leaves a backlog.
-        return EntranceFade(
-          index: index,
-          child: index >= counts.length
-              ? _OlderSection(count: olderCount)
-              : _MonthSection(entry: counts[index]),
+        // scroll position, so a fast scroll never leaves a backlog. The
+        // carousel sits outside the timeline and outside its stagger; it
+        // collapses to zero height when there are no memories, so it needs no
+        // other special-casing.
+        return row is MemoriesRow
+            ? child
+            : EntranceFade(index: i, child: child);
+      },
+    );
+  }
+}
+
+/// One section per calendar year, six previews each.
+class _YearList extends ConsumerWidget {
+  const _YearList();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final years = ref.watch(libraryYearCountsProvider);
+    final cacheReady = ref.watch(libraryCacheReadyProvider).value ?? false;
+
+    return years.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, st) => const EmptyState.note('Couldn\'t load your photos.'),
+      data: (counts) {
+        if (counts.isEmpty) {
+          return cacheReady
+              ? const EmptyState(
+                  title: 'No photos yet',
+                  detail: 'Photos you take will appear here, grouped by year.',
+                )
+              : const Center(child: CircularProgressIndicator());
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.only(
+            top: AppSpace.s4,
+            bottom: AppSpace.s24,
+          ),
+          itemCount: counts.length,
+          itemBuilder: (context, i) => EntranceFade(
+            index: i,
+            child: _YearSection(entry: counts[i]),
+          ),
         );
       },
+    );
+  }
+}
+
+/// One calendar-year section: the year hero over its six newest photos.
+class _YearSection extends ConsumerWidget {
+  const _YearSection({required this.entry});
+
+  final YearCount entry;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final previews = ref.watch(yearPreviewsProvider(entry.year)).value;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        YearHeader(year: entry.year, count: entry.count),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpace.s8,
+            AppSpace.s4,
+            AppSpace.s8,
+            AppSpace.s20,
+          ),
+          child: _PreviewGrid(assetIds: previews ?? const []),
+        ),
+      ],
+    );
+  }
+}
+
+/// The rolling seven-day window as one flat scrolling grid — no sections,
+/// because a week doesn't need dividing.
+class _ThisWeekGrid extends ConsumerWidget {
+  const _ThisWeekGrid();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final assets = ref.watch(thisWeekAssetsProvider);
+    return assets.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, st) => const EmptyState.note('Couldn\'t load this week.'),
+      data: (items) => items.isEmpty
+          ? const EmptyState.note('No photos in the last 7 days.')
+          : AssetGrid(
+              items: items,
+              // The window is bounded by time, not paged — everything in it is
+              // already here.
+              hasMore: false,
+              onLoadMore: () {},
+            ),
     );
   }
 }
@@ -114,18 +265,19 @@ class _MonthList extends StatelessWidget {
 /// One calendar-month section; its previews load lazily from the cache as the
 /// section scrolls into view.
 class _MonthSection extends ConsumerWidget {
-  const _MonthSection({required this.entry});
+  const _MonthSection({required this.month, required this.count});
 
-  final MonthCount entry;
+  final YearMonth month;
+  final int count;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final previews = ref.watch(monthPreviewsProvider(entry.month)).value;
+    final previews = ref.watch(monthPreviewsProvider(month)).value;
     return _LibrarySection(
-      label: entry.month.label,
-      count: entry.count,
+      label: month.label,
+      count: count,
       previewAssetIds: previews ?? const [],
-      onViewAll: () => context.push('/month/${entry.month.key}'),
+      onViewAll: () => context.push('/month/${month.key}'),
     );
   }
 }
@@ -167,20 +319,23 @@ class _LibrarySection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
+        AppSpace.s8,
         AppSpace.s16,
-        AppSpace.s16,
-        AppSpace.s16,
+        AppSpace.s8,
         AppSpace.s20,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          MonthSectionHeader(
-            label: label,
-            trailing: AppButton.quiet(
-              label: 'View all $count',
-              chevron: true,
-              onPressed: onViewAll,
+          Padding(
+            // The header keeps the standard screen inset; only the grid below
+            // runs wider, so the label still lines up with every other screen's
+            // left edge.
+            padding: const EdgeInsets.symmetric(horizontal: AppSpace.s8),
+            child: SectionHeader(
+              label: label,
+              trailing: _SectionCount(count: count),
+              onTap: onViewAll,
             ),
           ),
           const SizedBox(height: 10),
@@ -191,8 +346,27 @@ class _LibrarySection extends StatelessWidget {
   }
 }
 
+/// The quiet tally at the end of a section header. Says "items", not "photos" —
+/// a calendar month mixes stills and video, and the grid below shows both.
+class _SectionCount extends StatelessWidget {
+  const _SectionCount({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppColors>()!;
+    final styles = Theme.of(context).extension<AppTextStyles>()!;
+    return Text(
+      itemCountLabel(count),
+      style: styles.caption.copyWith(color: colors.textSecondary),
+    );
+  }
+}
+
 /// Up to six previews in a three-column grid. Tapping a cell opens the detail
-/// viewer, swiping across this month's previews; "View all" opens the full month.
+/// viewer, swiping across this month's previews; the section header opens the
+/// full month.
 class _PreviewGrid extends StatelessWidget {
   const _PreviewGrid({required this.assetIds});
 
@@ -202,10 +376,11 @@ class _PreviewGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return GridView.count(
       crossAxisCount: 3,
-      // Normalized from 3 to the standard photo-grid gutter (approved Phase-1e
-      // decision) so preview and full grids share one rhythm.
-      mainAxisSpacing: AppSpace.s2,
-      crossAxisSpacing: AppSpace.s2,
+      // Wider than the edge-to-edge grids' `s2`: a preview grid is inset from
+      // the screen edge, so its cells need a gutter that reads as deliberate
+      // next to that margin rather than as a seam.
+      mainAxisSpacing: AppSpace.s4,
+      crossAxisSpacing: AppSpace.s4,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       children: [
@@ -219,7 +394,11 @@ class _PreviewGrid extends StatelessWidget {
               borderRadius: AppRadius.br4,
               child: Hero(
                 tag: assetHeroTag(id),
-                child: AssetThumbnail(assetId: id, size: 300, showVideoBadge: true),
+                child: AssetThumbnail(
+                  assetId: id,
+                  size: 300,
+                  showVideoBadge: true,
+                ),
               ),
             ),
           ),

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sologallery/core/database/app_database.dart';
+import 'package:sologallery/core/database/daos/index_dao.dart'
+    show FavoriteAsset;
 import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/saved/saved_providers.dart';
@@ -29,8 +31,9 @@ void main() {
       ProviderScope(
         overrides: [
           databaseProvider.overrideWithValue(db),
-          photoLibraryServiceProvider
-              .overrideWithValue(FakePhotoLibraryService()),
+          photoLibraryServiceProvider.overrideWithValue(
+            FakePhotoLibraryService(),
+          ),
         ],
         child: MaterialApp(theme: AppTheme.light, home: const SavedScreen()),
       ),
@@ -59,14 +62,103 @@ void main() {
       ProviderScope(
         overrides: [
           databaseProvider.overrideWithValue(db),
-          photoLibraryServiceProvider
-              .overrideWithValue(FakePhotoLibraryService()),
+          photoLibraryServiceProvider.overrideWithValue(
+            FakePhotoLibraryService(),
+          ),
         ],
         child: MaterialApp(theme: AppTheme.light, home: const SavedScreen()),
       ),
     );
     await tester.pump();
     expect(find.byType(AssetThumbnail), findsNWidgets(2));
+    // A heart badge marks every favorite cell, and the bar shows the tally.
+    expect(find.byIcon(Icons.favorite_rounded), findsNWidgets(2));
+    expect(find.text('2 favorites'), findsOneWidget);
+    await teardownTree(tester);
+  });
+
+  testWidgets('lays favorites out in two columns keeping their shapes', (
+    tester,
+  ) async {
+    // A landscape and a portrait: the grid must give them different heights,
+    // and put them side by side rather than stacked.
+    await db.indexDao.upsertMetadata([
+      (
+        id: 'wide',
+        createdAt: DateTime(2024),
+        isVideo: false,
+        width: 4000,
+        height: 3000,
+        isDated: true,
+      ),
+      (
+        id: 'tall',
+        createdAt: DateTime(2024),
+        isVideo: false,
+        width: 3000,
+        height: 4000,
+        isDated: true,
+      ),
+    ]);
+    await db.favoritesDao.add('wide', at: DateTime(2024, 1, 2));
+    await db.favoritesDao.add('tall', at: DateTime(2024, 1, 1));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          photoLibraryServiceProvider.overrideWithValue(
+            FakePhotoLibraryService(),
+          ),
+        ],
+        child: MaterialApp(theme: AppTheme.light, home: const SavedScreen()),
+      ),
+    );
+    await tester.pump();
+
+    final cells = tester.widgetList<AssetThumbnail>(
+      find.byType(AssetThumbnail),
+    );
+    expect(cells.length, 2);
+    final rects = find
+        .byType(AssetThumbnail)
+        .evaluate()
+        .map((e) => tester.getRect(find.byWidget(e.widget)))
+        .toList();
+    // Side by side: same top edge, different left edges.
+    expect(rects[0].top, rects[1].top);
+    expect(rects[0].left, isNot(rects[1].left));
+    // Equal widths, unequal heights — a masonry grid, not a square one.
+    expect(rects[0].width, closeTo(rects[1].width, 0.01));
+    expect(rects[0].height, isNot(closeTo(rects[1].height, 1)));
+    await teardownTree(tester);
+  });
+
+  testWidgets('a single favorite reads in the singular', (tester) async {
+    await db.indexDao.upsertMetadata([
+      (
+        id: 'a1',
+        createdAt: DateTime(2024),
+        isVideo: false,
+        width: 1,
+        height: 1,
+        isDated: true,
+      ),
+    ]);
+    await db.favoritesDao.add('a1', at: DateTime(2024, 1, 2));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          photoLibraryServiceProvider.overrideWithValue(
+            FakePhotoLibraryService(),
+          ),
+        ],
+        child: MaterialApp(theme: AppTheme.light, home: const SavedScreen()),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('1 favorite'), findsOneWidget);
     await teardownTree(tester);
   });
 
@@ -75,12 +167,16 @@ void main() {
       ProviderScope(
         overrides: [
           databaseProvider.overrideWithValue(db),
-          photoLibraryServiceProvider
-              .overrideWithValue(FakePhotoLibraryService()),
+          photoLibraryServiceProvider.overrideWithValue(
+            FakePhotoLibraryService(),
+          ),
           // Inject the error AsyncValue directly — deterministic, and avoids the
           // fake-async stream-delivery quirk in widget tests.
           savedFavoritesProvider.overrideWithValue(
-            AsyncError<List<Favorite>>(Exception('boom'), StackTrace.empty),
+            AsyncError<List<FavoriteAsset>>(
+              Exception('boom'),
+              StackTrace.empty,
+            ),
           ),
         ],
         child: MaterialApp(theme: AppTheme.light, home: const SavedScreen()),

@@ -9,6 +9,7 @@ import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../widgets/asset_thumbnail.dart';
+import '../../widgets/precache_adjacent.dart';
 import 'memories_providers.dart';
 import 'memory_hero_tag.dart';
 import 'widgets/ken_burns_photo.dart';
@@ -18,8 +19,8 @@ import 'widgets/ken_burns_photo.dart';
 ///
 /// Structurally the detail viewer minus its chrome plus a clock — it reuses
 /// `PhotoPage`, so image bytes stay screen-capped and originals are never
-/// decoded. Hold anywhere to pause, swipe to move by hand, tap the close
-/// button to leave.
+/// decoded. Hold anywhere to pause, tap to advance by hand, swipe to move in
+/// either direction, tap the close button to leave.
 class MemoryPlayerScreen extends ConsumerStatefulWidget {
   const MemoryPlayerScreen({super.key, required this.memoryId});
 
@@ -62,6 +63,13 @@ class _MemoryPlayerScreenState extends ConsumerState<MemoryPlayerScreen> {
     _timer = Timer(MemoryPlayerScreen.pageDuration, _advance);
   }
 
+  /// Advances one page, or leaves the story if this was the last one.
+  ///
+  /// Shared by the clock and by tap-to-advance, so a tap lands on exactly the
+  /// same end-of-story behaviour as running out of time. There's no separate
+  /// timer reset here: moving the page fires [_onPageChanged], which restarts
+  /// the clock — so a tap gives the next photo its full turn on screen rather
+  /// than inheriting the remainder of this one's.
   void _advance() {
     if (!mounted) return;
     if (_index >= _pages - 1) {
@@ -114,8 +122,9 @@ class _MemoryPlayerScreenState extends ConsumerState<MemoryPlayerScreen> {
             _pages = pages;
             // The first timer can only start once we know how many pages there
             // are; scheduling it during build would fight the frame.
-            WidgetsBinding.instance
-                .addPostFrameCallback((_) => _restartTimer());
+            WidgetsBinding.instance.addPostFrameCallback(
+              (_) => _restartTimer(),
+            );
           }
 
           return Stack(
@@ -123,6 +132,10 @@ class _MemoryPlayerScreenState extends ConsumerState<MemoryPlayerScreen> {
               Positioned.fill(
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
+                  // Tap and long-press coexist: the press-down pauses
+                  // immediately, and a quick release cancels the long press
+                  // (un-pausing) before the tap advances.
+                  onTap: _advance,
                   onLongPressDown: (_) => _setHeld(true),
                   onLongPressUp: () => _setHeld(false),
                   onLongPressCancel: () => _setHeld(false),
@@ -147,6 +160,13 @@ class _MemoryPlayerScreenState extends ConsumerState<MemoryPlayerScreen> {
                           ),
                   ),
                 ),
+              ),
+              // Page 0 is the title card, so the photo under the cursor is
+              // _index - 1 — and on the title card itself that's -1, which
+              // warms the opening photo while the title is still up.
+              PrecacheAdjacent(
+                assetIds: [for (final a in list) a.id],
+                index: _index - 1,
               ),
               _Progress(pages: pages, index: _index, paused: _held),
               const _CloseButton(),
@@ -264,14 +284,17 @@ class _TitleCard extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Text(
                     sub.toUpperCase(),
-                    style: text.sectionLabel
-                        .copyWith(color: AppOverMedia.glyphSoft),
+                    style: text.sectionLabel.copyWith(
+                      color: AppOverMedia.glyphSoft,
+                    ),
                   ),
                 ),
               Text(
                 title,
-                style: text.pageTitle
-                    .copyWith(color: AppOverMedia.glyph, height: 1.15),
+                style: text.pageTitle.copyWith(
+                  color: AppOverMedia.glyph,
+                  height: 1.15,
+                ),
               ),
               const SizedBox(height: AppSpace.s12),
               Text(
@@ -309,11 +332,11 @@ class _Stage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Stack(
-        children: [
-          Positioned.fill(child: Center(child: child)),
-          const _CloseButton(),
-        ],
-      );
+    children: [
+      Positioned.fill(child: Center(child: child)),
+      const _CloseButton(),
+    ],
+  );
 }
 
 class _Spinner extends StatelessWidget {
@@ -321,13 +344,13 @@ class _Spinner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const SizedBox(
-        width: 26,
-        height: 26,
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          valueColor: AlwaysStoppedAnimation(AppOverMedia.glyphDim),
-        ),
-      );
+    width: 26,
+    height: 26,
+    child: CircularProgressIndicator(
+      strokeWidth: 2,
+      valueColor: AlwaysStoppedAnimation(AppOverMedia.glyphDim),
+    ),
+  );
 }
 
 class _Message extends StatelessWidget {

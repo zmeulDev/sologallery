@@ -26,7 +26,21 @@
       "Bash(sqlite3 p.sqlite \"SELECT COUNT\\(*\\) FROM face_embeddings WHERE left<0 OR top<0 OR right>1.0001 OR bottom>1.0001;\")",
       "Bash(sqlite3 p.sqlite \"SELECT ROUND\\(MIN\\(MIN\\(right-left, bottom-top\\)\\),4\\) FROM face_embeddings;\")",
       "Bash(sqlite3 -header -column p.sqlite \"SELECT cnt, COUNT\\(*\\) persons FROM \\(SELECT person_id, COUNT\\(*\\) cnt FROM face_embeddings GROUP BY person_id\\) GROUP BY cnt ORDER BY cnt;\")",
-      "Bash(sqlite3 p.sqlite \"SELECT COUNT\\(*\\) FROM persons p WHERE EXISTS \\(SELECT 1 FROM face_embeddings f WHERE f.person_id=p.id AND f.asset_id=p.cover_asset_id\\);\")"
+      "Bash(sqlite3 p.sqlite \"SELECT COUNT\\(*\\) FROM persons p WHERE EXISTS \\(SELECT 1 FROM face_embeddings f WHERE f.person_id=p.id AND f.asset_id=p.cover_asset_id\\);\")",
+      "mcp__ide__getDiagnostics",
+      "Bash(perl -pi -e 's/month_section_header\\\\.dart/section_header.dart/g; s/\\\\bMonthSectionHeader\\\\b/SectionHeader/g' '$f')",
+      "Bash(xargs perl -pi -e 's/month_section_header\\\\.dart/section_header.dart/g; s/\\\\bMonthSectionHeader\\\\b/SectionHeader/g')",
+      "Bash(git mv *)",
+      "Bash(perl -pi -e \"s/fileName: 'month_section_header'/fileName: 'section_header'/\" test/widgets/design_goldens_test.dart)",
+      "Bash(perl -pi -e 's/\\\\bchild: _Card\\\\\\(\\\\n/child: AppCard.divided\\(/g' lib/features/settings/settings_screen.dart)",
+      "Bash(dart format *)",
+      "Bash(perl -ni -e \"print unless /import '..\\\\/..\\\\/core\\\\/theme\\\\/app_radius.dart';/\" lib/features/settings/settings_screen.dart)",
+      "Bash(perl -ni -e \"print unless m{^import 'package:sologallery/core/theme/app_colors.dart';}\" test/widgets/circle_icon_button_test.dart)",
+      "Bash(perl -ni -e \"print unless m{^import 'package:sologallery/core/theme/app_radius.dart';}\" test/widgets/app_card_test.dart)",
+      "Bash(perl -pi -e \"s{^import 'package:sologallery/services/photo_library_service.dart';}{import 'package:sologallery/services/permission_provider.dart';}\" test/widgets/people_strip_test.dart)",
+      "Bash(perl -pi -e \"s/find\\\\.text\\\\\\('FOLDERS'\\\\\\)/find.text\\('DEVICE FOLDERS'\\)/g\" test/features/albums/albums_screen_test.dart)",
+      "Bash(grep '\\\\.dart$' /private/tmp/claude-501/-Users-zml-m4-Dev-sologallery/66c6b078-115b-4432-b8bb-bf8b2f351467/scratchpad/revert.txt)",
+      "Bash(xargs git checkout --)"
     ]
   }
 }

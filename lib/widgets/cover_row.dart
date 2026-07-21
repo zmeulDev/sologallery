@@ -16,6 +16,7 @@ class CoverRow extends StatelessWidget {
     required this.name,
     this.count,
     this.fallbackIcon,
+    this.showChevron = false,
     required this.onTap,
   });
 
@@ -30,6 +31,11 @@ class CoverRow extends StatelessWidget {
 
   /// Optional glyph centered on the placeholder tile when there is no cover.
   final IconData? fallbackIcon;
+
+  /// Appends a trailing chevron. On for rows that stand alone in a card (device
+  /// folders), where nothing else signals the row is a destination; off in a
+  /// dense divided list, where a chevron per row is just noise.
+  final bool showChevron;
 
   /// Null disables the row (ink and taps off).
   final VoidCallback? onTap;
@@ -81,6 +87,14 @@ class CoverRow extends StatelessWidget {
               Text(
                 photoCountLabel(n),
                 style: styles.caption.copyWith(color: colors.textSecondary),
+              ),
+            ],
+            if (showChevron) ...[
+              const SizedBox(width: 2),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: colors.textMuted,
               ),
             ],
           ],

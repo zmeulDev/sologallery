@@ -153,16 +153,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/photo/:id',
         parentNavigatorKey: _rootNavigatorKey,
-        pageBuilder: (context, state) => fadeThroughPage(
+        pageBuilder: (context, state) => heroMediaPage(
           context: context,
           key: state.pageKey,
-          // The Hero flight carries the visual weight; give it more room to
-          // travel than a plain screen swap.
-          base: AppMotion.long,
+          // The Hero flight is the whole animation — an opaque page with no
+          // fade/scale, so the lighter shell never bleeds around the photo.
           child: PhotoDetailScreen(
             // `extra` carries the swipe sequence; a deep link / restore (no
             // extra) falls back to a single-asset viewer built from the path id.
-            args: state.extra as PhotoViewerArgs? ??
+            args:
+                state.extra as PhotoViewerArgs? ??
                 PhotoViewerArgs([state.pathParameters['id']!], 0),
           ),
         ),
@@ -175,17 +175,33 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => fadeThroughPage(
           context: context,
           key: state.pageKey,
-          // The title card's cover Hero-flies from its carousel card; give
-          // it the same room to travel as the photo detail route.
+          // Stays on the fade (not the photo route's Hero-only page): the title
+          // card's cover Hero lives behind an async `assets.when` load, so it
+          // isn't in the tree when the flight starts — an opaque, un-faded page
+          // would leave it a black frame. The fade covers the load, and the
+          // bright cover hides the slight edge bleed the photo route removed.
           base: AppMotion.long,
           child: MemoryPlayerScreen(
             memoryId: int.parse(state.pathParameters['id']!),
           ),
         ),
       ),
-      StatefulShellRoute.indexedStack(
+      StatefulShellRoute(
         builder: (context, state, navigationShell) =>
             AppShell(navigationShell: navigationShell),
+        // Same indexed-stack layout as the `.indexedStack` constructor, but each
+        // branch is wrapped in `HeroMode` so only the visible tab exposes its
+        // asset Heroes. The detail route is pushed on the *root* navigator, so
+        // its Hero flight scans the whole shell subtree — with every built
+        // branch live, a photo that appears in two tabs (a favorite shown in
+        // both Library and Saved) would present the same `asset-<id>` tag twice
+        // and throw "multiple heroes share the same tag". Disabling heroes in
+        // the offstage branches leaves exactly one per flight.
+        navigatorContainerBuilder: (context, navigationShell, children) =>
+            _BranchContainer(
+              navigationShell: navigationShell,
+              children: children,
+            ),
         branches: [
           StatefulShellBranch(
             routes: [
@@ -224,6 +240,34 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+/// The shell's branch host: an [IndexedStack] (so every visited branch keeps
+/// its state and scroll position) with each branch gated by [HeroMode] so only
+/// the current tab participates in Hero flights. Mirrors go_router's built-in
+/// `.indexedStack` container, adding the HeroMode gate — see the
+/// `navigatorContainerBuilder` note above.
+class _BranchContainer extends StatelessWidget {
+  const _BranchContainer({
+    required this.navigationShell,
+    required this.children,
+  });
+
+  final StatefulNavigationShell navigationShell;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = navigationShell.currentIndex;
+    return IndexedStack(
+      index: current,
+      sizing: StackFit.expand,
+      children: [
+        for (var i = 0; i < children.length; i++)
+          HeroMode(enabled: i == current, child: children[i]),
+      ],
+    );
+  }
+}
 
 /// Shown when `/album/:id` carries a non-integer id (a malformed deep link).
 class _InvalidAlbum extends StatelessWidget {
