@@ -72,7 +72,7 @@ class AppDatabase extends _$AppDatabase {
       : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -102,7 +102,15 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 3) {
             await m.createTable(photoTexts);
+          }
+          // persons arrives at v3 but gains merged_into at v8, so it needs the
+          // same `else if` guard as photo_assets above: createTable builds the
+          // *current* shape, so a from<3 run already has merged_into and must
+          // not then run the v8 step (which would fail on a duplicate column).
+          if (from < 3) {
             await m.createTable(persons);
+          } else if (from < 8) {
+            await m.addColumn(persons, persons.mergedInto);
           }
           // face_embedding arrives at v3 but its box columns change at v7, so
           // it needs the `else if` guard: createTable builds the *current*

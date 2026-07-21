@@ -19,7 +19,11 @@ void main() {
   setUp(() => db = AppDatabase(NativeDatabase.memory()));
   tearDown(() async => db.close());
 
-  Future<void> pump(WidgetTester tester, List<PersonSummary> people) {
+  Future<void> pump(
+    WidgetTester tester,
+    List<PersonSummary> people, {
+    double textScale = 1,
+  }) {
     return tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -30,7 +34,10 @@ void main() {
         ],
         child: MaterialApp(
           theme: AppTheme.light,
-          home: Scaffold(body: PeopleStrip(people: people)),
+          home: MediaQuery(
+            data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+            child: Scaffold(body: PeopleStrip(people: people)),
+          ),
         ),
       ),
     );
@@ -72,23 +79,6 @@ void main() {
     expect(find.text('7'), findsNothing);
   });
 
-  testWidgets('reserves no caption height when nobody is named', (
-    tester,
-  ) async {
-    await pump(tester, [person(1, null), person(2, null)]);
-    await tester.pump();
-    final unnamedHeight = tester.getSize(find.byType(ListView)).height;
-
-    await pump(tester, [person(1, 'Ada'), person(2, null)]);
-    await tester.pump();
-    final mixedHeight = tester.getSize(find.byType(ListView)).height;
-
-    // One named person is enough to grow the strip; none leaves it at the bare
-    // avatar diameter, so a caption-less row has no dead band under it.
-    expect(unnamedHeight, 72);
-    expect(mixedHeight, greaterThan(unnamedHeight));
-  });
-
   testWidgets('a long name is clipped, never overflowing the avatar column', (
     tester,
   ) async {
@@ -100,5 +90,34 @@ void main() {
     );
     expect(text.maxLines, 1);
     expect(text.overflow, TextOverflow.ellipsis);
+  });
+
+  // Names live inside a fixed-size tile rather than on a caption line beneath
+  // it, so the row's height no longer depends on font metrics or text scale.
+  // The previous shape reserved `fontSize * 1.4` for a caption band and
+  // overflowed by 0.29px on a device whose font ran fractionally taller; this
+  // asserts the class of bug is gone rather than merely re-tuned.
+  for (final scale in const [1.0, 1.15, 1.6, 2.0]) {
+    testWidgets('row height is independent of names and text scale '
+        '(textScale $scale)', (tester) async {
+      await pump(tester, [person(1, null), person(2, null)], textScale: scale);
+      await tester.pump();
+      final bare = tester.getSize(find.byType(ListView)).height;
+
+      await pump(tester, [person(1, 'Ada'), person(2, null)], textScale: scale);
+      await tester.pump();
+      final named = tester.getSize(find.byType(ListView)).height;
+
+      expect(named, bare);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('a named tile carries the name and count over the face',
+      (tester) async {
+    await pump(tester, [person(1, 'Ada')]);
+    await tester.pump();
+    expect(find.text('Ada'), findsOneWidget);
+    expect(find.text('3 photos'), findsOneWidget);
   });
 }

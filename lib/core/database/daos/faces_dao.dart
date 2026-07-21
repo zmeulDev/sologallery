@@ -203,21 +203,70 @@ class FacesDao extends DatabaseAccessor<AppDatabase> with _$FacesDaoMixin {
     });
   }
 
-  /// People with at least one face, most-photographed first.
+  // --- User merges ----------------------------------------------------------
+
+  /// The person a row resolves to: itself, or whoever it was merged into.
+  ///
+  /// A single `COALESCE` is enough because [mergePersons] keeps `merged_into`
+  /// pointing straight at a root, so chains are never deeper than one hop and
+  /// cycles cannot form.
+  Expression<int> get _effectivePersonId =>
+      coalesce([persons.mergedInto, persons.id]);
+
+  /// Declares [from] to be the same person as [into] — see [Persons.mergedInto]
+  /// for why this is a redirect rather than a move of faces.
+  ///
+  /// Normalizes as it writes: [into] is resolved to its root first, and anything
+  /// already pointing at [from] is re-pointed to that root. Merging a person
+  /// into itself (directly or through a chain) is a no-op, so the chain stays
+  /// one hop deep and acyclic and every read can resolve with one `COALESCE`.
+  Future<void> mergePersons({required int into, required int from}) async {
+    await transaction(() async {
+      final target = await (select(persons)..where((p) => p.id.equals(into)))
+          .getSingleOrNull();
+      if (target == null) return;
+      final root = target.mergedInto ?? target.id;
+      if (root == from) return; // would point a root at its own descendant
+      await (update(persons)..where((p) => p.id.equals(from)))
+          .write(PersonsCompanion(mergedInto: Value(root)));
+      await (update(persons)..where((p) => p.mergedInto.equals(from)))
+          .write(PersonsCompanion(mergedInto: Value(root)));
+    });
+  }
+
+  /// Undoes a merge: [id] becomes its own person again. Nothing points at [id]
+  /// while it is merged (the normalization above guarantees it), so this needs
+  /// no repair pass.
+  Future<void> unmergePerson(int id) {
+    return (update(persons)..where((p) => p.id.equals(id)))
+        .write(const PersonsCompanion(mergedInto: Value(null)));
+  }
+
+  /// The person rows the user merged into [id] — drives the "separate" action.
+  Future<List<Person>> mergedPeopleOf(int id) =>
+      (select(persons)..where((p) => p.mergedInto.equals(id))).get();
+
+  /// People with at least one face, most-photographed first. User-merged
+  /// clusters are folded into their survivor: the counts add up and the
+  /// absorbed rows never appear as entries of their own.
   Stream<List<PersonSummary>> watchPersonSummaries() {
     final count = faceEmbeddings.id.count();
+    // The row whose name and cover the entry shows, which is not necessarily
+    // the row the faces hang off once a merge is involved.
+    final survivor = alias(persons, 'survivor');
     final q = select(persons).join([
       innerJoin(faceEmbeddings, faceEmbeddings.personId.equalsExp(persons.id)),
+      innerJoin(survivor, survivor.id.equalsExp(_effectivePersonId)),
     ])
       ..addColumns([count])
-      ..groupBy([persons.id])
+      ..groupBy([survivor.id])
       ..orderBy([OrderingTerm.desc(count)]);
     return q.watch().map((rows) => [
           for (final r in rows)
             PersonSummary(
-              id: r.readTable(persons).id,
-              displayName: r.readTable(persons).displayName,
-              coverAssetId: r.readTable(persons).coverAssetId,
+              id: r.readTable(survivor).id,
+              displayName: r.readTable(survivor).displayName,
+              coverAssetId: r.readTable(survivor).coverAssetId,
               faceCount: r.read(count)!,
             ),
         ]);
@@ -228,15 +277,17 @@ class FacesDao extends DatabaseAccessor<AppDatabase> with _$FacesDaoMixin {
         .watchSingleOrNull();
   }
 
-  /// Distinct assets containing a face assigned to [personId], newest first.
+  /// Distinct assets containing a face that resolves to [personId], newest
+  /// first — including the faces of anyone merged into them.
   Future<List<AssetRef>> assetsForPerson(int personId) async {
     final q = select(faceEmbeddings).join([
+      innerJoin(persons, persons.id.equalsExp(faceEmbeddings.personId)),
       innerJoin(
         photoAssets,
         photoAssets.assetId.equalsExp(faceEmbeddings.assetId),
       ),
     ])
-      ..where(faceEmbeddings.personId.equals(personId))
+      ..where(_effectivePersonId.equals(personId))
       ..groupBy([photoAssets.assetId])
       ..orderBy([OrderingTerm.desc(photoAssets.createdAt)]);
     final rows = await q.get();

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/database/app_database.dart' show Person;
 import '../../widgets/app_dialog.dart';
 import '../../widgets/asset_grid.dart';
 import '../../widgets/empty_state.dart';
@@ -18,11 +19,20 @@ class PersonDetailScreen extends ConsumerWidget {
     final person = ref.watch(personProvider(personId)).value;
     final assets = ref.watch(personAssetsProvider(personId));
     final name = person?.displayName;
+    // Almost always empty, so the action only shows where it does something.
+    final merged =
+        ref.watch(mergedPeopleProvider(personId)).value ?? const <Person>[];
 
     return Scaffold(
       appBar: AppBar(
         title: Text(name ?? 'Person'),
         actions: [
+          if (merged.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.call_split_rounded),
+              tooltip: 'Separate people',
+              onPressed: () => _separate(context, ref, merged),
+            ),
           IconButton(
             icon: const Icon(Icons.edit_rounded),
             tooltip: 'Rename',
@@ -56,6 +66,28 @@ class PersonDetailScreen extends ConsumerWidget {
     );
     if (result != null) {
       await ref.read(peopleActionsProvider).rename(personId, result);
+    }
+  }
+
+  /// Undoes every merge into this person, putting the absorbed clusters back on
+  /// the People grid as entries of their own.
+  Future<void> _separate(
+    BuildContext context,
+    WidgetRef ref,
+    List<Person> merged,
+  ) async {
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: 'Separate people?',
+      message: merged.length == 1
+          ? 'These photos split back into two people.'
+          : 'These photos split back into ${merged.length + 1} people.',
+      confirmLabel: 'Separate',
+    );
+    if (!confirmed) return;
+    final actions = ref.read(peopleActionsProvider);
+    for (final other in merged) {
+      await actions.separate(other.id, from: personId);
     }
   }
 }

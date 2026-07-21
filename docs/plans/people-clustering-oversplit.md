@@ -8,17 +8,47 @@ index all 231 assets (not by calling the pipeline from a test):
 **130 "people" → 48**, faces 223 → 180, singletons 100 → 18, and the reporting
 user went from **6 entries to 2**.
 
-**He still appears twice** — 47 photos, and 10 more wearing sunglasses. A dog's
-nose (5 photos) and a plant (4) also still have their own entries. Confirmed by
-looking at the People screen, not inferred.
+He then still appeared twice — 47 photos, and 10 more wearing sunglasses —
+which **`docs/plans/people-merge-action.md` has since closed**: merging the two
+in the app gives one `Zml, 57 photos`, and it survives a global re-cluster.
 
-Next step, in order:
-1. Decide on `clusterMergeThreshold` 0.45 → 0.40, which merges the sunglasses
-   cluster (see the sweep below). Blocked only on repeating the Phase 1 visual
-   merge inspection against the *current* gated embeddings — the bleed metric
-   used so far cannot see two non-tracked people fusing with each other.
-2. Phase 3 (landmark-aligned, margined crop) for the dog/plant detections and as
-   the precondition for re-testing `FaceDetectorMode.accurate`.
+Still open: a dog's nose (5 photos) and a plant (4) have their own entries.
+Confirmed by looking at the People screen, not inferred. Those need Phase 3
+(better crops, then re-test `accurate` mode) or Phase 4 (hide small clusters).
+
+Next step: see "Threshold 0.40 rejected" below — the residual split cannot be
+closed by the threshold, so it is either a manual merge action in the People UI
+or Phase 3 (landmark-aligned crop). Decision pending.
+
+#### Threshold 0.40 rejected — decided against the live embeddings
+
+The user renamed the two clusters on device (`Zml`, 47 faces; `ZmlG`, 10 faces,
+him wearing sunglasses), which gives exact ground truth from the DB instead of
+IoU matching. Re-clustering the live 180 embeddings:
+
+- 0.45 → 48 clusters, 18 singletons; `Zml` and `ZmlG` separate.
+- 0.40 → 43 clusters, 15 singletons; `Zml` + `ZmlG` merge into one 59-face
+  cluster — the wanted outcome.
+
+But 0.40 adds exactly four merges, and **three of them are wrong** (each rendered
+as a contact sheet and judged by eye):
+
+| merge | contents | verdict |
+|---|---|---|
+| 0 | Zml 47 + ZmlG 10 + 2 others | wanted, but one of the 2 extras is a different man |
+| 1 | 4 + 2 | **wrong** — a fair-haired woman fused with a dark-haired one |
+| 2 | 3 + 1 | dubious — the group of 3 already looks like two people |
+| 3 | 1 + 1 | **wrong** — two different women |
+
+So `clusterMergeThreshold` stays **0.45**. This reproduces the Phase 1 finding on
+a completely different embedding set, which is good evidence it is a property of
+this pipeline rather than of one dataset: **there is no global threshold that
+reunites a person across an appearance change (glasses) without fusing distinct
+people.** Fixing it needs better embeddings (Phase 3) or a user-driven merge.
+
+If a manual merge action is built, note it must survive `_maybeGlobalRecluster`,
+which reassigns every face from scratch — a user's merge has to be persisted as
+an override that `planClusters` respects, not just a one-off row edit.
 
 ⚠️ **A verification-metric trap, worth reading before trusting any number here.**
 Phase 2's success was measured as "how many of his 48 reference faces cohere into
