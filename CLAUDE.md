@@ -563,6 +563,36 @@ Short form; full postmortems in `docs/postmortems/`.
   `PhotoLibraryService._androidWindow`/`_darwinFilter`). Host fakes can't catch
   this — `integration_test/library_month_grouping_test.dart` asserts the axes
   agree on-device.
+- **EXIF GPS needs `ACCESS_MEDIA_LOCATION` *and* an opted-in permission
+  request, or the Location chip is silently always empty.** Android 10+ strips
+  location out of the photo bytes handed to an app that lacks it, so
+  `AssetEntity.latlngAsync()` returns nothing for *every* photo — no error, no
+  log, just a chip that never appears. Two things are required and neither is
+  the default: the permission in `AndroidManifest.xml`, and
+  `PermissionRequestOption(androidPermission: AndroidPermission(…,
+  mediaLocation: true))` on **both** `getPermissionState` and
+  `requestPermissionExtend` — photo_manager skips the permission entirely when
+  either is missing (`PhotoLibraryService._permissionOption`). Note MediaStore's
+  own `latitude`/`longitude` columns read `NULL` on modern Android whatever you
+  do, so querying them is not a way to check this; `detail_actions_test`'s
+  coordinate case is. The fixture also needs a `DateTimeOriginal`: MediaStore
+  fills `DATE_TAKEN` from it, and without one a seeded asset is *undated* and
+  never appears in `libraryMetadataPage(dated: true)` at all.
+- **Patrol native selectors: use exact `text:`, never `textContains:`, for a
+  dialog button — and a "successful" tap step proves nothing.** Android's
+  delete-confirmation dialog is titled "Allow SoloGallery to delete this
+  photo?" over `Deny`/`Allow` buttons, so `Selector(textContains: 'Allow')`
+  matches the **title** (a non-clickable `TextView`) first. Patrol taps it,
+  reports the step ✅, and the dialog just stays up — the run then hangs
+  forever with an all-green step trace, which reads like a slow test rather
+  than a missed tap. Two corollaries: `PhotoManager.editor.deleteWithIds` goes
+  through `MediaStore.createDeleteRequest` on Android 11+, so **any test that
+  deletes an asset must be a `patrol` test** (a plain `integration_test` has
+  nothing to tap and hangs in teardown — the assertions themselves pass long
+  before, and the row still disappears because uninstall takes app-owned media
+  with it, so the cleanup *looks* like it worked). And `uiautomator dump`
+  returns nothing while patrol holds the UiAutomation connection, so to read a
+  stuck dialog you have to kill the run first — the dialog outlives it.
 - **On-device integration runs wipe the photo permission — grant it between
   install and run, one file at a time.** `flutter test integration_test/…`
   **uninstalls** the app when the run ends (`dumpsys package` afterwards reports

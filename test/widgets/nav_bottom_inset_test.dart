@@ -27,7 +27,7 @@ void main() {
 
     final grid = tester.widget<GridView>(find.byType(GridView));
     expect(grid.padding?.resolve(TextDirection.ltr).bottom,
-        AppSpace.s2 + inset);
+        AppSpace.s4 + inset);
   });
 
   testWidgets('with no inset it keeps the plain grid gutter', (tester) async {
@@ -45,6 +45,6 @@ void main() {
     await tester.pump();
 
     final grid = tester.widget<GridView>(find.byType(GridView));
-    expect(grid.padding?.resolve(TextDirection.ltr).bottom, AppSpace.s2);
+    expect(grid.padding?.resolve(TextDirection.ltr).bottom, AppSpace.s4);
   });
 }

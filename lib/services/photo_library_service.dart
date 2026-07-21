@@ -130,10 +130,24 @@ class PhotoLibraryService {
     }
   }
 
+  /// Read access to images and video, **including each photo's EXIF location**.
+  ///
+  /// `mediaLocation` is what makes `ACCESS_MEDIA_LOCATION` actually get
+  /// requested: photo_manager skips it when the option is false (or when the
+  /// manifest omits the permission), and without it Android 10+ strips GPS out
+  /// of the bytes it hands us, so `latlngAsync()` reports nothing for every
+  /// photo and the detail viewer's Location chip is permanently empty.
+  static const _permissionOption = PermissionRequestOption(
+    androidPermission: AndroidPermission(
+      type: RequestType.common,
+      mediaLocation: true,
+    ),
+  );
+
   /// Current access without prompting the user.
   Future<PhotoAccess> currentAccess() async {
     final state = await PhotoManager.getPermissionState(
-      requestOption: const PermissionRequestOption(),
+      requestOption: _permissionOption,
     );
     _log.fine('Current photo access (no prompt): $state');
     return accessFromState(state);
@@ -141,7 +155,9 @@ class PhotoLibraryService {
 
   /// Prompts for photo access (native dialog). Returns the resulting access.
   Future<PhotoAccess> requestAccess() async {
-    final state = await PhotoManager.requestPermissionExtend();
+    final state = await PhotoManager.requestPermissionExtend(
+      requestOption: _permissionOption,
+    );
     _log.info('Requested photo access -> $state');
     return accessFromState(state);
   }
@@ -268,8 +284,24 @@ class PhotoLibraryService {
         DateColumnWhereCondition(column: col, operator: '<', value: max),
       );
     }
-    return filter..addOrderBy(column: col, isAsc: false);
+    return filter..addOrderBy(column: _androidCaptureOrder, isAsc: false);
   }
+
+  /// The date axis to order Android queries by: capture date where there is
+  /// one, date-added otherwise — in seconds, since `datetaken` is milliseconds
+  /// and `date_added` seconds (`NULLIF` because undated assets carry `0`, not
+  /// only `NULL`).
+  ///
+  /// This is deliberately the same expression `photo_manager` reports as
+  /// [AssetEntity.createDateTime], which falls back to `DATE_ADDED` the same
+  /// way. Ordering by bare `datetaken` instead puts undated assets last (SQLite
+  /// sorts NULLs last on `DESC`) while they still *report* a recent date, so a
+  /// folder grid trails photos dated newer than everything above them —
+  /// `device_folders_test` catches exactly that. Windowed queries are
+  /// unaffected: their `WHERE` already excludes undated assets, and for a dated
+  /// asset the expression is just `datetaken` in seconds.
+  static const _androidCaptureOrder =
+      'COALESCE(NULLIF(datetaken, 0) / 1000, date_added)';
 
   /// Android filter for undated assets (`DATE_TAKEN` null/0 — their reported
   /// `createDateTime` falls back to `DATE_ADDED`), newest-added first.
@@ -354,9 +386,10 @@ class PhotoLibraryService {
   ///
   /// Uses the same capture-date filter split as the grids ([_darwinFilter] /
   /// [_androidWindow] with no window), so each folder's cover is its newest
-  /// asset. On Android the unbounded window is just an ordering — assets with no
-  /// `DATE_TAKEN` still belong to the folder and sort last (SQLite orders NULLs
-  /// last on `DESC`), so they never become the cover.
+  /// asset. On Android the unbounded window is just an ordering — assets with
+  /// no `DATE_TAKEN` still belong to the folder and sort by their `DATE_ADDED`
+  /// instead (see [_androidCaptureOrder]), the same date they report, so the
+  /// cover is the newest by the date the grid actually shows.
   Future<List<DeviceFolder>> deviceFolders() async {
     final paths = await PhotoManager.getAssetPathList(
       hasAll: false, // Skip the synthetic "Recent"/all-photos album.

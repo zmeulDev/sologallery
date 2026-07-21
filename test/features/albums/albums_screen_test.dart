@@ -49,6 +49,16 @@ void main() {
     );
   }
 
+  /// The sections scroll lazily, and one album card alone is ~450 logical px
+  /// tall — on the default 800x600 surface nothing past the albums grid is ever
+  /// built. Any test asserting on People or Folders below a grid needs room, and
+  /// a "…is hidden" assertion needs it doubly: off-screen and absent look the
+  /// same to `find`.
+  Future<void> tallSurface(WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 2000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  }
+
   // A TextField (create dialog) breaks pumpAndSettle; a Drift stream schedules a
   // dispose timer — settle both by disposing the tree and elapsing time.
   Future<void> teardownTree(WidgetTester tester) async {
@@ -128,6 +138,7 @@ void main() {
   });
 
   testWidgets('folders scroll below the albums grid', (tester) async {
+    await tallSurface(tester);
     final id = await db.albumsDao.createAlbum('Trip');
     await db.albumsDao.addEntry(id, 'a1');
     await pump(
@@ -168,6 +179,7 @@ void main() {
   testWidgets('People shows when faces are on and a cluster exists', (
     tester,
   ) async {
+    await tallSurface(tester);
     await db.albumsDao.createAlbum('Trip');
     await pump(
       tester,
@@ -181,6 +193,11 @@ void main() {
         ),
       ],
     );
+    // The faces flag and the cluster list arrive on two overridden streams, and
+    // riverpod batches the resulting rebuild on its scheduler (a real timer):
+    // the first pump elapses the timer, the second renders the rebuild it
+    // scheduled. A single bare pump leaves People off the screen entirely.
+    await tester.pump(const Duration(milliseconds: 10));
     await tester.pump();
 
     expect(find.text('PEOPLE'), findsOneWidget);
@@ -188,6 +205,7 @@ void main() {
   });
 
   testWidgets('People is hidden when face detection is off', (tester) async {
+    await tallSurface(tester);
     await db.albumsDao.createAlbum('Trip');
     // Clusters exist in the provider, but the faces flag gates them out.
     await pump(
@@ -202,6 +220,7 @@ void main() {
         ),
       ],
     );
+    await tester.pump(const Duration(milliseconds: 10));
     await tester.pump();
 
     expect(find.text('PEOPLE'), findsNothing);

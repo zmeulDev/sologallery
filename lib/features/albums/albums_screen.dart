@@ -189,7 +189,13 @@ class _Sections extends StatelessWidget {
           ),
           SliverToBoxAdapter(child: FolderList(folders: folders)),
         ],
-        const SliverToBoxAdapter(child: SizedBox(height: AppSpace.s16)),
+        // The nav capsule floats over the body, so the Scaffold reports its
+        // height as the bottom inset — the last folder row has to clear it.
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: AppSpace.s16 + MediaQuery.paddingOf(context).bottom,
+          ),
+        ),
       ],
     );
   }

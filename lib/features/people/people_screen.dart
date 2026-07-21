@@ -56,6 +56,15 @@ class _PeopleScreenState extends ConsumerState<PeopleScreen> {
     super.dispose();
   }
 
+  /// Opens a person. The route is *pushed*, so this screen is not disposed and
+  /// `dispose`'s cleanup never runs — the merge confirmation has to be taken
+  /// down here too, or an Undo for a merge made behind the detail screen rides
+  /// along on top of it.
+  void _open(int id) {
+    _messenger?.hideCurrentSnackBar();
+    context.push('/person/$id');
+  }
+
   void _toggle(int id) {
     setState(() {
       final next = {..._selected!};
@@ -121,6 +130,7 @@ class _PeopleScreenState extends ConsumerState<PeopleScreen> {
                   selecting: _selecting,
                   selected: chosen.contains(persons[i].id),
                   onToggle: () => _toggle(persons[i].id),
+                  onOpen: () => _open(persons[i].id),
                 ),
               ),
       ),
@@ -223,12 +233,14 @@ class _PersonCard extends StatelessWidget {
     required this.selecting,
     required this.selected,
     required this.onToggle,
+    required this.onOpen,
   });
 
   final PersonSummary person;
   final bool selecting;
   final bool selected;
   final VoidCallback onToggle;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -237,7 +249,7 @@ class _PersonCard extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final name = person.displayName ?? 'Unnamed';
     return Pressable(
-      onTap: selecting ? onToggle : () => context.push('/person/${person.id}'),
+      onTap: selecting ? onToggle : onOpen,
       child: Column(
         children: [
           // The avatar takes the space left after the two text lines and sizes

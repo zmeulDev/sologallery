@@ -283,7 +283,9 @@ void main() {
       // An Undo for a merge made here has no meaning once the screen is gone.
       await tester.tap(find.text('Zml'));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
+      // The snackbar's own exit animation runs alongside the push transition,
+      // so the banner outlives the 400ms route change by a couple of frames.
+      await tester.pump(const Duration(milliseconds: 600));
       expect(find.text('person 1'), findsOneWidget);
       expect(find.text('Merged'), findsNothing);
     });

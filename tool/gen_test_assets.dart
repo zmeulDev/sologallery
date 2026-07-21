@@ -59,8 +59,21 @@ img.Image _gradient(int w, int h) {
 }
 
 /// Tags [image] with a fixed location (Zurich) so EXIF-reading tests have a
-/// known expected value.
+/// known expected value, and with a capture date.
+///
+/// The date is not decoration: MediaStore fills `DATE_TAKEN` from
+/// `DateTimeOriginal`, and without one the seeded asset is *undated*, so it
+/// never appears in `libraryMetadataPage(dated: true)` — the page
+/// `detail_actions_test` scans for a geotagged asset. It is stamped at
+/// generation time rather than at a fixed instant so the fixture sorts near the
+/// top of a real camera roll instead of being buried under years of photos.
 img.Image _withGps(img.Image image) {
+  final now = DateTime.now();
+  String two(int v) => v.toString().padLeft(2, '0');
+  final stamp = '${now.year}:${two(now.month)}:${two(now.day)} '
+      '${two(now.hour)}:${two(now.minute)}:${two(now.second)}';
+  image.exif.exifIfd['DateTimeOriginal'] = stamp;
+  image.exif.imageIfd['DateTime'] = stamp;
   final gps = image.exif.gpsIfd;
   gps['GPSLatitudeRef'] = 'N';
   gps['GPSLatitude'] = [img.IfdValueRational(47, 1), img.IfdValueRational(22, 1), img.IfdValueRational(35, 1)];

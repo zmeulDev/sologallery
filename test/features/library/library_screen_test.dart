@@ -252,6 +252,14 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    /// The timeline is a lazy `ListView.builder`: on the default 800x600
+    /// surface only the first section or two are ever built, so any test that
+    /// counts sections across several years has to give it room first.
+    Future<void> tallSurface(WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 2400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+    }
+
     testWidgets('the bar offers every filter, All active by default', (
       tester,
     ) async {
@@ -262,7 +270,13 @@ void main() {
       }
       // All is the default, so the month sections and the carousel are up.
       expect(find.text('AUGUST 2026'), findsOneWidget);
-      expect(find.byType(MemoriesCarousel), findsOneWidget);
+      // With no memories the carousel collapses to zero height, and a viewport
+      // reports a zero-extent child as offstage — so its presence in the
+      // timeline only shows with skipOffstage off.
+      expect(
+        find.byType(MemoriesCarousel, skipOffstage: false),
+        findsOneWidget,
+      );
     });
 
     testWidgets('All shows no year heroes', (tester) async {
@@ -273,6 +287,7 @@ void main() {
     testWidgets('Months keeps the month sections and adds a hero per year', (
       tester,
     ) async {
+      await tallSurface(tester);
       await pump(tester, access: PhotoAccess.granted, assets: twoYears());
       await selectFilter(tester, LibraryFilter.months);
 
@@ -295,11 +310,16 @@ void main() {
         LibraryFilter.thisWeek,
       ]) {
         await selectFilter(tester, f);
-        expect(find.byType(MemoriesCarousel), findsNothing, reason: f.name);
+        expect(
+          find.byType(MemoriesCarousel, skipOffstage: false),
+          findsNothing,
+          reason: f.name,
+        );
       }
     });
 
     testWidgets('Year collapses to one section per year', (tester) async {
+      await tallSurface(tester);
       await pump(tester, access: PhotoAccess.granted, assets: twoYears());
       await selectFilter(tester, LibraryFilter.year);
 
@@ -346,7 +366,10 @@ void main() {
       await selectFilter(tester, LibraryFilter.all);
       expect(find.text('AUGUST 2026'), findsOneWidget);
       expect(find.byType(YearHeader), findsNothing);
-      expect(find.byType(MemoriesCarousel), findsOneWidget);
+      expect(
+        find.byType(MemoriesCarousel, skipOffstage: false),
+        findsOneWidget,
+      );
     });
 
     testWidgets('the filter bar stays up on an empty library', (tester) async {

@@ -4,6 +4,7 @@ import 'package:patrol/patrol.dart';
 import 'package:sologallery/app.dart';
 import 'package:sologallery/features/detail/widgets/video_page.dart';
 import 'package:sologallery/widgets/asset_thumbnail.dart';
+import 'package:sologallery/widgets/section_header.dart';
 import 'package:video_player/video_player.dart';
 
 /// On-device video playback, driving the *real* `photo_manager` video query and
@@ -30,8 +31,9 @@ void main() {
 
     // Videos aren't always among a month's six previews, so open the newest
     // month's full grid, then scroll to the first video (marked by a
-    // [DurationBadge]) and open it.
-    await $(find.textContaining('View all')).first.tap();
+    // [DurationBadge]) and open it. The whole section header row is the
+    // destination — there is no separate "view all" control.
+    await $(SectionHeader).first.tap();
     await $.pumpAndSettle();
     await $.scrollUntilVisible(finder: $(DurationBadge).first);
     await $(DurationBadge).first.tap();
