@@ -20,7 +20,9 @@ analytics, no network calls after install.
   previous/next, swipe down to close, swipe up for details, pinch and
   double-tap (2× at the tap point) to zoom, single tap to toggle chrome.
   Neighbours ±3 are pre-warmed
-- **Bottom nav:** Home Gallery · Search · Saved · Albums
+- **Bottom nav:** Home Gallery · Search · Saved · Albums — a floating
+  inverted-ink capsule over the content, active destination marked by a
+  sliding circular knob
 
 ---
 
@@ -33,8 +35,8 @@ analytics, no network calls after install.
 - **State:** flutter_riverpod (conventions below)
 - **Photo library:** photo_manager (API only, no UI integration)
 - **ML:** all on-device — google_mlkit_* + TFLite via tflite_flutter
-- **Design:** warm off-white/near-black palette, pill filters, dot nav
-  indicator (see Design system)
+- **Design:** warm off-white/near-black palette, pill filters, floating nav
+  capsule (see Design system)
 - **Architecture spec:** `docs/spec.md#architecture` — read it before
   structural work
 
@@ -178,7 +180,7 @@ tiers, not one unit test.
 ### 2. Widget tests (host)
 - Screens with mocked providers: loading / data / error / empty states
 - **Golden tests** (`alchemist`) for design-system widgets — filter
-  pills, nav bar + dot indicator, EXIF chips, detail action bar — light
+  pills, nav capsule + knob, EXIF chips, detail action bar — light
   and dark. This makes the Design system enforceable.
 
 ### 3. Integration tests (`integration_test` + `patrol`, real device)
@@ -256,7 +258,8 @@ lib/
     indexing_service.dart       # background indexing orchestration
   widgets/
     app_shell.dart              # bottom nav shell (StatefulShellRoute)
-    dot_nav_bar.dart            # nav destinations + dot indicator (golden-tested)
+    nav_pill_bar.dart           # floating nav capsule + sliding knob (golden-tested)
+    indexing_banner.dart        # app-wide "analyzing" strip, mounted in app_shell
 test/                           # unit + widget + golden (mirrors lib/)
 integration_test/               # on-device tests (patrol)
 test_assets/                    # seeded device assets (Test strategy)
@@ -300,18 +303,24 @@ docs/
 
 ### Spacing (`AppSpace`)
 
-`s2 s4 s8 s12 s16 s20 s24 s32` — s2 edge-to-edge photo-grid gutter (Search
-results, month/folder grids), s4 gutter for *inset* preview grids (Library
-sections, which inset s8 rather than s16 so the grid runs wider than the
-header), s8 Saved masonry gutter, s16 screen inset.
+`s2 s4 s8 s12 s16 s20 s24 s32` — s4 photo-grid gutter (`AssetGrid`: Search
+results, month/folder grids — cells clip to r12, so a tighter gutter puts
+adjacent corners on top of each other), s4 also for *inset* preview grids
+(Library sections, which inset s8 rather than s16 so the grid runs wider than
+the header), s8 Saved masonry gutter, s16 screen inset, s20 the Library
+timeline's inter-section rhythm.
+
+**Vertical gaps between stacked sections are owned by the top edge alone.** A
+top *and* a bottom pad makes the visible gap their sum, which is how the
+Library's month rhythm silently drifted to 36px.
 
 ### Radius (`AppRadius`)
 
 | Token | Use |
 |---|---|
 | r2 | grab handle, progress segments |
-| r4 | grid cells, DurationBadge |
-| r12 | cards, banner, filled inputs |
+| r4 | DurationBadge |
+| r12 | cards, banner, filled inputs, **every photo thumbnail** (grid cells, previews, row and tile covers — one radius, no exceptions) |
 | r20 | sheets AND dialogs |
 | — | pills = `StadiumBorder` |
 
@@ -322,7 +331,7 @@ header), s8 Saved masonry gutter, s16 screen inset.
 | pressed | 110 | Pressable card scale |
 | short | 150 | pill selection, play glyph |
 | medium | 180 | thumbnail fade, chrome |
-| nav | 260 | dot-nav slide |
+| nav | 260 | nav-capsule knob slide |
 
 Curve `easeOutCubic`; every duration via `AppMotion.of(context, d)`
 (reduced-motion → `Duration.zero`).
@@ -352,7 +361,10 @@ Theme-invariant consts for content over photos/video: scrims
   `SectionHeader` (uppercase section label; `onTap` makes the whole row the
   destination and adds a chevron), `EmptyState`, `CoverRow` (`showChevron` for
   rows that stand alone in a card), `AppSheet`/`AppSheetNote`, `app_dialog`
-  helpers, `Pressable` (cards only — never grid cells).
+  helpers, `Pressable` (cards only — never grid cells), `IndexingBanner` (the
+  app-wide "analysis is running" strip; mounted once in `AppShell` above the
+  branch, collapses to nothing when idle — never say it a second time on an
+  individual screen).
 - Grids differ by job: Library and Search are square multi-column grids for
   *finding* a photo among thousands (uniform scan pattern); Saved is a
   two-column aspect-preserving masonry (`layoutMasonry` + `MasonryGridDelegate`)
@@ -675,9 +687,12 @@ Short form; full postmortems in `docs/postmortems/`.
   caption under an avatar therefore squashes the avatar into an oval rather than
   overflowing (no red stripe, no exception — it just looks subtly wrong). The
   height has to be computed: `PeopleStrip` sums the avatar diameter, the gap and
-  `MediaQuery.textScalerOf(context).scale(fontSize) * lineHeight`, and adds the
-  caption band **only when at least one item actually has a caption**, so the
-  common all-unnamed row has no dead space under it. Same trap in
+  `MediaQuery.textScalerOf(context).scale(fontSize) * lineHeight` (1.45, with
+  headroom — 1.4 overflowed by 0.29px on a device whose font ran fractionally
+  taller), and adds the caption band **only when at least one item actually has
+  a caption**, so the common all-unnamed row has no dead space under it. Assert
+  the *circle* stays square at every text scale, not that the row height is
+  constant — the height legitimately moves with the band. Same trap in
   `MemoriesCarousel`, which derives its height from `MemoryCard.width /
   aspectRatio`.
 - **Bottom-nav taps in widget tests need the shell's entry transition to finish.**
@@ -927,6 +942,78 @@ Short form; full postmortems in `docs/postmortems/`.
   rather than from the screen's own async load, and let the load decide only
   what comes *after*. A screen that opens on its `loading` branch has no Hero
   destination, so the flight silently doesn't happen.
+- **`Center` (and bare `Align`) takes the *largest* size its constraints allow,
+  so wrapping a fixed-size child in one inside a `bottomNavigationBar` makes the
+  bar claim the whole screen.** Centring a compact nav capsule with
+  `Center(child: Container(width: 240, height: 60))` sized the bar to the full
+  viewport: the capsule floated in the middle of the screen, and — because
+  `extendBody` reports the bar's height to the body as `padding.bottom` — every
+  scroller got a screen-sized bottom inset, so scrolling to the end landed in
+  pure padding with *nothing rendered*. The on-device test caught it as "reached
+  the end with no content on screen", which reads like a flaky test rather than
+  a layout bug; it is worth checking the bar's own height before believing the
+  scroller is at fault. Use `Align(heightFactor: 1)` (or `widthFactor` on the
+  other axis) to size to the child while still aligning it.
+- **A lazy `ListView.builder`'s `maxScrollExtent` is an *estimate*, so one
+  `jumpTo(maxScrollExtent)` lands mid-list, not at the end.** The extent is
+  extrapolated from the children built so far and grows as more build, so the
+  jump moves you somewhere the estimate immediately invalidates, and the guess
+  *overshoots* — jumping straight to it can land past the last row in blank
+  space where nothing renders. A device test asserting "the last row clears the
+  floating nav capsule" failed this way against *correct* padding: it measured a
+  row 120px below the viewport in a list still hundreds of pixels from its real
+  end, and the overshoot happened to equal the padding, which reads exactly like
+  the padding was never applied. Step toward the end a screenful at a time
+  (`jumpTo(pixels + 1000)` in a bounded loop until `pixels` stops moving) so each
+  step builds the next children and corrects the estimate, then assert. `find.byType(X)` also picks
+  up children built in the ~250px cache extent *below* the viewport, so measure
+  against the viewport, never against "the last widget found".
+- **`Scaffold(extendBody: true)` reports the bottom widget's height to the body
+  as `MediaQuery.padding.bottom`, and it survives nested Scaffolds.** A floating
+  bottom nav therefore needs every scroller in the shell to add
+  `MediaQuery.paddingOf(context).bottom` to its own bottom padding, or its last
+  row hides behind the bar. This works through each branch's *own* `Scaffold`
+  because a Scaffold only strips `padding.bottom` from its body when it has a
+  `bottomNavigationBar`/`persistentFooterButtons` of its own (`_BodyBuilder`
+  restores it as `max(padding.bottom, bottomWidgetsHeight)`), which the branch
+  screens don't. The same expression is also right for a scroller shared with
+  pushed routes (`AssetGrid`): there the inset is just the system one.
+- **A `BoxScrollView` (`ListView`/`GridView`) with a null `padding` silently
+  absorbs `MediaQuery.padding` on its main axis** (`scroll_view.dart:901`:
+  "Automatically pad sliver with padding from MediaQuery"). Inside the shell
+  that bottom inset is the floating nav capsule's height, so a nested,
+  `shrinkWrap`ped grid appends a capsule-sized band *under itself* — the Library
+  preview grids each grew a ~32 logical px band, which read as a huge gap
+  between one month's photos and the next month's header. **Always pass an
+  explicit `padding` (`EdgeInsets.zero` if none is wanted) on every scroll
+  view.** Note the outer scroller does not protect the inner one: a
+  `BoxScrollView` only wraps its children in `MediaQuery.removePadding` in the
+  *null*-padding branch, so a parent with explicit padding leaves the full inset
+  visible to descendants. Invisible on host tests (the test view has no
+  padding) — reproduce with `tester.view.padding = FakeViewPadding(bottom: N)`.
+  **And measure from the content, not from the scroll view's own box:** a
+  `getRect` on the `GridView` includes the padding it absorbed, so the first
+  version of the regression test passed against the *unfixed* code. Measure to
+  the last child widget instead.
+- **`tester.view.padding = FakeViewPadding(bottom: N)` injects a bottom inset
+  into an existing widget-test harness with no changes to it** — `MediaQuery
+  .fromView` divides by `devicePixelRatio` (3.0 by default, so N/3 logical), and
+  every screen's existing `pump` helper picks it up. Pair with
+  `addTearDown(tester.view.reset)`. This is how each scroller's capsule inset is
+  pinned per screen without duplicating four provider harnesses.
+- **A `SnackBar` with an action never times out, and on the root messenger that
+  means it follows the user across every screen forever.** `SnackBar.persist`
+  defaults to `action != null` (`snack_bar.dart:303`), and
+  `ScaffoldMessengerState.build`'s timeout callback does `if (snackBar.persist)
+  return;` — so the `duration` is simply ignored. The People merge's "Merged ·
+  Undo" banner therefore stayed up permanently, and since `ScaffoldMessenger`
+  sits *above* the Navigator it survived every navigation, which is how it was
+  reported ("doesn't go away, no matter the screen"). Always pass
+  `persist: false` with an explicit `duration` when a snackbar carries an
+  action, **and** hide screen-scoped snackbars in `dispose()` — capture the
+  messenger in `didChangeDependencies` (an ancestor lookup in `dispose()` is
+  unsafe). An Undo for an action taken on one screen has no meaning once that
+  screen is gone.
 - **`tester.tap` produces no frame, so an animation it starts records t=0 on the
   *next* pump.** `tap(...)` then a single `pump(400ms)` lands exactly on that
   zero-elapsed frame — `PageController.nextPage` looks like it did nothing and

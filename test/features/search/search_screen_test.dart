@@ -32,6 +32,7 @@ void main() {
     List<DeviceFolder> folders = const [],
     bool searchEnabled = false,
     List<String> browseLabels = const [],
+    IndexingStatus indexing = const IndexingStatus.idle(),
   }) async {
     final fake = FakePhotoLibraryService(assets: assets, folders: folders);
     // Content search reads the DB; give it an empty in-memory one.
@@ -63,9 +64,7 @@ void main() {
           searchEnabledProvider.overrideWith(
             (ref) => Stream.value(searchEnabled),
           ),
-          indexingStatusProvider.overrideWith(
-            (ref) => Stream.value(const IndexingStatus.idle()),
-          ),
+          indexingStatusProvider.overrideWith((ref) => Stream.value(indexing)),
           // The chip row is DB-derived (top labels by count); the ranking
           // itself is covered by the DAO and provider tests.
           topBrowseLabelsProvider.overrideWith(
@@ -95,9 +94,39 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   }
 
+  // The indexing note used to live here, so an indexing library said it twice
+  // once the shell took it over. Search owns search; the shell owns the strip.
+  testWidgets('leaves the indexing message to the shell', (tester) async {
+    await pump(
+      tester,
+      indexing: const IndexingStatus(remaining: 12, total: 40),
+    );
+    expect(find.textContaining('indexing'), findsNothing);
+    expect(find.textContaining('Analyzing'), findsNothing);
+    await settle(tester);
+  });
+
   testWidgets('shows the idle hint before any input', (tester) async {
     await pump(tester);
     expect(find.textContaining('Search your library by date'), findsOneWidget);
+    await settle(tester);
+  });
+
+  // The floating nav capsule reaches the screen as a bottom inset; the browse
+  // list has to pad by it or its last row hides behind the capsule. See
+  // lib/widgets/nav_pill_bar.dart.
+  testWidgets('the browse list clears the nav capsule', (tester) async {
+    tester.view.padding = const FakeViewPadding(bottom: 96);
+    addTearDown(tester.view.reset);
+    final inset = 96 / tester.view.devicePixelRatio;
+
+    await pump(tester);
+
+    final padded = tester.widgetList<ListView>(find.byType(ListView)).where(
+          (l) => l.padding?.resolve(TextDirection.ltr).bottom == inset,
+        );
+    expect(padded, hasLength(1),
+        reason: 'The browse list should carry the bottom inset.');
     await settle(tester);
   });
 

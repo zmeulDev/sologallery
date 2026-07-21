@@ -5,7 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sologallery/app.dart';
 import 'package:sologallery/core/database/app_database.dart';
 import 'package:sologallery/core/database/database_provider.dart';
+import 'package:sologallery/services/indexing_service.dart';
 import 'package:sologallery/services/permission_provider.dart';
+import 'package:sologallery/widgets/indexing_banner.dart';
 
 import '../support/fake_photo_library_service.dart';
 
@@ -15,7 +17,12 @@ void main() {
   setUp(() => db = AppDatabase(NativeDatabase.memory()));
   tearDown(() async => db.close());
 
-  Future<void> pumpApp(WidgetTester tester) async {
+  Future<void> pumpApp(
+    WidgetTester tester, {
+    AsyncValue<IndexingStatus> indexing = const AsyncData(
+      IndexingStatus.idle(),
+    ),
+  }) async {
     // Grant access *and* answer the analysis-consent prompt so the router
     // redirect lands on the Library, not onboarding. Seeded through the real
     // SettingsDao so these tests exercise the actual ConsentNotifier path.
@@ -26,6 +33,7 @@ void main() {
           databaseProvider.overrideWithValue(db),
           photoLibraryServiceProvider
               .overrideWithValue(FakePhotoLibraryService()),
+          indexingStatusProvider.overrideWithValue(indexing),
         ],
         child: const SoloGalleryApp(),
       ),
@@ -71,6 +79,39 @@ void main() {
 
     expect(find.widgetWithText(AppBar, 'Albums'), findsOneWidget);
     expect(find.widgetWithText(AppBar, 'Library'), findsNothing);
+    await disposeTree(tester);
+  });
+
+  // Analysis running is an app-wide condition — Search used to be the only
+  // screen that said so, which is why the rest of the app just looked
+  // incomplete while it ran.
+  testWidgets('says nothing about analysis while the indexer is idle',
+      (tester) async {
+    await pumpApp(tester);
+    expect(tester.getSize(find.byType(IndexingBanner)).height, 0);
+    expect(find.textContaining('Analyzing'), findsNothing);
+    await disposeTree(tester);
+  });
+
+  testWidgets('the indexing strip rides above every tab', (tester) async {
+    await pumpApp(
+      tester,
+      indexing: const AsyncData(IndexingStatus(remaining: 42, total: 100)),
+    );
+
+    expect(find.text('Analyzing your photos — 42 left'), findsOneWidget);
+    // Above the branch, not over it: the strip's bottom is at or above the
+    // active screen's app bar.
+    final strip = tester.getRect(find.byType(IndexingBanner));
+    final appBar = tester.getRect(find.byType(AppBar).first);
+    expect(strip.bottom, lessThanOrEqualTo(appBar.top));
+
+    // ...and it stays put when the user changes tab.
+    await tester.tap(find.byTooltip('Albums'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('Analyzing your photos — 42 left'), findsOneWidget);
+
     await disposeTree(tester);
   });
 

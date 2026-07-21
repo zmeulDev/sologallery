@@ -7,10 +7,15 @@ import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/core/database/daos/memories_dao.dart'
     show MemorySummary;
 import 'package:sologallery/features/albums/widgets/album_card.dart';
+import 'package:sologallery/core/database/daos/faces_dao.dart'
+    show PersonSummary;
 import 'package:sologallery/features/library/widgets/year_header.dart';
+import 'package:sologallery/features/people/people_providers.dart';
 import 'package:sologallery/features/memories/widgets/memory_card.dart';
 import 'package:sologallery/features/settings/widgets/theme_mode_picker.dart';
+import 'package:sologallery/services/indexing_service.dart';
 import 'package:sologallery/services/permission_provider.dart';
+import 'package:sologallery/widgets/indexing_banner.dart';
 import 'package:sologallery/widgets/app_button.dart';
 import 'package:sologallery/widgets/app_card.dart';
 import 'package:sologallery/widgets/app_sheet.dart';
@@ -18,7 +23,8 @@ import 'package:sologallery/widgets/asset_thumbnail.dart';
 import 'package:sologallery/widgets/circle_icon_button.dart';
 import 'package:sologallery/widgets/consent_switch.dart';
 import 'package:sologallery/widgets/cover_row.dart';
-import 'package:sologallery/widgets/dot_nav_bar.dart';
+import 'package:sologallery/widgets/nav_pill_bar.dart';
+import 'package:sologallery/widgets/people_strip.dart';
 import 'package:sologallery/widgets/empty_state.dart';
 import 'package:sologallery/widgets/filter_pill.dart';
 import 'package:sologallery/widgets/limited_access_banner.dart';
@@ -123,12 +129,13 @@ void main() {
     builder: () => themedGroup(LimitedAccessBanner(onSelectMore: () {})),
   );
 
-  // The nav bar's dot sits under the active destination; Search (index 1) is
-  // selected so the golden pins both the destination order and the dot offset.
+  // The nav capsule's knob sits under the active destination; Search (index 1)
+  // is selected so the golden pins the destination order, the knob offset and
+  // the capsule's inverted-ink fill in both themes.
   goldenTest(
-    'DotNavBar — Search selected',
-    fileName: 'dot_nav_bar',
-    builder: () => themedGroup(DotNavBar(currentIndex: 1, onTap: (_) {})),
+    'NavPillBar — Search selected',
+    fileName: 'nav_pill_bar',
+    builder: () => themedGroup(NavPillBar(currentIndex: 1, onTap: (_) {})),
   );
 
   goldenTest(
@@ -493,6 +500,70 @@ void main() {
             const SizedBox(height: 12),
           ],
         ],
+      ),
+    ),
+  );
+
+  // The app-wide analysis strip: a caption on `surface2` with a hairline rule
+  // and the progress line along its bottom edge. Pinned in both themes because
+  // it sits above every screen, so a contrast slip would show everywhere.
+  goldenTest(
+    'IndexingBanner — a pass three quarters done',
+    fileName: 'indexing_banner',
+    builder: () => themedGroup(
+      ProviderScope(
+        overrides: [
+          indexingStatusProvider.overrideWithValue(
+            const AsyncData(IndexingStatus(remaining: 250, total: 1000)),
+          ),
+        ],
+        child: const IndexingBanner(),
+      ),
+    ),
+  );
+
+  // The People strip as it appears on Search idle and Albums: a card, circular
+  // faces, and a caption band that only exists because someone is named. Every
+  // cover resolves to null here (as it does in any host test — no decodable
+  // thumbnail), so the golden pins the placeholder circles, the card and the
+  // spacing rather than image content.
+  goldenTest(
+    'PeopleStrip — carded row of circular faces, one named',
+    fileName: 'people_strip',
+    builder: () => themedGroup(
+      ProviderScope(
+        overrides: [
+          for (final id in [1, 2, 3, 4])
+            personCoverProvider(id).overrideWith((ref) async => null),
+        ],
+        child: PeopleStrip(
+          people: const [
+            PersonSummary(
+              id: 1,
+              displayName: 'Ada',
+              coverAssetId: 'a',
+              faceCount: 12,
+            ),
+            PersonSummary(
+              id: 2,
+              displayName: null,
+              coverAssetId: 'b',
+              faceCount: 4,
+            ),
+            PersonSummary(
+              id: 3,
+              displayName: null,
+              coverAssetId: 'c',
+              faceCount: 3,
+            ),
+            PersonSummary(
+              id: 4,
+              displayName: null,
+              coverAssetId: 'd',
+              faceCount: 1,
+            ),
+          ],
+        ),
       ),
     ),
   );

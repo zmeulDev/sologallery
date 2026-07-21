@@ -148,6 +148,27 @@ void main() {
     expect(find.byType(AssetThumbnail), findsNWidgets(6));
   });
 
+  // The floating nav capsule reaches the screen as a bottom inset; the timeline
+  // has to pad by it or its last month section hides behind the capsule. See
+  // lib/widgets/nav_pill_bar.dart.
+  testWidgets('the timeline clears the nav capsule', (tester) async {
+    tester.view.padding = const FakeViewPadding(bottom: 96);
+    addTearDown(tester.view.reset);
+    final inset = 96 / tester.view.devicePixelRatio;
+
+    await pump(
+      tester,
+      access: PhotoAccess.granted,
+      assets: assetsInMonth(2026, 8, 7),
+    );
+
+    final timeline = tester.widget<ListView>(find.byType(ListView).first);
+    expect(
+      timeline.padding?.resolve(TextDirection.ltr).bottom,
+      AppSpace.s24 + inset,
+    );
+  });
+
   testWidgets('tapping the section header navigates to the month route', (
     tester,
   ) async {

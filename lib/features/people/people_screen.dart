@@ -35,7 +35,26 @@ class _PeopleScreenState extends ConsumerState<PeopleScreen> {
   /// selecting" stay distinguishable.
   Set<int>? _selected;
 
+  /// The merge confirmation lands on the root messenger (it sits above the
+  /// Navigator), so it outlives this route unless we take it down ourselves.
+  /// Resolved here because `dispose()` is too late to look up an ancestor.
+  ScaffoldMessengerState? _messenger;
+
   bool get _selecting => _selected != null;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _messenger = ScaffoldMessenger.of(context);
+  }
+
+  @override
+  void dispose() {
+    // An Undo for a merge made on this screen has no meaning once the screen
+    // is gone — it must not follow the user into the rest of the app.
+    _messenger?.hideCurrentSnackBar();
+    super.dispose();
+  }
 
   void _toggle(int id) {
     setState(() {
@@ -145,6 +164,12 @@ class _PeopleScreenState extends ConsumerState<PeopleScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: const Text('Merged'),
+        // `SnackBar.persist` defaults to `action != null`, and the messenger
+        // skips its timeout entirely when it is set — an Undo snackbar would
+        // otherwise never dismiss, on any screen. Long enough to reach for
+        // Undo, short enough to leave on its own.
+        persist: false,
+        duration: const Duration(seconds: 6),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () {

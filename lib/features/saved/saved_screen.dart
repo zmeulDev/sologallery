@@ -90,7 +90,10 @@ class _SavedGrid extends StatelessWidget {
     return CustomScrollView(
       slivers: [
         SliverPadding(
-          padding: const EdgeInsets.all(AppSpace.s16),
+          // Clears the floating nav capsule (reported as the bottom inset).
+          padding: EdgeInsets.all(AppSpace.s16).copyWith(
+            bottom: AppSpace.s16 + MediaQuery.paddingOf(context).bottom,
+          ),
           sliver: SliverGrid(
             gridDelegate: MasonryGridDelegate(
               items: [

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/database/daos/albums_dao.dart' show AlbumSummary;
 import '../../../core/format/count_labels.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../widgets/asset_thumbnail.dart';
 import '../../../widgets/pressable.dart';
@@ -40,7 +41,7 @@ class AlbumCard extends StatelessWidget {
           // the 2-col grid, and never overflows a slightly short cell.
           Expanded(
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: AppRadius.br12,
               child: SizedBox(
                 width: double.infinity,
                 child: cover == null

@@ -144,7 +144,12 @@ class _MonthList extends StatelessWidget {
       filter: filter,
     );
     return ListView.builder(
-      padding: const EdgeInsets.only(top: AppSpace.s4, bottom: AppSpace.s24),
+      // The nav capsule floats over the body, so the Scaffold reports its
+      // height as the bottom inset — the last row has to clear it.
+      padding: EdgeInsets.only(
+        top: AppSpace.s4,
+        bottom: AppSpace.s24 + MediaQuery.paddingOf(context).bottom,
+      ),
       itemCount: rows.length,
       itemBuilder: (context, i) {
         final row = rows[i];
@@ -196,9 +201,9 @@ class _YearList extends ConsumerWidget {
               : const Center(child: CircularProgressIndicator());
         }
         return ListView.builder(
-          padding: const EdgeInsets.only(
+          padding: EdgeInsets.only(
             top: AppSpace.s4,
-            bottom: AppSpace.s24,
+            bottom: AppSpace.s24 + MediaQuery.paddingOf(context).bottom,
           ),
           itemCount: counts.length,
           itemBuilder: (context, i) => EntranceFade(
@@ -223,13 +228,16 @@ class _YearSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Like `_LibrarySection`, the gap between sections is owned by the top
+        // edge alone, so it never adds up with the next section's.
+        const SizedBox(height: AppSpace.s20),
         YearHeader(year: entry.year, count: entry.count),
         Padding(
           padding: const EdgeInsets.fromLTRB(
             AppSpace.s8,
             AppSpace.s4,
             AppSpace.s8,
-            AppSpace.s20,
+            0,
           ),
           child: _PreviewGrid(assetIds: previews ?? const []),
         ),
@@ -318,11 +326,14 @@ class _LibrarySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
+      // The whole gap between two sections lives on the top edge. Splitting it
+      // across a top *and* a bottom pad makes the visible gap their sum, which
+      // is how it drifted to 36px and read as a break rather than a rhythm.
       padding: const EdgeInsets.fromLTRB(
         AppSpace.s8,
-        AppSpace.s16,
-        AppSpace.s8,
         AppSpace.s20,
+        AppSpace.s8,
+        0,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -376,6 +387,12 @@ class _PreviewGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return GridView.count(
       crossAxisCount: 3,
+      // Explicit, and never null: a BoxScrollView with a null padding silently
+      // absorbs MediaQuery.padding on its main axis. Inside the shell that
+      // bottom inset is the floating nav capsule's height, so every preview
+      // grid would append a capsule-sized band under itself — the whole gap
+      // between one month's photos and the next month's header.
+      padding: EdgeInsets.zero,
       // Wider than the edge-to-edge grids' `s2`: a preview grid is inset from
       // the screen edge, so its cells need a gutter that reads as deliberate
       // next to that margin rather than as a seam.
@@ -391,7 +408,7 @@ class _PreviewGrid extends StatelessWidget {
               extra: PhotoViewerArgs(assetIds, index),
             ),
             child: ClipRRect(
-              borderRadius: AppRadius.br4,
+              borderRadius: AppRadius.br12,
               child: Hero(
                 tag: assetHeroTag(id),
                 child: AssetThumbnail(

@@ -16,7 +16,6 @@ import '../../widgets/empty_state.dart';
 import '../../widgets/filter_pill.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/people_strip.dart';
-import '../../services/indexing_service.dart';
 import '../people/people_providers.dart';
 import '../settings/consent_provider.dart';
 import 'domain/search_date.dart';
@@ -118,8 +117,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           // nothing, competing with the browse entry points that are the
           // actual invitation.
           if (!idle) _FilterBar(type: type, favoritesOnly: favoritesOnly),
-          if (ref.watch(indexingStatusProvider).value?.isIndexing ?? false)
-            const _IndexingNote(),
+          // "Still analyzing" is an app-wide condition, not a Search one — the
+          // shell's `IndexingBanner` says it once, above every screen.
           Expanded(
             child: idle
                 ? _IdleView(onBrowseLabel: _search)
@@ -367,25 +366,6 @@ class _AlbumsResult extends StatelessWidget {
   }
 }
 
-/// A quiet line shown while the background indexer is still labeling photos —
-/// content-search results improve as it progresses.
-class _IndexingNote extends StatelessWidget {
-  const _IndexingNote();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
-    final styles = Theme.of(context).extension<AppTextStyles>()!;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      child: Text(
-        'Still indexing your library — results will keep improving.',
-        style: styles.caption.copyWith(color: colors.textSecondary),
-      ),
-    );
-  }
-}
-
 /// The idle state: browse entry points — a People strip (when clusters exist),
 /// then label chips (when content search is on) — closed by the note explaining
 /// where all of this is computed.
@@ -411,6 +391,8 @@ class _IdleView extends ConsumerWidget {
         : const <String>[];
 
     return ListView(
+      // Clears the floating nav capsule (reported as the bottom inset).
+      padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
       children: [
         // Nothing to browse yet — a new library, an unfinished index, or every
         // analysis declined. The prompt explains what the field accepts

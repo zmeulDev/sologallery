@@ -117,7 +117,7 @@ class DurationBadge extends StatelessWidget {
     return DecoratedBox(
       decoration: const BoxDecoration(
         color: AppOverMedia.scrim,
-        borderRadius: AppRadius.br4,
+        borderRadius: AppRadius.br12,
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),

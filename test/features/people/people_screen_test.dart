@@ -116,6 +116,23 @@ void main() {
       PersonSummary(id: 2, displayName: 'ZmlG', coverAssetId: 'b', faceCount: 10),
     ];
 
+    /// Selects both fixtures and confirms the merge, leaving the confirmation
+    /// snackbar on screen.
+    Future<void> mergeBoth(WidgetTester tester) async {
+      await tester.tap(find.text('Select'));
+      await tester.pump();
+      await tester.tap(find.text('Zml'));
+      await tester.pump();
+      await tester.tap(find.text('ZmlG'));
+      await tester.pump();
+      await tester.tap(find.text('Merge 2 people'));
+      await tester.pump();
+      await tester.tap(find.text('Merge'));
+      await tester.pump();
+      // The snackbar's entry animation has to finish before its timer starts.
+      await tester.pump(const Duration(milliseconds: 750));
+    }
+
     testWidgets('offers no Select with only one person to merge',
         (tester) async {
       await pump(tester, const [
@@ -234,6 +251,41 @@ void main() {
       await tester.tap(find.text('Undo'));
       await tester.pump();
       expect(actions.separations, [(2, 1)]);
+    });
+
+    // `SnackBar.persist` defaults to `action != null`, and the messenger skips
+    // its timeout entirely when it is set — so the Undo banner never dismissed
+    // itself, and because it lives on the root messenger (above the Navigator)
+    // it followed the user onto every other screen.
+    testWidgets('the merge confirmation times out on its own', (tester) async {
+      await pump(tester, two);
+      await mergeBoth(tester);
+
+      final bar = tester.widget<SnackBar>(find.byType(SnackBar));
+      expect(bar.persist, isFalse);
+      expect(bar.duration, const Duration(seconds: 6));
+
+      // Long enough to reach for Undo, and then gone without being touched.
+      await tester.pump(const Duration(seconds: 3));
+      expect(find.text('Merged'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+      expect(find.text('Merged'), findsNothing);
+    });
+
+    testWidgets('leaving People takes the confirmation with it', (
+      tester,
+    ) async {
+      await pump(tester, two);
+      await mergeBoth(tester);
+      expect(find.text('Merged'), findsOneWidget);
+
+      // An Undo for a merge made here has no meaning once the screen is gone.
+      await tester.tap(find.text('Zml'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('person 1'), findsOneWidget);
+      expect(find.text('Merged'), findsNothing);
     });
 
     testWidgets('tapping a person while selecting does not open them',

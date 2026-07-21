@@ -142,6 +142,29 @@ void main() {
     await teardownTree(tester);
   });
 
+  // The floating nav capsule reaches the screen as a bottom inset; the trailing
+  // spacer has to grow by it or the last folder row hides behind the capsule.
+  // See lib/widgets/nav_pill_bar.dart.
+  testWidgets('the trailing spacer clears the nav capsule', (tester) async {
+    tester.view.padding = const FakeViewPadding(bottom: 96);
+    addTearDown(tester.view.reset);
+    final inset = 96 / tester.view.devicePixelRatio;
+
+    await pump(
+      tester,
+      folders: const [DeviceFolder(id: 'cam', name: 'Camera', count: 42)],
+    );
+    await tester.pump();
+
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is SizedBox && w.height == AppSpace.s16 + inset,
+      ),
+      findsOneWidget,
+    );
+    await teardownTree(tester);
+  });
+
   testWidgets('People shows when faces are on and a cluster exists', (
     tester,
   ) async {
