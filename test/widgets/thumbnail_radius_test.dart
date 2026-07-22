@@ -148,13 +148,18 @@ void main() {
   testWidgets('folder tiles clip to br12', (tester) async {
     await pump(
       tester,
-      const FolderList(
-        folders: [
-          DeviceFolder(
-            id: 'cam',
-            name: 'Camera',
-            count: 12,
-            coverAssetId: 'a1',
+      // FolderList is a sliver, so it needs a viewport rather than a bare box.
+      const CustomScrollView(
+        slivers: [
+          FolderList(
+            folders: [
+              DeviceFolder(
+                id: 'cam',
+                name: 'Camera',
+                count: 12,
+                coverAssetId: 'a1',
+              ),
+            ],
           ),
         ],
       ),

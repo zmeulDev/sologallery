@@ -87,6 +87,7 @@ class AppSettings extends Table {
 /// ids from the library to find remaining work. Kept lean: only the fields
 /// indexing and label search consume today (GPS/modified/duration deferred until
 /// a consumer needs them). Keyed by `photo_manager` asset id.
+@TableIndex(name: 'photo_asset_dated_created', columns: {#isDated, #createdAt})
 class PhotoAssets extends Table {
   /// `photo_manager` asset id.
   TextColumn get assetId => text()();

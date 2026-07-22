@@ -17,6 +17,16 @@ import 'pressable.dart';
 /// Renders nothing when there are no folders, so callers can drop it into a list
 /// unconditionally.
 ///
+/// **This is a sliver** — place it directly in a `CustomScrollView`, never
+/// inside a `SliverToBoxAdapter`. It used to be a `shrinkWrap`ped `GridView`,
+/// which laid out against unbounded extent and so built *every* tile up front
+/// to discover its own height. Each tile blurs its cover
+/// ([ImageFilter.blur] at sigma 18), so on a device with 30-odd folders that
+/// meant thirty thumbnail decodes and thirty Gaussian passes on the first frame
+/// of the Albums screen regardless of how many were visible. As a real sliver
+/// the enclosing viewport gives it a bounded extent and only on-screen tiles
+/// build.
+///
 /// A folder tile is a *row*, not a picture with a caption: the cover sits behind
 /// the label as a blurred backdrop and the folder glyph is what the eye lands
 /// on. That matches how these are picked — by name (`Camera`, `Screenshots`),
@@ -43,26 +53,26 @@ class FolderList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (folders.isEmpty) return const SizedBox.shrink();
-    return GridView.builder(
-      // Sits inside the Albums scroller, so it lays out all its children and
-      // lets that scroller own the scrolling.
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
+    if (folders.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+    return SliverPadding(
       padding: const EdgeInsets.fromLTRB(
         AppSpace.s16,
         0,
         AppSpace.s16,
         AppSpace.s8,
       ),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: AppSpace.s12,
-        crossAxisSpacing: AppSpace.s16,
-        mainAxisExtent: tileHeight(context),
+      sliver: SliverGrid(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: AppSpace.s12,
+          crossAxisSpacing: AppSpace.s16,
+          mainAxisExtent: tileHeight(context),
+        ),
+        delegate: SliverChildBuilderDelegate(
+          (context, i) => _FolderTile(folder: folders[i]),
+          childCount: folders.length,
+        ),
       ),
-      itemCount: folders.length,
-      itemBuilder: (context, i) => _FolderTile(folder: folders[i]),
     );
   }
 }

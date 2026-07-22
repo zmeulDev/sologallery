@@ -30,13 +30,16 @@ class PermissionNotifier extends Notifier<PhotoAccess> {
 
   PhotoLibraryService get _service => ref.read(photoLibraryServiceProvider);
 
-  /// Re-reads the current access without prompting.
+  /// Re-reads the current access without prompting. Called on every app
+  /// resume (see `app.dart`), so it must not emit when access is unchanged —
+  /// otherwise every foreground rebuilds every Library/Memories/Onboarding
+  /// watcher for nothing.
   Future<void> refresh() async {
     final access = await _service.currentAccess();
     if (access != state) {
       _log.info('Photo access changed: $state -> $access');
+      state = access;
     }
-    state = access;
   }
 
   /// Prompts for access (native dialog) and stores the result.

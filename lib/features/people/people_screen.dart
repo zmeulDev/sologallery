@@ -9,6 +9,7 @@ import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../widgets/app_button.dart';
+import '../../widgets/asset_grid.dart' show kPhotoGridCacheExtent;
 import '../../widgets/app_dialog.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/pressable.dart';
@@ -116,6 +117,7 @@ class _PeopleScreenState extends ConsumerState<PeopleScreen> {
                 'No people yet. Faces are grouped as your library is indexed.',
               )
             : GridView.builder(
+                scrollCacheExtent: kPhotoGridCacheExtent,
                 padding: const EdgeInsets.all(AppSpace.s16),
                 gridDelegate:
                     const SliverGridDelegateWithFixedCrossAxisCount(

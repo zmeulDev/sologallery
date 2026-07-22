@@ -187,7 +187,7 @@ class _Sections extends StatelessWidget {
               child: SectionHeader(label: 'Device folders'),
             ),
           ),
-          SliverToBoxAdapter(child: FolderList(folders: folders)),
+          FolderList(folders: folders),
         ],
         // The nav capsule floats over the body, so the Scaffold reports its
         // height as the bottom inset — the last folder row has to clear it.

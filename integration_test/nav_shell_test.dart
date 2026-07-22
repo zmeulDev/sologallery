@@ -83,25 +83,49 @@ void main() {
     await $.tester.pump();
     await $.tester.pump(const Duration(milliseconds: 500));
 
-    final position = verticalScrollable($).position;
+    final scrollable = verticalScrollable($);
+    final position = scrollable.position;
     expect(
       position.maxScrollExtent,
       greaterThan(0),
       reason: '$tab must have more rows than fit on screen, or "the last row '
           'clears the capsule" proves nothing.',
     );
-    // A lazy `ListView.builder` extrapolates `maxScrollExtent` from the
-    // children built so far, and the guess overshoots: jumping straight to it
-    // lands past the last row, in blank space, where nothing renders at all.
-    // Step toward the end a screenful at a time instead — each step builds the
-    // next children and corrects the estimate — until the position stops
-    // moving, which is the real end.
-    for (var i = 0; i < 200; i++) {
+    // Reach the end by flinging the way a person does, not by teleporting the
+    // scroll position. `jumpTo` was tried first and is the wrong tool twice
+    // over: it drops the position somewhere no gesture would leave it (runs
+    // ended with `pixels` *past* `maxScrollExtent` — an overscroll that a real
+    // fling resolves ballistically but a jump simply leaves sitting there), and
+    // it outruns the work a scroll is supposed to trigger, since Library pages
+    // in through a growing-window watch and its thumbnails decode
+    // asynchronously. Feeding it screenfuls every 100ms means measuring a list
+    // that is still loading, which is why the walk kept stopping at a different
+    // place each run (826, then 37,000, then 107,000 of the same library).
+    //
+    // A fling plus a pause per iteration lets the pagination and the decodes
+    // keep up, which is also the behaviour actually worth testing.
+    // Must be the *vertical* scroller specifically. `find.byType(Scrollable)`
+    // picks the Library filter bar, which scrolls horizontally, so a vertical
+    // fling on it moves nothing at all and the walk "finishes" at pixel 0.
+    final scroller = find.byWidget(scrollable.widget);
+    for (var i = 0; i < 120; i++) {
       final before = position.pixels;
-      position.jumpTo(before + 1000);
-      await $.tester.pump();
-      await $.tester.pump(const Duration(milliseconds: 100));
-      if (position.pixels <= before + 0.5) break;
+      final beforeMax = position.maxScrollExtent;
+
+      await $.tester.fling(scroller, const Offset(0, -600), 3000);
+      // Let the ballistic simulation finish and the newly-revealed rows load,
+      // in bounded pumps — a spinner anywhere on screen makes pumpAndSettle
+      // hang forever (CLAUDE.md).
+      for (var p = 0; p < 12; p++) {
+        await $.tester.pump(const Duration(milliseconds: 100));
+      }
+
+      // Done only when the position has stopped moving *and* the end has
+      // stopped receding. Either alone is a false finish: paging in more rows
+      // pushes `maxScrollExtent` further away just as the position lands on it.
+      final stopped = (position.pixels - before).abs() <= 0.5;
+      final settled = (position.maxScrollExtent - beforeMax).abs() <= 0.5;
+      if (stopped && settled) break;
     }
     // Thumbnails at the end start undecoded (patrol reinstalls, so the cache is
     // cold); give them a bounded moment to land.
@@ -117,17 +141,44 @@ void main() {
           '${position.maxScrollExtent}) with none of $content rendered.',
     );
 
+    // The loop above ends when a jump stops moving the position, which is the
+    // real end of the list. Say so explicitly: measuring "the last row" from
+    // somewhere in the middle would compare the capsule against a row that has
+    // several screenfuls of content below it, and fail against correct padding.
+    expect(
+      position.pixels,
+      closeTo(position.maxScrollExtent, 2),
+      reason: '$tab never reached its end (stopped at ${position.pixels} of '
+          '${position.maxScrollExtent}), so the last row was never measured.',
+    );
+
+    // Only content actually inside the viewport counts. A scroller pre-builds
+    // children beyond the visible area — `kPhotoGridCacheExtent` makes that a
+    // whole screenful — and `find.byType` returns those too, sitting far below
+    // the capsule by construction. Measuring them would fail no matter how
+    // correct the padding is (CLAUDE.md: measure against the viewport, never
+    // against "the last widget found").
+    final screenHeight = $.tester.getSize(find.byType(MaterialApp)).height;
     var lowest = 0.0;
     var lowestType = content.first;
+    var onScreen = 0;
     for (var f = 0; f < finders.length; f++) {
       for (var i = 0; i < finders[f].evaluate().length; i++) {
-        final bottom = $.tester.getRect(finders[f].at(i)).bottom;
-        if (bottom > lowest) {
-          lowest = bottom;
+        final rect = $.tester.getRect(finders[f].at(i));
+        if (rect.top >= screenHeight) continue; // built ahead, not visible
+        onScreen++;
+        if (rect.bottom > lowest) {
+          lowest = rect.bottom;
           lowestType = content[f];
         }
       }
     }
+    expect(
+      onScreen,
+      greaterThan(0),
+      reason: '$tab: every $content found was outside the viewport, so this '
+          'asserted nothing.',
+    );
 
     final pillTop = $.tester.getRect(find.byType(NavPillBar)).top;
     expect(

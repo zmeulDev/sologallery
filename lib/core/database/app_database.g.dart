@@ -4352,6 +4352,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $AppSettingsTable appSettings = $AppSettingsTable(this);
   late final $MemoriesTable memories = $MemoriesTable(this);
   late final $MemoryEntriesTable memoryEntries = $MemoryEntriesTable(this);
+  late final Index photoAssetDatedCreated = Index(
+    'photo_asset_dated_created',
+    'CREATE INDEX photo_asset_dated_created ON photo_assets (is_dated, created_at)',
+  );
   late final Index photoLabelAsset = Index(
     'photo_label_asset',
     'CREATE INDEX photo_label_asset ON photo_labels (asset_id)',
@@ -4398,6 +4402,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     appSettings,
     memories,
     memoryEntries,
+    photoAssetDatedCreated,
     photoLabelAsset,
     photoLabelLabel,
     faceAsset,

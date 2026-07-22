@@ -65,14 +65,15 @@ UI  ──▶  Domain  ◀──  Data
 
 ## Data model
 
-The local database is **Drift** (SQLite). It is **versioned**; every schema
-upgrade path (v1 → v2 → … → N) is covered by a `SchemaVerifier` migration test
-against committed schema dumps in `drift_schemas/`. Foreign keys are enabled
-per-connection (`PRAGMA foreign_keys = ON` in `beforeOpen`) so cascades fire.
+The local database is **Drift** (SQLite). It is **versioned**; every upgrade
+path *to the current version* is covered by a `SchemaVerifier` migration test
+against the committed schema dumps in `drift_schemas/` (`v1` … `v8`). Foreign
+keys are enabled per-connection (`PRAGMA foreign_keys = ON` in `beforeOpen`) so
+cascades fire.
 
-### Schema v1 (current)
+### Schema v8 (current)
 
-Only user-authored state that must exist **before** ML indexing lives here.
+**User-authored state** — the only tables that must exist before ML indexing:
 
 | Table | Key | Columns | Notes |
 |---|---|---|---|
@@ -81,19 +82,45 @@ Only user-authored state that must exist **before** ML indexing lives here.
 | `album_entries` | `id` (autoInc PK) | `albumId`→`albums.id` (cascade), `assetId`, `addedAt`; UNIQUE(`albumId`,`assetId`) | album membership by asset-id reference |
 | `edit_instructions` | `assetId` (PK) | `instructionsJson`, `updatedAt` | non-destructive edit JSON |
 
-DAOs: `FavoritesDao`, `AlbumsDao`, `EditInstructionsDao`
-(`lib/core/database/daos/`). Accessed via the keep-alive `databaseProvider`.
+**Indexing + ML** — all derived, all rebuildable from the photo library:
 
-### Deferred to later schema versions (ML / indexing phase)
+| Table | Key | Columns | Notes |
+|---|---|---|---|
+| `photo_assets` | `assetId` (PK) | `createdAt`, `isVideo`, `width`, `height`, `isDated`, `indexedAt?` | indexing cursor + lean cached metadata. `indexedAt` NULL = metadata swept but ML pending, so the indexer's remaining work is exactly the NULL rows. `isDated` is false only for Android undated assets, which route to the "Older" bucket |
+| `photo_labels` | `id` (autoInc PK) | `assetId`→`photo_assets` (cascade), `label`, `confidence` | ML Kit image labels, one row per (asset, label). Indexed on `assetId` and `label` |
+| `photo_texts` | `assetId` (PK) | `content` | on-device OCR. The column is `content`, not `text` — a Drift column cannot reuse a builder name |
+| `persons` | `id` (autoInc PK) | `displayName?`, `coverAssetId?`, `createdAt`, `mergedInto?`→`persons.id` (setNull) | face clusters. `mergedInto` is a **redirect, not a move**: the absorbed row keeps its faces, which is what makes a user merge survive the periodic global re-cluster |
+| `face_embeddings` | `id` (autoInc PK) | `assetId`→`photo_assets` (cascade), `personId?`→`persons` (setNull), `embedding` (blob), `left`, `top`, `right`, `bottom` | box edges are **fractions in `[0, 1]`**, never pixels — a pixel box is meaningless without the dimensions it was measured against. Indexed on `assetId` and `personId` |
 
-Not yet defined — added via a future migration when indexing is built, so the
-embedding/label shape isn't committed to prematurely:
+**Preferences + memories:**
 
-- `photo_asset` — cached indexed metadata (dimensions, created/modified, type,
-  duration, GPS, indexed flag). The gallery grid reads `photo_manager`
-  directly until this exists.
-- `photo_label` — on-device ML Kit image labels (asset id, label, confidence).
-- `face_embedding` — face vectors for people clustering.
+| Table | Key | Columns | Notes |
+|---|---|---|---|
+| `app_settings` | `key` (PK) | `value` | generic key/value prefs — `theme_mode`, `ml_consent`, `search_enabled`, `memories_enabled`, `faces_enabled`. Never `shared_preferences` (Drift-for-all-persistence rule) |
+| `memories` | `id` (autoInc PK) | `sourceKey` (unique), `kind`, `title`, `subtitle?`, `coverAssetId?`→`photo_assets` (setNull), `score`, `periodStart?`, `periodEnd?`, `generatedAt`, `seenAt?`, `hidden` | auto-curated collections. Regeneration **upserts on `sourceKey`** rather than wiping the table, so `seenAt`/`hidden` survive and the carousel never reshuffles under the user |
+| `memory_entries` | `id` (autoInc PK) | `memoryId`→`memories` (cascade), `assetId`→`photo_assets` (cascade), `position`; UNIQUE(`memoryId`,`assetId`) | ordered membership. Indexed on `memoryId` |
+
+### Version history
+
+| v | Change |
+|---|---|
+| 1 | `favorites`, `albums`, `album_entries`, `edit_instructions` |
+| 2 | + `photo_assets`, `photo_labels` |
+| 3 | + `photo_texts`, `persons`, `face_embeddings` |
+| 4 | `photo_assets.indexed_at` → nullable; + `photo_assets.is_dated` |
+| 5 | + `app_settings` |
+| 6 | + `memories`, `memory_entries` |
+| 7 | `face_embeddings` boxes → normalized `[0, 1]` reals; existing faces and clusters are dropped and re-derived (pixel values cannot be converted — the dimensions they were relative to were never stored, which *is* the bug) |
+| 8 | + `persons.merged_into` |
+
+DAOs (`lib/core/database/daos/`): `FavoritesDao`, `AlbumsDao`,
+`EditInstructionsDao`, `IndexDao`, `FacesDao`, `SettingsDao`, `MemoriesDao`.
+Accessed via the keep-alive `databaseProvider`.
+
+Before adding v9, re-read the migration trap in CLAUDE.md "Known gotchas":
+`m.createTable` builds the **current** shape, so any table whose columns change
+after it was introduced needs an `else if` guard on the later step — that is why
+`photo_assets` (v4), `face_embeddings` (v7) and `persons` (v8) each have one.
 
 ---
 

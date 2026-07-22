@@ -27,55 +27,55 @@ void main() {
     await verifier.migrateAndValidate(db, 1);
   });
 
-  test('upgrades v1 → v8 (fresh photo_asset in current shape + all later tables)',
+  test('upgrades v1 → v9 (fresh photo_asset in current shape + all later tables)',
       () async {
     final connection = await verifier.startAt(1);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 8);
+    await verifier.migrateAndValidate(db, 9);
   });
 
-  test('upgrades v2 → v8 (adds photo_text + alters photo_asset + settings/memories)',
+  test('upgrades v2 → v9 (adds photo_text + alters photo_asset + settings/memories)',
       () async {
     final connection = await verifier.startAt(2);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 8);
+    await verifier.migrateAndValidate(db, 9);
   });
 
-  test('upgrades v3 → v8 (photo_asset.indexed_at nullable + is_dated + rest)',
+  test('upgrades v3 → v9 (photo_asset.indexed_at nullable + is_dated + rest)',
       () async {
     final connection = await verifier.startAt(3);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 8);
+    await verifier.migrateAndValidate(db, 9);
   });
 
-  test('upgrades v4 → v8 (adds app_settings + memories)', () async {
+  test('upgrades v4 → v9 (adds app_settings + memories)', () async {
     final connection = await verifier.startAt(4);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 8);
+    await verifier.migrateAndValidate(db, 9);
   });
 
-  test('upgrades v5 → v8 (adds memories + memory_entries)', () async {
+  test('upgrades v5 → v9 (adds memories + memory_entries)', () async {
     final connection = await verifier.startAt(5);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 8);
+    await verifier.migrateAndValidate(db, 9);
   });
 
-  test('upgrades v6 → v8 (face box columns become normalized reals)', () async {
+  test('upgrades v6 → v9 (face box columns become normalized reals)', () async {
     final connection = await verifier.startAt(6);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 8);
+    await verifier.migrateAndValidate(db, 9);
   });
 
   test(
@@ -102,7 +102,7 @@ void main() {
 
     final db = AppDatabase(schema.newConnection());
     addTearDown(db.close);
-    await verifier.migrateAndValidate(db, 8);
+    await verifier.migrateAndValidate(db, 9);
 
     // The pixel box is unconvertible — the thumbnail size it was measured
     // against was never recorded — so the face and the cluster built from it
@@ -113,12 +113,12 @@ void main() {
     expect(await db.indexDao.pendingMlIds(), ['a']);
   });
 
-  test('upgrades v7 → v8 (persons gain merged_into)', () async {
+  test('upgrades v7 → v9 (persons gain merged_into)', () async {
     final connection = await verifier.startAt(7);
     final db = AppDatabase(connection);
     addTearDown(db.close);
 
-    await verifier.migrateAndValidate(db, 8);
+    await verifier.migrateAndValidate(db, 9);
   });
 
   test('v7 → v8 keeps existing people, unmerged', () async {
@@ -132,12 +132,33 @@ void main() {
 
     final db = AppDatabase(schema.newConnection());
     addTearDown(db.close);
-    await verifier.migrateAndValidate(db, 8);
+    await verifier.migrateAndValidate(db, 9);
 
     // The column is additive: the person survives and starts life unmerged.
     final people = await db.facesDao.allPersons();
     expect(people, hasLength(1));
     expect(people.single.displayName, 'Ana');
     expect(people.single.mergedInto, isNull);
+  });
+
+  test('upgrades v8 → v9 (adds the photo_assets (is_dated, created_at) index)',
+      () async {
+    final connection = await verifier.startAt(8);
+    final db = AppDatabase(connection);
+    addTearDown(db.close);
+
+    await verifier.migrateAndValidate(db, 9);
+
+    // Positive control: the v9 index actually landed. migrateAndValidate
+    // checks the schema dump, but a dropped `m.create` would silently pass
+    // if the dump were stale — assert the index row itself (CLAUDE.md
+    // "positive control" rule).
+    final indexRows = await db
+        .customSelect(
+          "SELECT name FROM sqlite_master WHERE type='index' "
+          "AND name='photo_asset_dated_created'",
+        )
+        .get();
+    expect(indexRows, hasLength(1));
   });
 }

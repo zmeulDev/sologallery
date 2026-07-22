@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_space.dart';
+import '../../widgets/asset_grid.dart' show kPhotoGridCacheExtent;
 import '../../widgets/asset_hero_tag.dart';
 import '../../widgets/asset_thumbnail.dart';
 import '../../widgets/empty_state.dart';
@@ -43,7 +44,16 @@ class _Grid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GridView.builder(
-      padding: const EdgeInsets.all(AppSpace.s2),
+      // Bottom inset is the system gesture bar (this is a pushed route, not in
+      // the shell, so there is no nav capsule to clear). Top/sides stay s2 so
+      // the grid runs full-width like the other photo grids.
+      padding: EdgeInsets.fromLTRB(
+        AppSpace.s2,
+        AppSpace.s2,
+        AppSpace.s2,
+        AppSpace.s2 + MediaQuery.paddingOf(context).bottom,
+      ),
+      scrollCacheExtent: kPhotoGridCacheExtent,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         mainAxisSpacing: AppSpace.s2,

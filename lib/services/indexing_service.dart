@@ -1,11 +1,8 @@
 import 'dart:async';
-import 'dart:io' show Directory, File;
 import 'dart:isolate';
-import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../core/database/daos/faces_dao.dart';
 import '../core/database/daos/index_dao.dart';
@@ -55,7 +52,6 @@ class IndexingService {
     required this.settings,
     required this.photos,
     required this.worker,
-    this.tempDir,
     this.resweepDebounce = const Duration(seconds: 2),
     this.reclusterThreshold = 20,
     this.memoryRefreshThreshold = 50,
@@ -108,9 +104,6 @@ class IndexingService {
   /// mid-day. Small in tests.
   final int memoryRefreshThreshold;
 
-  /// Where transient ML thumbnails are written; resolved lazily on device.
-  Directory? tempDir;
-
   /// How long to coalesce a burst of library-change callbacks before
   /// re-sweeping. Small in tests; ~2s on device.
   final Duration resweepDebounce;
@@ -156,6 +149,30 @@ class IndexingService {
     if (!_controller.isClosed) _controller.add(status);
   }
 
+  /// Timestamp of the last progress emit, for [_emitProgress]'s throttle.
+  DateTime? _lastProgressEmit;
+
+  /// Emits indexing progress at most every [_progressThrottle] during a pass.
+  /// The dial and the Settings stats rebuild per emit, so an unthrottled
+  /// per-asset emit on a 1k-asset first run is a thousand rebuilds for a count
+  /// the eye can't read that fast. The caller emits the final state
+  /// (remaining 0) separately and unconditionally after the loop, so a
+  /// throttled mid-pass value can't linger through the cluster/memories work
+  /// that follows.
+  void _emitProgress(IndexingStatus status) {
+    final now = DateTime.now();
+    if (_lastProgressEmit == null ||
+        now.difference(_lastProgressEmit!) >= _progressThrottle) {
+      _lastProgressEmit = now;
+      _emit(status);
+    }
+  }
+
+  /// Coalesces progress emits during a pass. ~250 ms is faster than the dial's
+  /// number can usefully change to the eye, and slow enough that a 1k-asset
+  /// pass emits ~4 times mid-flight instead of 1k.
+  static const _progressThrottle = Duration(milliseconds: 250);
+
   void _markSwept() => _setSwept(true);
 
   void _setSwept(bool value) {
@@ -197,6 +214,19 @@ class IndexingService {
   void resume() {
     _paused = false;
     if (!_running) unawaited(start());
+  }
+
+  /// Blocks until the app is no longer paused, or the pass is cancelled. The
+  /// per-asset ML loop checks `_paused` inline; the metadata sweep, the periodic
+  /// cluster/memories helpers, and the section entries in [_run] call this so a
+  /// backgrounded app doesn't keep driving platform-channel round-trips, file
+  /// I/O, or DB work (Absolute rule: no work runs while the app isn't in use).
+  /// On cancel this returns promptly and the caller bails on its next
+  /// `_cancelled` check.
+  Future<void> _awaitNotPaused() async {
+    while (_paused && !_cancelled) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
   }
 
   bool _rebuilding = false;
@@ -443,7 +473,9 @@ class IndexingService {
       if (todo.isNotEmpty) {
         _log.info('Indexing ${todo.length} new asset(s)');
         var done = 0;
-        _emit(IndexingStatus(remaining: todo.length, total: todo.length));
+        _emitProgress(
+          IndexingStatus(remaining: todo.length, total: todo.length),
+        );
 
         for (final id in todo) {
           if (_cancelled) return;
@@ -458,11 +490,16 @@ class IndexingService {
             facesEnabled: facesEnabled,
           );
           done++;
-          _emit(
+          _emitProgress(
             IndexingStatus(remaining: todo.length - done, total: todo.length),
           );
           await Future<void>.delayed(Duration.zero); // keep the UI isolate smooth
         }
+        // The final progress state lands unconditionally so the dial doesn't
+        // linger on a throttled mid-pass value during the post-todo
+        // cluster/memories work that follows (a throttled emit may have skipped
+        // the last few updates).
+        _emit(IndexingStatus(remaining: 0, total: todo.length));
         _log.info('Indexing pass complete (${todo.length} asset(s))');
       }
 
@@ -502,6 +539,8 @@ class IndexingService {
     for (final dated in const [true, false]) {
       var page = 0;
       while (!_cancelled) {
+        await _awaitNotPaused();
+        if (_cancelled) break;
         final rows = await photos.libraryMetadataPage(
           dated: dated,
           page: page,
@@ -544,18 +583,53 @@ class IndexingService {
   /// Assigns every not-yet-clustered face to a person — the nearest existing
   /// cluster above the similarity threshold, or a new person. Incremental and
   /// deterministic (faces come back in stable id order).
+  ///
+  /// Two phases: decide every face's person in memory (no DB writes), then
+  /// apply the whole plan in one transaction. The in-memory decision uses a
+  /// synthetic negative id for each new person so the clusterer can track it
+  /// before the DB mints a real id. Batching the writes collapses what was one
+  /// `watchPersonSummaries` emission per face into a single one, so the People
+  /// strip no longer rebuilds once per face during a pass.
   Future<void> _clusterNewFaces() async {
     final unclustered = await faces.unclusteredFaces();
     if (unclustered.isEmpty) return;
+    await _awaitNotPaused();
+    if (_cancelled) return;
     final clusterer =
         IncrementalClusterer(initial: await faces.clusteredExemplars());
+
+    // Phase 1 — decide in memory.
+    var nextSynthetic = -1;
+    final faceToPerson = <int, int>{}; // faceId -> personId (real or synthetic)
+    final syntheticCover = <int, String>{}; // syntheticId -> first face's asset
     for (final f in unclustered) {
+      await _awaitNotPaused();
       if (_cancelled) return;
       var personId = clusterer.nearest(f.embedding);
-      personId ??= await faces.createPerson(coverAssetId: f.assetId);
-      await faces.assignPersonToFace(f.id, personId);
+      if (personId == null) {
+        personId = nextSynthetic--;
+        syntheticCover[personId] = f.assetId;
+      }
+      faceToPerson[f.id] = personId;
       clusterer.add(personId, f.embedding);
     }
+
+    // Phase 2 — group faces by person and apply in one batch.
+    final byPerson = <int, List<int>>{};
+    for (final faceId in faceToPerson.keys) {
+      final personId = faceToPerson[faceId]!;
+      byPerson.putIfAbsent(personId, () => []).add(faceId);
+    }
+    final plan = [
+      for (final personId in byPerson.keys)
+        IncrementalClusterPlan(
+          faceIds: byPerson[personId]!,
+          reusePersonId: personId > 0 ? personId : null,
+          coverAssetId:
+              personId > 0 ? null : syntheticCover[personId],
+        ),
+    ];
+    await faces.applyIncrementalClusters(plan);
     _log.info('Clustered ${unclustered.length} new face(s)');
   }
 
@@ -567,6 +641,8 @@ class IndexingService {
   /// to a worker isolate, since it is quadratic in the face count and the UI
   /// isolate must never carry it.
   Future<void> _maybeGlobalRecluster() async {
+    await _awaitNotPaused();
+    if (_cancelled) return;
     final total = await faces.faceCount();
     final baselineRaw = await settings.read(_reclusterBaselineKey);
     final baseline = int.tryParse(baselineRaw ?? '') ?? 0;
@@ -611,6 +687,8 @@ class IndexingService {
     required bool searchEnabled,
     required bool facesEnabled,
   }) async {
+    await _awaitNotPaused();
+    if (_cancelled) return;
     final now = DateTime.now();
     final todayKey = '${now.year}-${now.month.toString().padLeft(2, '0')}-'
         '${now.day.toString().padLeft(2, '0')}';
@@ -721,32 +799,28 @@ class IndexingService {
       var text = '';
       var detectedFaces = const <DetectedFace>[];
       // No consented feature needs pixels, so don't even render a thumbnail.
+      // `indexing: true` routes these through the separate pool so a pass
+      // doesn't take slots from the grid's gate mid-fling. The bytes go
+      // straight to the worker over the SendPort — no temp file on the UI
+      // isolate (the worker writes its own).
       final bytes = (searchEnabled || facesEnabled)
-          ? await photos.thumbnail(id, 512, 512)
+          ? await photos.thumbnail(id, 512, 512, indexing: true)
           : null;
       if (bytes != null) {
-        final file = await _writeTemp('sg_idx', id, bytes);
         // A larger thumbnail for OCR only — recovers small text the 512 misses.
-        // Labels/faces stay on the 512 file (bounded memory, stable box space).
+        // Labels/faces stay on the 512 bytes (bounded memory, stable box space).
         final ocrBytes = searchEnabled
-            ? await photos.thumbnail(id, _ocrEdge, _ocrEdge)
+            ? await photos.thumbnail(id, _ocrEdge, _ocrEdge, indexing: true)
             : null;
-        final ocrFile =
-            ocrBytes != null ? await _writeTemp('sg_ocr', id, ocrBytes) : null;
-        try {
-          final analysis = await worker.analyzeFile(
-            file.path,
-            ocrPath: ocrFile?.path,
-            content: searchEnabled,
-            faces: facesEnabled,
-          );
-          labels = analysis.labels;
-          text = analysis.text;
-          detectedFaces = analysis.faces;
-        } finally {
-          if (await file.exists()) await file.delete();
-          if (ocrFile != null && await ocrFile.exists()) await ocrFile.delete();
-        }
+        final analysis = await worker.analyze(
+          bytes: bytes,
+          ocrBytes: ocrBytes,
+          content: searchEnabled,
+          faces: facesEnabled,
+        );
+        labels = analysis.labels;
+        text = analysis.text;
+        detectedFaces = analysis.faces;
       }
 
       await dao.upsertIndexed(
@@ -775,13 +849,6 @@ class IndexingService {
     } catch (e, st) {
       _log.warning('Indexing failed for $id', e, st);
     }
-  }
-
-  Future<File> _writeTemp(String prefix, String id, Uint8List bytes) async {
-    final dir = tempDir ??= await getTemporaryDirectory();
-    final file = File('${dir.path}/${prefix}_${id.hashCode}.jpg');
-    await file.writeAsBytes(bytes, flush: true);
-    return file;
   }
 }
 

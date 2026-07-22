@@ -132,7 +132,6 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
     if (_ids.isEmpty) {
       return const Scaffold(backgroundColor: Colors.black);
     }
-    final isFavorite = ref.watch(isFavoriteProvider(_currentId)).value ?? false;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -171,15 +170,24 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
               ),
             ),
           ),
+          // The favorite flag is watched in a Consumer scoped to the action bar
+          // alone: a favorite tick then rebuilds only this chrome layer, not the
+          // whole PageView/Stage above it.
           _dragFadedChrome(
             child: _Chrome(
               visible: _chromeVisible,
               alignment: Alignment.bottomCenter,
-              child: DetailActionBar(
-                isFavorite: isFavorite,
-                onFavorite: _onFavorite,
-                onInfo: _onExif,
-                onDelete: _onDelete,
+              child: Consumer(
+                builder: (context, ref, _) {
+                  final isFavorite =
+                      ref.watch(isFavoriteProvider(_currentId)).value ?? false;
+                  return DetailActionBar(
+                    isFavorite: isFavorite,
+                    onFavorite: _onFavorite,
+                    onInfo: _onExif,
+                    onDelete: _onDelete,
+                  );
+                },
               ),
             ),
           ),

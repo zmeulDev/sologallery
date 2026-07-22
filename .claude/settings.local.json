@@ -70,7 +70,11 @@
       "Bash(sqlite3 db.sqlite \"SELECT id,left,top,right,bottom FROM face_embeddings WHERE asset_id='1000004169';\")",
       "Bash(cp orig.jpg v_orig.jpg)",
       "Bash(sips --resampleWidth 400 v_orig.jpg)",
-      "Bash(sips -g pixelWidth -g pixelHeight v_orig.jpg v_t90.jpg)"
+      "Bash(sips -g pixelWidth -g pixelHeight v_orig.jpg v_t90.jpg)",
+      "Bash(awk '/^  drift:/{f=1} /^  drift_dev:/{f=2} f&&/version:/{print \\(f==1?\"drift \":\"drift_dev \"\\), $2; f=0}' pubspec.lock)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb shell *)",
+      "Bash(cd *)",
+      "Bash(tool/check.sh)"
     ]
   }
 }

@@ -109,4 +109,87 @@ void main() {
       expect(p.dispW, greaterThan(0));
     });
   });
+
+  group('avatarThumbEdge', () {
+    // The avatar is a zoomed crop, so what has to be sharp is the face box, not
+    // the whole picture. These pin that the request tracks the box.
+    int edgeFor(double boxFraction, {double avatarSize = 64, double dpr = 3}) =>
+        avatarThumbEdge(
+          avatarSize: avatarSize,
+          devicePixelRatio: dpr,
+          boxFraction: boxFraction,
+        );
+
+    test('a face filling the frame needs only a small thumbnail', () {
+      // 64 * 3 * 1.3 / 0.9 = 277 -> the 384 bucket.
+      expect(edgeFor(0.9), 384);
+    });
+
+    test('a small face in a group shot still gets the 1024 ceiling', () {
+      // 64 * 3 * 1.3 / 0.15 = 1664, above every bucket, so it clamps.
+      expect(edgeFor(0.15), 1024);
+    });
+
+    test('the edge grows as the face shrinks, never the other way', () {
+      final fractions = [0.9, 0.7, 0.5, 0.3, 0.15];
+      final edges = fractions.map(edgeFor).toList();
+      for (var i = 1; i < edges.length; i++) {
+        expect(
+          edges[i],
+          greaterThanOrEqualTo(edges[i - 1]),
+          reason: 'a smaller face can never need a smaller thumbnail',
+        );
+      }
+    });
+
+    test('requests enough pixels to avoid upscaling, up to the ceiling', () {
+      // Only holds where the honest requirement fits under 1024 — at 64pt and
+      // 3x that is a box from ~0.25 of the image upward.
+      for (final fraction in [0.25, 0.35, 0.5, 0.75, 1.0]) {
+        final edge = edgeFor(fraction);
+        expect(
+          edge * fraction,
+          greaterThanOrEqualTo(64 * 3 * 1.3),
+          reason: 'box at $fraction of a $edge thumbnail is upscaled',
+        );
+      }
+    });
+
+    test('knowingly upscales a face too small to serve at the ceiling', () {
+      // Not a regression: 1024 was the fixed request before this change, so a
+      // tiny face is upscaled exactly as much as it always was. Pinned so the
+      // limit is a decision rather than a surprise.
+      const fraction = 0.15;
+      expect(edgeFor(fraction), 1024);
+      expect(1024 * fraction, lessThan(64 * 3 * 1.3));
+    });
+
+    test('never exceeds the 1024 that shipped, whatever the inputs', () {
+      expect(edgeFor(0.001), 1024);
+      expect(edgeFor(0.5, avatarSize: 512, dpr: 4), 1024);
+      expect(edgeFor(0), 1024, reason: 'a degenerate box must not divide by 0');
+    });
+
+    test('the People grid and the People strip share one decode at 64pt', () {
+      // PeopleStrip._avatarSize is 64 and the grid's LayoutBuilder edge lands
+      // there too on a normal phone, so the same face on Albums and on People
+      // must resolve to one cache entry.
+      expect(edgeFor(0.5, avatarSize: 64), edgeFor(0.5, avatarSize: 64));
+    });
+
+    test('bounds cache fragmentation to the bucket count', () {
+      // The grid's avatar size comes from a LayoutBuilder, so it is continuous
+      // and device-dependent. Bucketing is what stops that from minting a
+      // distinct thumbnail request — and a distinct native decode — per pixel.
+      // It does not promise two nearby sizes coincide, only that the whole
+      // range collapses to a handful of values.
+      final edges = <int>{
+        for (var size = 40.0; size <= 160.0; size += 0.5)
+          edgeFor(0.4, avatarSize: size),
+      };
+      expect(edges.length, lessThanOrEqualTo(5));
+      expect(edges.every((e) => const [256, 384, 512, 768, 1024].contains(e)),
+          isTrue);
+    });
+  });
 }

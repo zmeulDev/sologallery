@@ -42,6 +42,15 @@ part 'app_database.g.dart';
 /// cannot be converted — the thumbnail dimensions they were measured against
 /// were never recorded, which is the bug — so the faces are dropped and
 /// re-derived (docs/plans/faces-first-run-and-avatar-crop.md).
+///
+/// v8 adds `persons.merged_into` — the user-asserted "same person" redirect
+/// that survives the periodic global re-cluster (docs/plans/people-merge).
+///
+/// v9 adds a compound index on `photo_assets (is_dated, created_at)` — the
+/// axis every Library query filters and ranges/sorts on. Before this the
+/// hottest table had no secondary index, so background-ML `.watch()` re-runs
+/// during a pass each full-scanned + filesorted. Pure index add, no data
+/// change.
 @DriftDatabase(
   tables: [
     Favorites,
@@ -72,7 +81,7 @@ class AppDatabase extends _$AppDatabase {
       : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -144,6 +153,17 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(memories);
             await m.createTable(memoryEntries);
             await m.create(memoryEntryMemory);
+          }
+          // v9: a compound index on photo_assets (is_dated, created_at) — the
+          // axis every Library query filters and ranges/sorts on. Before this
+          // the table had no secondary index at all, so every month/year/recent/
+          // older/pending query full-scanned + filesorted, and a background ML
+          // pass re-ran each visible Library `.watch()` stream per asset
+          // stamped. One branch covers every upgrade path (v1→v9 … v8→v9):
+          // the index didn't exist before v9, and fresh installs get it via
+          // `onCreate`'s `createAll`.
+          if (from < 9) {
+            await m.create(photoAssetDatedCreated);
           }
         },
         beforeOpen: (details) async {

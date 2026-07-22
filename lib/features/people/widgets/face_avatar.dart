@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -15,17 +16,48 @@ import '../people_providers.dart';
 /// decode rather than from the size we asked for.
 typedef FaceThumb = ({Uint8List bytes, int width, int height});
 
-/// The edge we request for the avatar thumbnail — larger than the 512 analysis
-/// thumbnail so the zoomed-in face isn't upscaled to mush. Nothing depends on
-/// the two matching: the stored box is normalized, so it maps onto whatever
-/// size actually comes back.
-const _avatarEdge = 1024;
+/// The edges we are willing to request, smallest first. Requests snap up to one
+/// of these rather than using the exact computed number so that the same face
+/// shown at slightly different sizes — the People grid and the People strip —
+/// still shares one cache entry and one decode instead of two.
+const _avatarEdgeBuckets = [256, 384, 512, 768, 1024];
 
-final faceThumbProvider =
-    FutureProvider.autoDispose.family<FaceThumb?, String>((ref, assetId) async {
+/// The thumbnail edge needed to fill an [avatarSize]-wide avatar, at device
+/// pixels, from a face box covering [boxFraction] of the source image.
+///
+/// The avatar is a *zoomed crop*, not the whole picture, so the image only has
+/// to be large enough that the box itself — [boxFraction] of it — still carries
+/// enough pixels once scaled up by [fill]. That makes the honest requirement
+/// `avatarSize * dpr * fill / boxFraction`, which for a face filling most of
+/// the frame is a few hundred pixels and for a small face in a group shot is
+/// more than the 1024 ceiling. Hence the clamp: 1024 stays the maximum (it is
+/// what shipped, and lowering it would soften exactly the group-photo avatars
+/// that need it most), but a large face no longer pays for it.
+///
+/// Pure arithmetic, unit tested — no decoding.
+int avatarThumbEdge({
+  required double avatarSize,
+  required double devicePixelRatio,
+  required double boxFraction,
+  double fill = 1.3,
+}) {
+  final safeFraction = boxFraction.clamp(0.01, 1.0);
+  final needed = avatarSize * devicePixelRatio * fill / safeFraction;
+  for (final bucket in _avatarEdgeBuckets) {
+    if (bucket >= needed) return bucket;
+  }
+  return _avatarEdgeBuckets.last;
+}
+
+/// Keys [faceThumbProvider]. A record, so it is value-equal and the family
+/// caches per asset *and* per requested edge.
+typedef FaceThumbRequest = ({String assetId, int edge});
+
+final faceThumbProvider = FutureProvider.autoDispose
+    .family<FaceThumb?, FaceThumbRequest>((ref, req) async {
   final bytes = await ref.watch(
     thumbnailProvider(
-      ThumbnailRequest(assetId, width: _avatarEdge, height: _avatarEdge),
+      ThumbnailRequest(req.assetId, width: req.edge, height: req.edge),
     ).future,
   );
   if (bytes == null) return null;
@@ -120,7 +152,21 @@ class FaceAvatar extends ConsumerWidget {
     final cover = ref.watch(personCoverProvider(personId)).value;
     if (cover == null) return placeholder();
 
-    final thumb = ref.watch(faceThumbProvider(cover.assetId)).value;
+    // The box is normalized, so its own extent is the fraction of the image the
+    // face occupies — which is what decides how big a thumbnail this avatar
+    // actually needs.
+    final edge = avatarThumbEdge(
+      avatarSize: size,
+      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+      boxFraction: math.max(
+        cover.right - cover.left,
+        cover.bottom - cover.top,
+      ),
+      fill: _faceFill,
+    );
+    final thumb = ref
+        .watch(faceThumbProvider((assetId: cover.assetId, edge: edge)))
+        .value;
     if (thumb == null) return placeholder();
 
     final place = faceAvatarPlacement(

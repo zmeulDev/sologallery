@@ -11,6 +11,7 @@ import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image/image.dart' as img;
 import 'package:logging/logging.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 
 /// One image label: the ML Kit tag text and the model's confidence in `[0, 1]`.
@@ -44,19 +45,22 @@ const _faceModelAsset = 'assets/models/mobilefacenet.tflite';
 /// tests (CLAUDE.md fake-pairing rule — the real path is covered by an on-device
 /// integration test).
 abstract class MlWorker {
-  /// Analyzes the image at [jpegPath] (a downsized JPEG — never an original) for
-  /// labels and faces. When [ocrPath] is given, OCR runs on that (larger)
+  /// Analyzes [bytes] (a downsized JPEG thumbnail — never an original) for
+  /// labels and faces. When [ocrBytes] is given, OCR runs on that (larger)
   /// image instead, recovering small text the face/label thumbnail misses;
-  /// otherwise OCR uses [jpegPath].
+  /// otherwise OCR uses [bytes].
+  ///
+  /// The bytes cross the SendPort and the worker writes its own temp file from
+  /// them — the caller (UI isolate) does no file I/O per asset.
   ///
   /// [content] and [faces] are the user's consent flags (both opt-in, off by
   /// default). When one is false the corresponding model never runs and its
   /// result comes back empty — the caller must not have to filter it out
   /// afterwards. With both false there is nothing to do; callers should skip
-  /// the call entirely rather than pay the thumbnail write.
-  Future<ImageAnalysis> analyzeFile(
-    String jpegPath, {
-    String? ocrPath,
+  /// the call entirely rather than pay the thumbnail fetch.
+  Future<ImageAnalysis> analyze({
+    required Uint8List bytes,
+    Uint8List? ocrBytes,
     bool content = true,
     bool faces = true,
   });
@@ -114,9 +118,13 @@ class MlWorkerController implements MlWorker {
         model.offsetInBytes,
         model.lengthInBytes,
       );
+      // Resolve the temp dir on the main isolate (path_provider needs the root
+      // binding); the worker writes its own ML thumbnails there, off the UI
+      // isolate, so the caller never touches the filesystem per asset.
+      final tempDir = await getTemporaryDirectory();
       _isolate = await Isolate.spawn(
         _workerMain,
-        _WorkerInit(replyTo, token, modelBytes),
+        _WorkerInit(replyTo, token, modelBytes, tempDir.path),
       );
     } catch (e, st) {
       _log.severe('Failed to spawn ML worker isolate', e, st);
@@ -140,9 +148,9 @@ class MlWorkerController implements MlWorker {
   }
 
   @override
-  Future<ImageAnalysis> analyzeFile(
-    String jpegPath, {
-    String? ocrPath,
+  Future<ImageAnalysis> analyze({
+    required Uint8List bytes,
+    Uint8List? ocrBytes,
     bool content = true,
     bool faces = true,
   }) async {
@@ -150,7 +158,7 @@ class MlWorkerController implements MlWorker {
     final id = _seq++;
     final completer = Completer<ImageAnalysis>();
     _pending[id] = completer;
-    _commands!.send(_AnalyzeJob(id, jpegPath, ocrPath, content, faces));
+    _commands!.send(_AnalyzeJob(id, bytes, ocrBytes, content, faces));
     return completer.future;
   }
 
@@ -187,8 +195,14 @@ void _workerMain(_WorkerInit init) {
 
   commands.listen((dynamic msg) async {
     if (msg is _AnalyzeJob) {
+      // The worker writes its own temp from the bytes handed over the SendPort,
+      // so the UI isolate does no file I/O per asset. No fsync — the file only
+      // needs to be readable by ML Kit in this same process, not durable.
+      final tempFile = File('${init.tempDir}/sg_${msg.id}.jpg');
+      File? ocrTempFile;
       try {
-        final input = InputImage.fromFilePath(msg.path);
+        tempFile.writeAsBytesSync(msg.bytes);
+        final input = InputImage.fromFilePath(tempFile.path);
 
         var labels = const <ImageLabel>[];
         var text = '';
@@ -199,9 +213,12 @@ void _workerMain(_WorkerInit init) {
           // OCR on the higher-res image when supplied (small-text recall);
           // labels and faces stay on the 512 thumbnail (bounded memory, stable
           // box space).
-          final ocrInput = msg.ocrPath != null
-              ? InputImage.fromFilePath(msg.ocrPath!)
-              : input;
+          InputImage ocrInput = input;
+          if (msg.ocrBytes != null) {
+            ocrTempFile = File('${init.tempDir}/sg_ocr_${msg.id}.jpg');
+            ocrTempFile.writeAsBytesSync(msg.ocrBytes!);
+            ocrInput = InputImage.fromFilePath(ocrTempFile.path);
+          }
           final recognized = await (recognizer ??= TextRecognizer(
             script: TextRecognitionScript.latin,
           )).processImage(ocrInput);
@@ -238,9 +255,11 @@ void _workerMain(_WorkerInit init) {
                 face,
           ];
           // Decoding the whole thumbnail is the expensive part, so it only
-          // happens when there is actually a face to crop out of it.
+          // happens when there is actually a face to crop out of it. Decode
+          // from the in-memory bytes — same bytes the temp file was written
+          // from, so dimensions and normalized boxes match exactly.
           if (detected.isNotEmpty) {
-            final decoded = img.decodeImage(File(msg.path).readAsBytesSync());
+            final decoded = img.decodeImage(msg.bytes);
             if (decoded != null) {
               for (final face in detected) {
                 final f = _embedFace(
@@ -265,6 +284,11 @@ void _workerMain(_WorkerInit init) {
         );
       } catch (e) {
         init.sendPort.send(_AnalyzeError(msg.id, e.toString()));
+      } finally {
+        if (tempFile.existsSync()) tempFile.deleteSync();
+        if (ocrTempFile != null && ocrTempFile.existsSync()) {
+          ocrTempFile.deleteSync();
+        }
       }
     }
   });
@@ -406,21 +430,32 @@ DetectedFace? _embedFace(
   );
 }
 
-/// Spawn payload: reply port, plugin-binding token, and the tflite model bytes.
+/// Spawn payload: reply port, plugin-binding token, the tflite model bytes,
+/// and the temp dir path the worker writes its own ML thumbnails into.
 class _WorkerInit {
-  const _WorkerInit(this.sendPort, this.token, this.modelBytes);
+  const _WorkerInit(this.sendPort, this.token, this.modelBytes, this.tempDir);
   final SendPort sendPort;
   final RootIsolateToken token;
   final Uint8List modelBytes;
+  final String tempDir;
 }
 
 class _AnalyzeJob {
-  const _AnalyzeJob(this.id, this.path, this.ocrPath, this.content, this.faces);
+  const _AnalyzeJob(
+    this.id,
+    this.bytes,
+    this.ocrBytes,
+    this.content,
+    this.faces,
+  );
   final int id;
-  final String path;
 
-  /// Optional higher-res image for OCR only; null falls back to [path].
-  final String? ocrPath;
+  /// Downsized JPEG thumbnail (512) for labels + faces.
+  final Uint8List bytes;
+
+  /// Optional higher-res thumbnail (1024) for OCR only; null falls back to
+  /// [bytes].
+  final Uint8List? ocrBytes;
 
   /// Whether to run labeling + OCR for this job (user consent).
   final bool content;

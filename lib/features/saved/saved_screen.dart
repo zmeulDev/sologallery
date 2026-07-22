@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../widgets/asset_grid.dart' show kPhotoGridCacheExtent;
 import '../../widgets/asset_hero_tag.dart';
 import '../../widgets/asset_thumbnail.dart';
 import '../../widgets/empty_state.dart';
@@ -88,6 +89,7 @@ class _SavedGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final assetIds = [for (final f in favorites) f.assetId];
     return CustomScrollView(
+      scrollCacheExtent: kPhotoGridCacheExtent,
       slivers: [
         SliverPadding(
           // Clears the floating nav capsule (reported as the bottom inset).

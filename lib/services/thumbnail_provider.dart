@@ -27,12 +27,25 @@ class ThumbnailRequest {
 /// Decoded thumbnail bytes for a single asset. `autoDispose` so off-screen grid
 /// cells release memory; `photo_manager` caches the bytes natively, so scrolling
 /// back is cheap. Overridable in golden/widget tests with deterministic bytes.
+///
+/// Disposal is forwarded to the service as a cancellation signal. Riverpod
+/// dropping this provider frees the *bytes*, but on its own it does nothing
+/// about a decode already queued behind the concurrency cap — that request
+/// would still run for a cell that scrolled away. The flag lets the gate in
+/// `thumbnail_gate.dart` skip it instead.
 final thumbnailProvider =
     FutureProvider.autoDispose.family<Uint8List?, ThumbnailRequest>(
   (ref, req) {
+    var disposed = false;
+    ref.onDispose(() => disposed = true);
     return ref
         .read(photoLibraryServiceProvider)
-        .thumbnail(req.assetId, req.width, req.height);
+        .thumbnail(
+          req.assetId,
+          req.width,
+          req.height,
+          cancelled: () => disposed,
+        );
   },
 );
 

@@ -37,6 +37,28 @@ class PersonSummary {
 /// A face awaiting clustering: its id, owning asset, and embedding.
 typedef UnclusteredFace = ({int id, String assetId, Float32List embedding});
 
+/// One incremental cluster's worth of faces, and where to put them: either an
+/// existing person to reuse ([reusePersonId]) or `null` to mint a fresh
+/// unnamed one with [coverAssetId]. Built by `_clusterNewFaces` after an
+/// in-memory decision pass, then applied in one batch.
+class IncrementalClusterPlan {
+  const IncrementalClusterPlan({
+    required this.faceIds,
+    this.reusePersonId,
+    this.coverAssetId,
+  });
+
+  final List<int> faceIds;
+
+  /// Existing person id to reuse (its name/cover stay untouched), or null to
+  /// create a new unnamed person.
+  final int? reusePersonId;
+
+  /// The cover asset for a *new* person only — unused when [reusePersonId] is
+  /// set, since a reused person keeps its curated cover.
+  final String? coverAssetId;
+}
+
 /// Data-access for face embeddings + person clusters. Pure data layer — the
 /// clustering *decision* lives in `face_clustering.dart`; this persists it and
 /// serves the People UI.
@@ -114,6 +136,30 @@ class FacesDao extends DatabaseAccessor<AppDatabase> with _$FacesDaoMixin {
   Future<void> assignPersonToFace(int faceId, int personId) {
     return (update(faceEmbeddings)..where((f) => f.id.equals(faceId)))
         .write(FaceEmbeddingsCompanion(personId: Value(personId)));
+  }
+
+  /// One incremental cluster's worth of faces, and where to put them: either an
+  /// existing person to reuse ([reusePersonId]) or `null` to mint a fresh
+  /// unnamed one with [coverAssetId]. Sent to [applyIncrementalClusters] in a
+  /// batch so a whole `_clusterNewFaces` pass is one transaction (and so
+  /// [watchPersonSummaries] emits once, not once per face).
+  Future<void> applyIncrementalClusters(List<IncrementalClusterPlan> plan) async {
+    if (plan.isEmpty) return;
+    await transaction(() async {
+      for (final c in plan) {
+        final personId = c.reusePersonId ??
+            await into(persons).insert(
+              PersonsCompanion.insert(
+                coverAssetId: Value(c.coverAssetId),
+                createdAt: DateTime.now(),
+              ),
+            );
+        if (c.faceIds.isNotEmpty) {
+          await (update(faceEmbeddings)..where((f) => f.id.isIn(c.faceIds)))
+              .write(FaceEmbeddingsCompanion(personId: Value(personId)));
+        }
+      }
+    });
   }
 
   Future<void> renamePerson(int personId, String? name) {

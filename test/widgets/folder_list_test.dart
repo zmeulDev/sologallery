@@ -1,5 +1,6 @@
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderSliver;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -32,7 +33,12 @@ void main() {
               data: MediaQuery.of(
                 context,
               ).copyWith(textScaler: TextScaler.linear(textScale)),
-              child: SingleChildScrollView(child: FolderList(folders: folders)),
+              // FolderList is a sliver (it builds lazily so a 30-folder device
+              // does not decode and blur every cover up front), so it hosts in
+              // a CustomScrollView, matching how AlbumsScreen mounts it.
+              child: CustomScrollView(
+                slivers: [FolderList(folders: folders)],
+              ),
             ),
           ),
         ),
@@ -69,7 +75,19 @@ void main() {
   testWidgets('renders nothing at all for no folders', (tester) async {
     await pump(tester, const []);
     expect(find.byType(Pressable), findsNothing);
-    expect(tester.getSize(find.byType(FolderList)).height, 0);
+    // A sliver has no box size to measure, so assert the extent it contributes
+    // to its viewport instead. It needs `skipOffstage: false` to be found at
+    // all: a viewport reports a zero-extent sliver as offstage, which is itself
+    // the thing being asserted.
+    expect(
+      tester
+          .renderObject<RenderSliver>(
+            find.byType(FolderList, skipOffstage: false),
+          )
+          .geometry!
+          .scrollExtent,
+      0,
+    );
     await settle(tester);
   });
 

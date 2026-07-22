@@ -169,14 +169,23 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
         ),
       );
       await (delete(photoLabels)..where((l) => l.assetId.equals(assetId))).go();
-      for (final (label, confidence) in labels) {
-        await into(photoLabels).insert(
-          PhotoLabelsCompanion.insert(
-            assetId: assetId,
-            label: label,
-            confidence: confidence,
-          ),
-        );
+      // One batched insert for the whole label set, not N awaited inserts —
+      // a typical asset carries 5–15 labels, so this turns tens of thousands
+      // of round-trips across a full pass into thousands.
+      if (labels.isNotEmpty) {
+        await batch((b) {
+          b.insertAll(
+            photoLabels,
+            [
+              for (final (label, confidence) in labels)
+                PhotoLabelsCompanion.insert(
+                  assetId: assetId,
+                  label: label,
+                  confidence: confidence,
+                ),
+            ],
+          );
+        });
       }
       await (delete(photoTexts)..where((t) => t.assetId.equals(assetId))).go();
       if (text.isNotEmpty) {

@@ -8,6 +8,7 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../features/search/domain/search_date.dart';
+import 'thumbnail_gate.dart';
 
 /// Coarse photo-library access state, mapped from `photo_manager`'s
 /// [PermissionState]. This is the only permission vocabulary the domain/UI
@@ -510,6 +511,19 @@ class PhotoLibraryService {
   /// bytes themselves natively.
   final Map<String, AssetEntity> _entityCache = {};
 
+  /// Caps concurrent grid-thumbnail decodes and discards ones whose cell has
+  /// scrolled away — see [ThumbnailGate]. [previewImage] deliberately does not
+  /// go through it: the detail viewer asks for one large image (plus its ±3
+  /// neighbours) and must not queue behind a grid fling's backlog.
+  final ThumbnailGate _thumbnailGate = ThumbnailGate();
+
+  /// A separate, smaller pool for indexing's own thumbnails. A pass requests
+  /// one 512 (and optionally one 1024 OCR) thumbnail per asset, sequentially,
+  /// so it never needs more than a slot or two — but sharing the grid's 6-slot
+  /// gate meant a pass starved scrolling to 5 during indexing. Its own pool
+  /// keeps the grid's slots reserved for the grid and the pass's for the pass.
+  final ThumbnailGate _indexingGate = ThumbnailGate(maxConcurrent: 3);
+
   /// Resolves (and caches) the [AssetEntity] for [assetId], or null if it can't
   /// be resolved (e.g. deleted).
   Future<AssetEntity?> _entity(String assetId) async {
@@ -521,13 +535,27 @@ class PhotoLibraryService {
   }
 
   /// A `width`×`height` thumbnail for [assetId], or null if the asset can't be
-  /// resolved (e.g. deleted). Never decodes the original at full size
+  /// resolved (e.g. deleted) or [cancelled] reported the caller gave up while
+  /// the request was queued. Never decodes the original at full size
   /// (Absolute rules) — the detail viewer requests a screen-capped size, the
   /// grid a cell-sized one.
-  Future<Uint8List?> thumbnail(String assetId, int width, int height) async {
-    final entity = await _entity(assetId);
-    if (entity == null) return null;
-    return entity.thumbnailDataWithSize(ThumbnailSize(width, height));
+  ///
+  /// Pass [indexing] true for the background indexer's own thumbnails so they
+  /// use a separate pool ([_indexingGate]) and don't take slots from the grid's
+  /// gate mid-fling.
+  Future<Uint8List?> thumbnail(
+    String assetId,
+    int width,
+    int height, {
+    bool Function()? cancelled,
+    bool indexing = false,
+  }) {
+    final gate = indexing ? _indexingGate : _thumbnailGate;
+    return gate.run(() async {
+      final entity = await _entity(assetId);
+      if (entity == null) return null;
+      return entity.thumbnailDataWithSize(ThumbnailSize(width, height));
+    }, cancelled: cancelled);
   }
 
   /// A high-quality, screen-sized preview for the detail viewer — the whole

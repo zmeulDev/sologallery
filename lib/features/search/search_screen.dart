@@ -100,17 +100,24 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       appBar: AppBar(title: const Text('Search')),
       body: Column(
         children: [
-          _SearchField(
-            controller: _controller,
-            focusNode: _focusNode,
-            onChanged: _onChanged,
-            onClear: _clear,
-            // The hint only promises content matching when the user has
-            // actually enabled it — otherwise typing "dog" would silently
-            // return nothing after the field invited it.
-            hintText: ref.watch(searchEnabledProvider).value ?? false
-                ? 'Photos, places, people, text…'
-                : 'Dates, albums, media type…',
+          // The field mirrors the query through its controller, so it doesn't
+          // rebuild on every keystroke — only the hint depends on a provider,
+          // and only on whether content search is enabled. Watch that one
+          // provider in a Consumer scoped to the field so a keystroke (which
+          // ticks searchQueryProvider) doesn't rebuild it.
+          Consumer(
+            builder: (context, ref, _) => _SearchField(
+              controller: _controller,
+              focusNode: _focusNode,
+              onChanged: _onChanged,
+              onClear: _clear,
+              // The hint only promises content matching when the user has
+              // actually enabled it — otherwise typing "dog" would silently
+              // return nothing after the field invited it.
+              hintText: ref.watch(searchEnabledProvider).value ?? false
+                  ? 'Photos, places, people, text…'
+                  : 'Dates, albums, media type…',
+            ),
           ),
           // Facets are an answer-narrowing tool, so they arrive with the
           // answers. On the idle screen they would be four controls narrowing

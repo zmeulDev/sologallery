@@ -144,6 +144,7 @@ class _MonthList extends StatelessWidget {
       filter: filter,
     );
     return ListView.builder(
+      scrollCacheExtent: kPhotoGridCacheExtent,
       // The nav capsule floats over the body, so the Scaffold reports its
       // height as the bottom inset — the last row has to clear it.
       padding: EdgeInsets.only(
