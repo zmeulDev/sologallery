@@ -12,6 +12,7 @@ import 'package:sologallery/core/database/daos/faces_dao.dart'
 import 'package:sologallery/features/library/domain/year_month.dart';
 import 'package:sologallery/features/library/widgets/library_skeleton.dart';
 import 'package:sologallery/features/library/widgets/month_header.dart';
+import 'package:sologallery/features/library/widgets/section_count_pill.dart';
 import 'package:sologallery/features/library/widgets/year_header.dart';
 import 'package:sologallery/features/people/people_providers.dart';
 import 'package:sologallery/features/memories/widgets/memory_card.dart';
@@ -117,6 +118,20 @@ void main() {
           MonthHeader(month: YearMonth(2026, 7), count: 128),
           SizedBox(height: 16),
           MonthHeader(month: YearMonth(2026, 6), count: 1),
+        ],
+      ),
+    ),
+  );
+
+  goldenTest(
+    'SectionCountPill — tappable and non-tappable variants',
+    fileName: 'section_count_pill',
+    builder: () => themedGroup(
+      const Row(
+        children: [
+          SectionCountPill(count: 128),
+          SizedBox(width: 12),
+          SectionCountPill(count: 1, showChevron: false),
         ],
       ),
     ),

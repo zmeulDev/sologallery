@@ -7,9 +7,11 @@ import '../../features/albums/albums_screen.dart';
 import '../../features/detail/detail_screen.dart';
 import '../../features/detail/photo_viewer_args.dart';
 import '../../features/folders/folder_detail_screen.dart';
+import '../../features/library/day_grid_screen.dart';
 import '../../features/library/library_screen.dart';
 import '../../features/library/month_grid_screen.dart';
 import '../../features/library/older_grid_screen.dart';
+import '../../features/library/year_grid_screen.dart';
 import '../../features/memories/memory_player_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/people/people_screen.dart';
@@ -78,6 +80,22 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => NoTransitionPage(
           key: state.pageKey,
           child: const OlderGridScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/year/:year',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) => NoTransitionPage(
+          key: state.pageKey,
+          child: YearGridScreen(yearKey: state.pathParameters['year']!),
+        ),
+      ),
+      GoRoute(
+        path: '/day/:date',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) => NoTransitionPage(
+          key: state.pageKey,
+          child: DayGridScreen(dateKey: state.pathParameters['date']!),
         ),
       ),
       GoRoute(

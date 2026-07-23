@@ -2,11 +2,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/database/daos/albums_dao.dart' show AlbumSummary;
 import '../../core/database/database_provider.dart';
+import '../../core/database/daos/faces_dao.dart' show PersonSummary;
 import '../../services/paged_assets_notifier.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
 import '../albums/albums_providers.dart';
 import '../memories/domain/memory_builder.dart';
+import '../people/people_providers.dart';
 import '../saved/saved_providers.dart';
 import 'domain/search_date.dart';
 
@@ -79,6 +81,20 @@ final searchAlbumsProvider = Provider.autoDispose<List<AlbumSummary>>((ref) {
   return [
     for (final a in all)
       if (a.name.toLowerCase().contains(query)) a,
+  ];
+});
+
+/// People whose display name contains the query (case-insensitive). Empty while
+/// the query is blank, face detection is disabled, or the people stream is still
+/// loading. Unnamed clusters are never returned here because there is nothing to
+/// match against a text query.
+final searchPeopleProvider = Provider.autoDispose<List<PersonSummary>>((ref) {
+  final query = ref.watch(searchQueryProvider).trim().toLowerCase();
+  if (query.isEmpty) return const [];
+  final all = ref.watch(personSummariesProvider).value ?? const [];
+  return [
+    for (final p in all)
+      if (p.displayName?.toLowerCase().contains(query) ?? false) p,
   ];
 });
 

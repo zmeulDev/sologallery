@@ -5,22 +5,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/database/daos/albums_dao.dart' show AlbumSummary;
+import '../../core/database/daos/faces_dao.dart' show PersonSummary;
+import '../../core/format/count_labels.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
-import '../../widgets/app_card.dart';
 import '../../widgets/asset_grid.dart';
-import '../../widgets/cover_row.dart';
+import '../../widgets/asset_thumbnail.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/filter_pill.dart';
-import '../../widgets/section_header.dart';
 import '../../widgets/people_strip.dart';
+import '../../widgets/section_header.dart';
 import '../people/people_providers.dart';
-import 'widgets/recently_viewed_row.dart';
 import '../settings/consent_provider.dart';
 import 'domain/search_date.dart';
 import 'search_providers.dart';
+import 'widgets/recently_viewed_row.dart';
 
 /// Metadata + content search (`/search`, the second bottom-nav tab). Searches
 /// the library by capture date ("June 2026", "2026"), media type, favorites,
@@ -88,6 +89,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final type = ref.watch(searchTypeProvider);
     final favoritesOnly = ref.watch(searchFavoritesOnlyProvider);
     final albums = ref.watch(searchAlbumsProvider);
+    final people = ref.watch(searchPeopleProvider);
 
     final idle =
         query.trim().isEmpty && type == MediaTypeFilter.all && !favoritesOnly;
@@ -112,39 +114,30 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       ),
     );
 
+    final filterBar = _FilterBar(type: type, favoritesOnly: favoritesOnly);
+
     return Scaffold(
-      appBar: AppBar(),
+      appBar: AppBar(title: const Text('Search')),
       body: idle
-          ? _IdleView(
+          ? _IdleBody(
               searchField: searchField,
+              filterBar: filterBar,
               onBrowseLabel: _search,
             )
-          : Column(
-              children: [
-                searchField,
-                // Facets are an answer-narrowing tool, so they arrive with the
-                // answers. On the idle screen they would be four controls
-                // narrowing nothing, competing with the browse entry points that
-                // are the actual invitation.
-                _FilterBar(type: type, favoritesOnly: favoritesOnly),
-                // "Still analyzing" is an app-wide condition, not a Search one —
-                // the shell's `IndexingDial` says it once, beside the nav capsule.
-                Expanded(
-                  child: _Results(
-                    albums: albums,
-                    showNoMatch: albums.isEmpty,
-                  ),
-                ),
-              ],
+          : _ResultsBody(
+              searchField: searchField,
+              filterBar: filterBar,
+              albums: albums,
+              people: people,
             ),
     );
   }
 }
 
-/// The query field: a filled, rounded input sitting in the body under the page
-/// title, rather than standing in for the title itself. Owning a real title
-/// costs one row of height and buys the screen the same header anatomy as
-/// Library, Saved and Albums.
+/// The query field: a filled, rounded input sitting in the body just below the
+/// app bar on every Search state. Owning a real title in the app bar costs no
+/// body space and gives the screen the same header anatomy as Library, Saved
+/// and Albums.
 class _SearchField extends StatelessWidget {
   const _SearchField({
     required this.controller,
@@ -182,21 +175,24 @@ class _SearchField extends StatelessWidget {
         style: styles.body.copyWith(color: scheme.onSurface),
         decoration: InputDecoration(
           filled: true,
-          fillColor: colors.surface2,
+          // Elevated surface fill + hairline border makes the field read as a
+          // real card against the page background, rather than disappearing
+          // into it.
+          fillColor: scheme.surface,
           border: OutlineInputBorder(
             borderRadius: AppRadius.br12,
-            borderSide: BorderSide.none,
+            borderSide: BorderSide(color: colors.border),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: AppRadius.br12,
-            borderSide: BorderSide.none,
+            borderSide: BorderSide(color: colors.border),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: AppRadius.br12,
-            borderSide: BorderSide.none,
+            borderSide: BorderSide(color: colors.textSecondary),
           ),
           isDense: true,
-          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          contentPadding: const EdgeInsets.symmetric(vertical: 14),
           prefixIcon: Icon(
             Icons.search_rounded,
             size: 20,
@@ -223,7 +219,9 @@ class _SearchField extends StatelessWidget {
   }
 }
 
-/// The facet row: media type (single-select) plus a favorites toggle.
+/// The facet row: media type (single-select) plus a favorites toggle. Visible
+/// on both the idle and results states so the user knows these narrowing
+/// controls exist before committing a query.
 class _FilterBar extends ConsumerWidget {
   const _FilterBar({required this.type, required this.favoritesOnly});
 
@@ -269,64 +267,94 @@ class _FilterBar extends ConsumerWidget {
   }
 }
 
-/// Results below the facet bar: matching albums (compact rows) above the photo
-/// grid. [showNoMatch] is true when there are no album matches, so an empty
-/// photo result can fall back to a "No matches" note.
-class _Results extends ConsumerWidget {
-  const _Results({required this.albums, required this.showNoMatch});
+/// The results body: facets at the top, matching people, then the anchored
+/// field + album chips + photo grid, with the recently-viewed carousel pinned at
+/// the bottom.
+class _ResultsBody extends StatelessWidget {
+  const _ResultsBody({
+    required this.searchField,
+    required this.filterBar,
+    required this.albums,
+    required this.people,
+  });
 
+  final Widget searchField;
+  final Widget filterBar;
   final List<AlbumSummary> albums;
-  final bool showNoMatch;
+  final List<PersonSummary> people;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        filterBar,
+        if (people.isNotEmpty) PeopleStrip(people: people),
+        searchField,
+        if (albums.isNotEmpty) _AlbumsResult(albums: albums),
+        Expanded(
+          child: _Results(anyMatch: albums.isNotEmpty || people.isNotEmpty),
+        ),
+        Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.paddingOf(context).bottom,
+          ),
+          child: const _RecentlyViewedStrip(),
+        ),
+      ],
+    );
+  }
+}
+
+/// Photo results below albums and people. When only non-photo result types
+/// matched, the grid area stays empty rather than redundantly claiming "No
+/// matches."
+class _Results extends ConsumerWidget {
+  const _Results({required this.anyMatch});
+
+  final bool anyMatch;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final assets = ref.watch(searchAssetsProvider);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (albums.isNotEmpty) _AlbumsResult(albums: albums),
-        Expanded(
-          child: assets.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, st) =>
-                const EmptyState.note('Couldn\'t run that search.'),
-            data: (items) {
-              if (items.isEmpty) {
-                // Albums may still be the result; only claim "no matches" when
-                // nothing matched at all.
-                return showNoMatch
-                    ? const EmptyState.note('No matches.')
-                    : const SizedBox.shrink();
-              }
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                    child: SectionHeader(
-                      label: 'Photos',
-                      trailing: _ResultCount(
-                        count: items.length,
-                        hasMore: ref
-                            .watch(searchAssetsProvider.notifier)
-                            .hasMore,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: AssetGrid(
-                      items: items,
-                      hasMore: ref.watch(searchAssetsProvider.notifier).hasMore,
-                      onLoadMore: () =>
-                          ref.read(searchAssetsProvider.notifier).loadMore(),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
-      ],
+    return assets.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, st) =>
+          const EmptyState.note('Couldn\'t run that search.'),
+      data: (items) {
+        if (items.isEmpty) {
+          // Albums or people may still be the answer; only claim "no matches"
+          // when nothing at all matched.
+          return anyMatch
+              ? const SizedBox.shrink()
+              : const EmptyState.note('No matches.');
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: SectionHeader(
+                label: 'Photos',
+                trailing: _ResultCount(
+                  count: items.length,
+                  hasMore: ref
+                      .watch(searchAssetsProvider.notifier)
+                      .hasMore,
+                ),
+              ),
+            ),
+            Expanded(
+              child: AssetGrid(
+                items: items,
+                hasMore: ref.watch(searchAssetsProvider.notifier).hasMore,
+                onLoadMore: () =>
+                    ref.read(searchAssetsProvider.notifier).loadMore(),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -351,7 +379,8 @@ class _ResultCount extends StatelessWidget {
   }
 }
 
-/// Matching albums as a short list of compact rows (cover · name · count).
+/// Matching albums as a short horizontal scroller of cover chips, so the
+/// section is compact and never pushes the photo grid off screen.
 class _AlbumsResult extends StatelessWidget {
   const _AlbumsResult({required this.albums});
 
@@ -366,34 +395,101 @@ class _AlbumsResult extends StatelessWidget {
           padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: SectionHeader(label: 'Albums'),
         ),
-        for (final album in albums)
-          CoverRow(
-            coverAssetId: album.coverAssetId,
-            name: album.name,
-            count: album.entryCount,
-            onTap: () => context.push('/album/${album.id}'),
+        SizedBox(
+          height: 128,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: AppSpace.s16),
+            itemCount: albums.length,
+            separatorBuilder: (_, _) => const SizedBox(width: AppSpace.s12),
+            itemBuilder: (context, index) => _AlbumTile(album: albums[index]),
           ),
+        ),
       ],
     );
   }
 }
 
-/// The idle state: a recency ribbon and a lowered search field above the
-/// existing browse entry points — People strip, label chips, and the privacy
-/// note.
-///
-/// Device folders deliberately live on the Albums tab and not here: they are a
-/// place you browse *collections*, not a way to narrow a query, and Albums is
-/// already the screen that gathers every collection in one list.
-class _IdleView extends ConsumerWidget {
-  const _IdleView({
+/// One album in the horizontal results scroller: square cover, name, count.
+class _AlbumTile extends StatelessWidget {
+  const _AlbumTile({required this.album});
+
+  final AlbumSummary album;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppColors>()!;
+    final styles = Theme.of(context).extension<AppTextStyles>()!;
+    final scheme = Theme.of(context).colorScheme;
+    final cover = album.coverAssetId;
+
+    return GestureDetector(
+      onTap: () => context.push('/album/${album.id}'),
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: 84,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: AppRadius.br12,
+              child: SizedBox(
+                width: 84,
+                height: 84,
+                child: cover == null
+                    ? ColoredBox(
+                        color: colors.surface2,
+                        child: Center(
+                          child: Icon(
+                            Icons.photo_album_outlined,
+                            size: 28,
+                            color: colors.textMuted,
+                          ),
+                        ),
+                      )
+                    : AssetThumbnail(assetId: cover, size: 256),
+              ),
+            ),
+            const SizedBox(height: AppSpace.s8),
+            Text(
+              album.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: styles.caption.copyWith(
+                color: scheme.onSurface,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(
+              photoCountLabel(album.entryCount, zero: 'Empty'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: styles.caption.copyWith(color: colors.textSecondary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The idle state: facet pills at the top, then browse entry points (labels,
+/// people), then the search field and subtitle, and the recency carousel at the
+/// bottom. Device folders deliberately live on the Albums tab and not here:
+/// they are a place you browse *collections*, not a way to narrow a query.
+class _IdleBody extends ConsumerWidget {
+  const _IdleBody({
     required this.searchField,
+    required this.filterBar,
     required this.onBrowseLabel,
   });
 
-  /// The shared search field, placed lower on the idle screen than on the
-  /// results screen.
+  /// The shared search field, placed below the browse entry points.
   final Widget searchField;
+
+  /// The shared facet bar, visible before a query is entered and placed at the
+  /// top of the screen.
+  final Widget filterBar;
 
   /// Commits a tapped label chip as the active query.
   final void Function(String) onBrowseLabel;
@@ -413,52 +509,38 @@ class _IdleView extends ConsumerWidget {
       // Clears the floating nav capsule (reported as the bottom inset).
       padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
       children: [
-        const _PageHeader(),
-        const _RecentlyViewedStrip(),
+        filterBar,
+        const _SearchSubtitle(),
         searchField,
-        // Nothing to browse yet — a new library, an unfinished index, or every
-        // analysis declined. The prompt explains what the field accepts
-        // instead of leaving a blank screen under it.
-        if (people.isEmpty && labels.isEmpty) const _IdleHint(),
-        if (people.isNotEmpty) PeopleStrip(people: people),
         if (labels.isNotEmpty)
           _BrowseLabels(labels: labels, onTap: onBrowseLabel),
-        const _PrivacyNote(),
+        if (people.isNotEmpty) PeopleStrip(people: people),
+        const _RecentlyViewedStrip(),
+        if (people.isEmpty && labels.isEmpty) const _IdleHint(),
       ],
     );
   }
 }
 
-/// Large page title and subtitle for the idle Search screen.
-class _PageHeader extends StatelessWidget {
-  const _PageHeader();
+/// Compact subtitle for the idle Search screen, replacing the previous large
+/// page title so the search field can stay anchored at the top.
+class _SearchSubtitle extends StatelessWidget {
+  const _SearchSubtitle();
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<AppColors>()!;
     final styles = Theme.of(context).extension<AppTextStyles>()!;
-    final scheme = Theme.of(context).colorScheme;
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpace.s16,
         AppSpace.s16,
         AppSpace.s16,
-        AppSpace.s20,
+        AppSpace.s4,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Search',
-            style: styles.pageTitle.copyWith(color: scheme.onSurface),
-          ),
-          const SizedBox(height: AppSpace.s4),
-          Text(
-            'Find photos, dates, albums, and more',
-            style: styles.body.copyWith(color: colors.textSecondary),
-          ),
-        ],
+      child: Text(
+        'Find photos, dates, albums, and more',
+        style: styles.body.copyWith(color: colors.textSecondary),
       ),
     );
   }
@@ -471,43 +553,11 @@ class _RecentlyViewedStrip extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final recent = ref.watch(recentlyViewedProvider(12));
+    final recent = ref.watch(recentlyViewedProvider(20));
     return recent.when(
       loading: () => const SizedBox.shrink(),
       error: (_, _) => const SizedBox.shrink(),
       data: (ids) => RecentlyViewedRow(assetIds: ids),
-    );
-  }
-}
-
-/// States plainly that searching is local. It sits on the idle screen — the
-/// moment the user is deciding what to hand over — because that is when the
-/// claim is worth anything; buried in Settings it would only reassure someone
-/// already looking for reassurance.
-class _PrivacyNote extends StatelessWidget {
-  const _PrivacyNote();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
-    final styles = Theme.of(context).extension<AppTextStyles>()!;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpace.s16,
-        AppSpace.s20,
-        AppSpace.s16,
-        AppSpace.s16,
-      ),
-      child: AppCard(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpace.s16),
-          child: Text(
-            'Search runs entirely on this device. Labels, text (OCR) and faces '
-            'are indexed locally and never leave your phone.',
-            style: styles.body.copyWith(color: colors.textSecondary),
-          ),
-        ),
-      ),
     );
   }
 }

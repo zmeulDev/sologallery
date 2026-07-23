@@ -322,6 +322,25 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
     return q.map((r) => r.read(photoAssets.assetId)!).watch();
   }
 
+  /// A page of dated asset refs for one [year]'s full grid, newest first, as a
+  /// reactive growing window — the year mirror of [watchMonthAssets].
+  Stream<List<AssetRef>> watchYearAssets(int year, {required int limit}) {
+    final q = select(photoAssets)
+      ..where(
+        (a) =>
+            a.isDated.equals(true) &
+            a.createdAt.isBiggerOrEqualValue(DateTime(year)) &
+            a.createdAt.isSmallerThanValue(DateTime(year + 1)),
+      )
+      ..orderBy([(a) => OrderingTerm.desc(a.createdAt)])
+      ..limit(limit);
+    return q.watch().map(
+      (rows) => [
+        for (final r in rows) AssetRef(id: r.assetId, createdAt: r.createdAt),
+      ],
+    );
+  }
+
   // --- Recent window (the `This week` time filter) --------------------------
 
   /// Dated asset refs captured on or after [cutoff], newest first, reactive.
@@ -388,6 +407,27 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
       ..orderBy([OrderingTerm.desc(photoAssets.createdAt)])
       ..limit(limit);
     return q.map((r) => r.read(photoAssets.assetId)!).watch();
+  }
+
+  /// A page of dated asset refs for one calendar [day]'s full grid, newest
+  /// first, as a reactive growing window — the day mirror of [watchMonthAssets].
+  Stream<List<AssetRef>> watchDayAssets(DateTime day, {required int limit}) {
+    final start = DateTime(day.year, day.month, day.day);
+    final end = start.add(const Duration(days: 1));
+    final q = select(photoAssets)
+      ..where(
+        (a) =>
+            a.isDated.equals(true) &
+            a.createdAt.isBiggerOrEqualValue(start) &
+            a.createdAt.isSmallerThanValue(end),
+      )
+      ..orderBy([(a) => OrderingTerm.desc(a.createdAt)])
+      ..limit(limit);
+    return q.watch().map(
+      (rows) => [
+        for (final r in rows) AssetRef(id: r.assetId, createdAt: r.createdAt),
+      ],
+    );
   }
 
   Expression<bool> _datedInMonth(YearMonth month) =>

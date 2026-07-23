@@ -85,7 +85,19 @@
       "Bash(PATH=/Users/zml-m4/Library/Android/sdk/platform-tools:__TRACKED_VAR__ adb -s 46121FDAS008AA shell am start -n com.zmeul.sologallery/.MainActivity)",
       "Bash(PATH=/Users/zml-m4/Library/Android/sdk/platform-tools:__TRACKED_VAR__ adb -s 46121FDAS008AA shell am force-stop com.zmeul.sologallery)",
       "Bash(PATH=/Users/zml-m4/Library/Android/sdk/platform-tools:__TRACKED_VAR__ adb -s 46121FDAS008AA logcat -s flutter:V SoloGallery:V -d)",
-      "Bash(PATH=/Users/zml-m4/Library/Android/sdk/platform-tools:__TRACKED_VAR__ adb -s 46121FDAS008AA logcat -s flutter:V SoloGallery:V)"
+      "Bash(PATH=/Users/zml-m4/Library/Android/sdk/platform-tools:__TRACKED_VAR__ adb -s 46121FDAS008AA logcat -s flutter:V SoloGallery:V)",
+      "Bash(flutter devices *)",
+      "Bash(adb shell *)",
+      "Bash(/Users/zml-m4/Library/Android/sdk/platform-tools/adb shell *)",
+      "Bash(flutter run *)",
+      "Bash(kill 32293)",
+      "Bash(kill -0 32293)",
+      "Bash(~/Library/Android/sdk/platform-tools/adb logcat *)",
+      "Bash(kill 36661)",
+      "Bash(ffprobe *)",
+      "Bash(brew list *)",
+      "Bash(python3 *)",
+      "Bash(file /tmp/sg_timing_frames/*.png)"
     ]
   }
 }

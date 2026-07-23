@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/format/count_labels.dart';
-import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
@@ -15,7 +13,6 @@ import '../../widgets/asset_thumbnail.dart';
 import '../../widgets/circle_icon_button.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/limited_access_banner.dart';
-import '../../widgets/section_header.dart';
 import '../detail/photo_viewer_args.dart';
 import '../memories/widgets/memories_carousel.dart';
 import 'domain/library_filter.dart';
@@ -25,6 +22,7 @@ import 'library_providers.dart';
 import 'widgets/library_filter_bar.dart';
 import 'widgets/library_skeleton.dart';
 import 'widgets/month_header.dart';
+import 'widgets/section_count_pill.dart';
 import 'widgets/year_header.dart';
 
 /// Home gallery: photos grouped by time, newest first, read from the
@@ -196,6 +194,7 @@ class _MonthList extends StatelessWidget {
           YearRow(:final year, :final count) => YearHeader(
               year: year,
               count: count,
+              onTap: () => context.push('/year/$year'),
             ),
           MonthRow(:final month, :final count) => _MonthSection(
               month: month,
@@ -290,7 +289,11 @@ class _YearSection extends ConsumerWidget {
         // Like `_LibrarySection`, the gap between sections is owned by the top
         // edge alone, so it never adds up with the next section's.
         const SizedBox(height: AppSpace.s20),
-        YearHeader(year: entry.year, count: entry.count),
+        YearHeader(
+          year: entry.year,
+          count: entry.count,
+          onTap: () => context.push('/year/${entry.year}'),
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(
             AppSpace.s8,
@@ -382,9 +385,9 @@ class _DaySection extends ConsumerWidget {
       label: formatDayHeader(day),
       count: count,
       previewAssetIds: previews ?? const [],
-      // Day routes are not wired yet; keep the header non-tappable so the grid
-      // below remains the only interactive surface.
-      onViewAll: null,
+      onViewAll: () => context.push(
+        '/day/${day.toIso8601String().split('T').first}',
+      ),
     );
   }
 }
@@ -450,8 +453,8 @@ class _OlderSection extends ConsumerWidget {
   }
 }
 
-/// One Library section: a labelled header with a "View all" control over a
-/// preview grid. Backs both calendar months and the trailing "Older" bucket.
+/// One Library section: a labelled header with a count pill that opens the full
+/// grid, over a preview grid. Backs calendar-day sections and the "Older" bucket.
 class _LibrarySection extends StatelessWidget {
   const _LibrarySection({
     required this.label,
@@ -467,6 +470,24 @@ class _LibrarySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final styles = Theme.of(context).extension<AppTextStyles>()!;
+    final scheme = Theme.of(context).colorScheme;
+
+    final header = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.s8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label.toUpperCase(),
+              style: styles.sectionLabel.copyWith(color: scheme.onSurface),
+            ),
+          ),
+          SectionCountPill(count: count, showChevron: onViewAll != null),
+        ],
+      ),
+    );
+
     return Padding(
       // The whole gap between two sections lives on the top edge. Splitting it
       // across a top *and* a bottom pad makes the visible gap their sum, which
@@ -480,39 +501,23 @@ class _LibrarySection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            // The header keeps the standard screen inset; only the grid below
-            // runs wider, so the label still lines up with every other screen's
-            // left edge.
-            padding: const EdgeInsets.symmetric(horizontal: AppSpace.s8),
-            child: SectionHeader(
-              label: label,
-              trailing: _SectionCount(count: count),
-              onTap: onViewAll,
-            ),
-          ),
+          if (onViewAll != null)
+            Semantics(
+              button: true,
+              child: GestureDetector(
+                // The row is mostly whitespace; without this only the label's
+                // glyphs would answer a tap.
+                behavior: HitTestBehavior.opaque,
+                onTap: onViewAll,
+                child: header,
+              ),
+            )
+          else
+            header,
           const SizedBox(height: 10),
           _PreviewGrid(assetIds: previewAssetIds),
         ],
       ),
-    );
-  }
-}
-
-/// The quiet tally at the end of a section header. Says "items", not "photos" —
-/// a calendar month mixes stills and video, and the grid below shows both.
-class _SectionCount extends StatelessWidget {
-  const _SectionCount({required this.count});
-
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<AppColors>()!;
-    final styles = Theme.of(context).extension<AppTextStyles>()!;
-    return Text(
-      itemCountLabel(count),
-      style: styles.caption.copyWith(color: colors.textSecondary),
     );
   }
 }

@@ -7,16 +7,17 @@ import '../../../widgets/asset_thumbnail.dart';
 import '../../../widgets/section_header.dart';
 import '../../detail/photo_viewer_args.dart';
 
-/// The Search screen's horizontal "recently viewed" ribbon.
+/// The Search screen's horizontal "recently viewed" carousel.
 ///
-/// Shows the newest [assetIds] as square r12 thumbnail chips; hides itself when
-/// empty. Tapping a chip opens the detail viewer for that asset.
+/// Shows the newest [assetIds] as square r12 thumbnail chips in a two-row
+/// horizontal grid; hides itself when empty. Tapping a chip opens the detail
+/// viewer for that asset.
 class RecentlyViewedRow extends StatelessWidget {
   const RecentlyViewedRow({
     super.key,
     required this.assetIds,
-    this.cellSize = 72,
-    this.limit = 12,
+    this.cellSize = 104,
+    this.limit = 20,
   });
 
   final List<String> assetIds;
@@ -28,11 +29,14 @@ class RecentlyViewedRow extends StatelessWidget {
     final ids = assetIds.take(limit).toList();
     if (ids.isEmpty) return const SizedBox.shrink();
 
+    final gutter = AppSpace.s4;
+    final viewportHeight = cellSize * 2 + gutter;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
             AppSpace.s16,
             0,
             AppSpace.s16,
@@ -41,12 +45,17 @@ class RecentlyViewedRow extends StatelessWidget {
           child: SectionHeader(label: 'Recently viewed'),
         ),
         SizedBox(
-          height: cellSize,
-          child: ListView.separated(
+          height: viewportHeight,
+          child: GridView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: AppSpace.s16),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: gutter,
+              crossAxisSpacing: gutter,
+              childAspectRatio: 1,
+            ),
             itemCount: ids.length,
-            separatorBuilder: (_, _) => const SizedBox(width: AppSpace.s4),
             itemBuilder: (context, index) => _RecentCell(
               assetId: ids[index],
               size: cellSize,

@@ -16,7 +16,6 @@ import 'package:sologallery/services/photo_library_service.dart';
 import 'package:sologallery/widgets/asset_thumbnail.dart';
 import 'package:sologallery/features/library/widgets/library_skeleton.dart';
 import 'package:sologallery/widgets/limited_access_banner.dart';
-import 'package:sologallery/widgets/section_header.dart';
 
 import '../../support/asset_fixtures.dart';
 import '../../support/fake_photo_library_service.dart';
@@ -77,6 +76,14 @@ void main() {
         GoRoute(
           path: '/older',
           builder: (_, _) => const Scaffold(body: Text('older-grid')),
+        ),
+        GoRoute(
+          path: '/year/:year',
+          builder: (_, _) => const Scaffold(body: Text('year-grid')),
+        ),
+        GoRoute(
+          path: '/day/:date',
+          builder: (_, _) => const Scaffold(body: Text('day-grid')),
         ),
         GoRoute(
           path: '/settings',
@@ -263,6 +270,60 @@ void main() {
     expect(find.text('older-grid'), findsOneWidget);
   });
 
+  testWidgets('tapping a year hero under Months navigates to the year route', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      access: PhotoAccess.granted,
+      assets: [
+        ...assetsInMonth(2026, 8, 3),
+        ...assetsInMonth(2025, 11, 4),
+      ],
+    );
+    await tester.tap(find.text(LibraryFilter.months.label));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('2026'));
+    await tester.pumpAndSettle();
+    expect(find.text('year-grid'), findsOneWidget);
+  });
+
+  testWidgets('tapping a year section under Year navigates to the year route', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      access: PhotoAccess.granted,
+      assets: [
+        ...assetsInMonth(2026, 8, 3),
+        ...assetsInMonth(2025, 11, 4),
+      ],
+    );
+    await tester.tap(find.text(LibraryFilter.year.label));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('2026'));
+    await tester.pumpAndSettle();
+    expect(find.text('year-grid'), findsOneWidget);
+  });
+
+  testWidgets('tapping a day header under This week navigates to the day route', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      access: PhotoAccess.granted,
+      weekAssets: assetsInMonth(2026, 8, 4),
+    );
+    await tester.tap(find.text(LibraryFilter.thisWeek.label));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('FRIDAY, AUG 28'));
+    await tester.pumpAndSettle();
+    expect(find.text('day-grid'), findsOneWidget);
+  });
+
   group('time filters', () {
     /// Two years of fixture assets, so year grouping has something to group.
     List<AssetRef> twoYears() => [
@@ -323,7 +384,7 @@ void main() {
       expect(find.text('2026'), findsOneWidget);
       expect(find.text('2025'), findsOneWidget);
       // The 2026 hero carries that year's total across both its months.
-      expect(find.text('5 photos'), findsOneWidget);
+      expect(find.text('5 items'), findsOneWidget);
     });
 
     testWidgets('the time filters drop the memories carousel', (tester) async {
@@ -348,8 +409,8 @@ void main() {
       await selectFilter(tester, LibraryFilter.year);
 
       expect(find.byType(YearHeader), findsNWidgets(2));
-      expect(find.text('5 photos'), findsOneWidget); // 2026
-      expect(find.text('4 photos'), findsOneWidget); // 2025
+      expect(find.text('5 items'), findsOneWidget); // 2026
+      expect(find.text('4 items'), findsOneWidget); // 2025
       // The month axis is gone entirely.
       expect(find.text('August 2026'), findsNothing);
       expect(find.text('FEBRUARY 2026'), findsNothing);
@@ -366,7 +427,7 @@ void main() {
 
       // Four assets on a single calendar day become one section with a day
       // header and up to six previews.
-      expect(find.byType(SectionHeader), findsOneWidget);
+      expect(find.text('FRIDAY, AUG 28'), findsOneWidget);
       expect(find.text('4 items'), findsOneWidget);
       expect(find.byType(AssetThumbnail), findsNWidgets(4));
       expect(find.byType(YearHeader), findsNothing);
