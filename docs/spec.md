@@ -1,8 +1,10 @@
 # SoloGallery — Specification
 
 > **Authority:** `CLAUDE.md` is authoritative for *rules* (Absolute rules,
-> workflow, testing, design tokens). This document details *structure* —
-> architecture, data model, and routing. Where they overlap, CLAUDE.md wins.
+> workflow, design *tokens*, model usage, environment) — the compact, always-loaded
+> doc. This document details *structure and reference* — architecture, data model,
+> routing, the **Design system** prose rules, and **Test strategy** detail. Hard-won
+> traps live in `docs/gotchas.md`. Where they overlap, CLAUDE.md wins.
 
 SoloGallery is a privacy-first, 100% local photo-management app for iOS and
 Android. There are **zero network calls** after install: no cloud, no
@@ -117,10 +119,11 @@ DAOs (`lib/core/database/daos/`): `FavoritesDao`, `AlbumsDao`,
 `EditInstructionsDao`, `IndexDao`, `FacesDao`, `SettingsDao`, `MemoriesDao`.
 Accessed via the keep-alive `databaseProvider`.
 
-Before adding v9, re-read the migration trap in CLAUDE.md "Known gotchas":
-`m.createTable` builds the **current** shape, so any table whose columns change
-after it was introduced needs an `else if` guard on the later step — that is why
-`photo_assets` (v4), `face_embeddings` (v7) and `persons` (v8) each have one.
+Before adding v9, re-read the migration trap in `docs/gotchas.md`
+(Drift section): `m.createTable` builds the **current** shape, so any table whose
+columns change after it was introduced needs an `else if` guard on the later
+step — that is why `photo_assets` (v4), `face_embeddings` (v7) and `persons`
+(v8) each have one.
 
 ---
 
@@ -131,22 +134,38 @@ four bottom-nav tabs (persistent per-tab state). The shell
 (`lib/widgets/app_shell.dart`) renders the active branch plus the custom bottom
 nav with the design-system **dot active-indicator**.
 
-| Screen | Route | Nav |
-|---|---|---|
-| Library (home grid) | `/` | tab |
-| Search | `/search` | tab |
-| Saved (favorites) | `/saved` | tab |
-| Albums | `/albums` | tab |
-| Settings | `/settings` | pushed (Library app bar) |
-| Detail (full-screen viewer) | `/photo/:id` | pushed (later phase) |
-| Album detail | `/album/:id` | pushed (later phase) |
+Shell branches (bottom nav):
+
+| Screen | Route |
+|---|---|
+| Library (home grid) | `/` |
+| Search | `/search` |
+| Saved (favorites) | `/saved` |
+| Albums | `/albums` |
+
+Root-navigator routes (outside the shell):
+
+| Screen | Route |
+|---|---|
+| Onboarding | `/onboarding` (redirect target, not pushed) |
+| Detail (full-screen viewer) | `/photo/:id` |
+| Month grid | `/month/:key` |
+| Older grid (undated assets) | `/older` |
+| Album detail | `/album/:id` |
+| Folder detail | `/folder?id=&name=` |
+| People | `/people` |
+| Person detail | `/person/:id` |
+| Memory player | `/memory/:id` |
+| Settings | `/settings` (pushed from Library app bar) |
+
+Folder detail takes its id as a **query parameter, not a path segment** — an iOS
+folder id is a `PHAssetCollection` local identifier and may contain `/`, which no
+encoding makes safe in a `:id` segment. `name` only titles the app bar.
 
 Settings is an app-bar affordance on Library, not a tab — it is visited rarely,
 where Search earns a permanent slot. Because the Search branch outlives a visit,
 its field takes focus from `searchTabActiveProvider` (published by the shell)
-rather than `autofocus`, and releases it when the tab is left. Detail,
-album-detail, people, and edit routes are added in their respective feature
-phases.
+rather than `autofocus`, and releases it when the tab is left.
 
 ---
 
@@ -156,3 +175,140 @@ See CLAUDE.md "Project structure" for the full tree. In short:
 `lib/core` (theme, router, database) · `lib/features` (screens) ·
 `lib/services` (plugin wrappers) · `lib/widgets` (shared) · `test` mirrors
 `lib` · `integration_test` (on-device, patrol) · `drift_schemas` (schema dumps).
+
+---
+
+## Design system
+
+The token *tables* (colors, typography) live in CLAUDE.md as a quick reference.
+The prose rules — what the tokens mean and how to apply them — live here.
+
+### Spacing (`AppSpace`)
+
+`s2 s4 s8 s12 s16 s20 s24 s32` — s4 photo-grid gutter (`AssetGrid`: Search
+results, month/folder grids — cells clip to r12, so a tighter gutter puts
+adjacent corners on top of each other), s4 also for *inset* preview grids
+(Library sections, which inset s8 rather than s16 so the grid runs wider than
+the header), s8 Saved masonry gutter, s16 screen inset, s20 the Library
+timeline's inter-section rhythm.
+
+**Vertical gaps between stacked sections are owned by the top edge alone.** A
+top *and* a bottom pad makes the visible gap their sum, which is how the
+Library's month rhythm silently drifted to 36px.
+
+### Radius (`AppRadius`)
+
+| Token | Use |
+|---|---|
+| r2 | grab handle, progress segments |
+| r4 | DurationBadge |
+| r12 | cards, banner, filled inputs, **every photo thumbnail** (grid cells, previews, row and tile covers — one radius, no exceptions) |
+| r20 | sheets AND dialogs |
+| — | pills = `StadiumBorder` |
+
+### Motion
+
+The app has **no decorative motion** — every animated widget was physically
+deleted (Part 1). State changes are instant: filter pills, nav-capsule knob,
+segmented thumb, indexing dial, thumbnail reveal, chrome show/hide, onboarding
+step changes, and the detail drag-dismiss + double-tap zoom all snap. Two
+exceptions remain: **Material defaults** (`showDialog`/`showModalBottomSheet`/
+`SnackBar` keep Flutter's built-in transitions) and the **memory-player scene
+change** (a 320 ms `easeOutCubic` cross-slide between story photos, inlined as
+file-private consts in `memory_player_screen.dart` with a
+`MediaQuery.disableAnimations` guard for reduced-motion jump-cuts).
+
+### Over-media (`AppOverMedia`, app_colors.dart)
+
+Theme-invariant consts for content over photos/video: scrims
+`0x99`/`0xB3`/`0xD9` black (+`playScrim 0x66`), glyph whites
+(`glyph/Soft/Faint/Dim/Ghost`), progress `segment`/`segmentOff`.
+
+### System notes
+
+- Error color = ink (no red anywhere; errors carried by copy).
+- Dialogs and sheets share r20 + hairline border; actions are themed
+  `TextButton`s.
+- Snackbar = inverted-ink floating pill (`pillActiveBg`).
+- Icons = Material rounded family; `ios_share_rounded` for share.
+  Outlined-style glyphs with no rounded-outline variant stay on the
+  default family (nav inactive `photo_library_outlined`/
+  `photo_album_outlined`, `videocam_off_outlined`, `broken_image_outlined`).
+- Shared components: `AppButton` (primary/secondary/quiet; primary takes
+  `compact` for the 40-high app-bar metric and an optional leading icon),
+  `AppCard` (surface + r12 + hairline; `.divided` for hairline-separated rows —
+  the one grouping container), `CircleIconButton` (`.overMedia` scrim disc /
+  `.surface` themed disc), `SegmentedControl<T>` (one value, mutually exclusive
+  choices — distinct from a `FilterPill` row of independent facets),
+  `SectionHeader` (uppercase section label; `onTap` makes the whole row the
+  destination and adds a chevron), `EmptyState`, `CoverRow` (`showChevron` for
+  rows that stand alone in a card), `AppSheet`/`AppSheetNote`, `app_dialog`
+  helpers, `IndexingDial` (the
+  app-wide "analysis is running" indicator: a 44 disc in the capsule's own
+  inverted ink carrying the remaining count and a progress ring, mounted once as
+  `NavPillBar`'s `trailing` in `AppShell`, shows nothing when idle — never say it
+  a second time on an individual screen. It rides *beside* the capsule, not as a
+  slot inside it, so no destination shifts under the thumb when a pass starts or
+  ends).
+- Grids differ by job: Library and Search are square multi-column grids for
+  *finding* a photo among thousands (uniform scan pattern); Saved is a
+  two-column aspect-preserving masonry (`layoutMasonry` + `MasonryGridDelegate`)
+  because it is a small, deliberately-kept set.
+
+---
+
+## Test strategy
+
+Every layer has a required tier. "Write tests" means all applicable tiers, not
+one unit test. The tier *headings* are in CLAUDE.md; the detail is here.
+
+### 1. Unit tests (`flutter_test`, host)
+- Pure-Dart domain logic (clustering, edit instructions, date grouping)
+- **DAOs against in-memory Drift** — `NativeDatabase.memory()`, real
+  schema, real queries; every DAO method, including cascades (enable
+  foreign keys in the test connection too)
+- **Providers via `ProviderContainer`** with overrides; test state
+  transitions and disposal
+- **Migration tests** — drift `SchemaVerifier` with committed schema
+  dumps, every upgrade path (v1→v2→…→N)
+
+### 2. Widget tests (host)
+- Screens with mocked providers: loading / data / error / empty states
+- **Golden tests** (`alchemist`) for design-system widgets, light and dark —
+  this is what makes the Design system enforceable. They live in
+  `test/widgets/design_goldens_test.dart` and
+  `test/features/detail/detail_goldens_test.dart`, with the images under
+  `<dir>/goldens/ci/`. Every new design-system widget gets one.
+
+### 3. Integration tests (`integration_test` + `patrol`, real device)
+- App boot, onboarding, tab navigation, grid scroll, detail open,
+  favorite/unfavorite round-trip
+- **Permission matrix** (patrol drives native dialogs; plain
+  integration_test cannot): full access · **limited/partial** (iOS
+  limited library, Android 14 picker subset — photo_manager returns a
+  different asset set; UI must handle it) · denied · denied → granted
+  via Settings · revoked mid-session (backgrounded, revoked, resumed)
+- **Real-isolate ML smoke test:** spawn the actual worker isolate,
+  process seeded assets end-to-end, assert rows in `photo_label` /
+  `face_embedding`. Must include the HEIC asset.
+
+### 4. Fake-pairing rule
+Any fake/mock of infrastructure (e.g. fake `MlWorkerController`) must be
+paired with ≥1 on-device integration test of the real implementation.
+Two production bugs (isolate binding hang, HEIC OOM) were invisible to
+`flutter test` because fakes bypassed the real path.
+
+### Deterministic test assets
+Never depend on whatever is on the device — seed first:
+
+```bash
+adb push test_assets/ /sdcard/Pictures/SoloGalleryTest/
+adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE \
+  -d file:///sdcard/Pictures/SoloGalleryTest/
+```
+
+Required set (`test_assets/`, generated by `tool/gen_test_assets.dart`):
+`large_48mp.heic` (~48MP iPhone, the OOM regression asset) · `gps_exif.jpg` ·
+`no_exif.jpg` · `small_png.png` (labeling fast path) · `synthetic_face.jpg`.
+**The video asset (thumbnail + duration badge) is still missing** — no
+`ffmpeg` on this machine, so it has to be supplied by hand.
