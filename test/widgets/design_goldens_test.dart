@@ -9,9 +9,13 @@ import 'package:sologallery/core/database/daos/memories_dao.dart'
 import 'package:sologallery/features/albums/widgets/album_card.dart';
 import 'package:sologallery/core/database/daos/faces_dao.dart'
     show PersonSummary;
+import 'package:sologallery/features/library/domain/year_month.dart';
+import 'package:sologallery/features/library/widgets/library_skeleton.dart';
+import 'package:sologallery/features/library/widgets/month_header.dart';
 import 'package:sologallery/features/library/widgets/year_header.dart';
 import 'package:sologallery/features/people/people_providers.dart';
 import 'package:sologallery/features/memories/widgets/memory_card.dart';
+import 'package:sologallery/features/search/widgets/recently_viewed_row.dart';
 import 'package:sologallery/features/settings/widgets/theme_mode_picker.dart';
 import 'package:sologallery/services/indexing_service.dart';
 import 'package:sologallery/services/permission_provider.dart';
@@ -93,18 +97,61 @@ void main() {
   // relationship, which is the whole hierarchy — there is no rule or fill
   // behind it to carry the header on its own.
   goldenTest(
-    'YearHeader over a month section label',
-    fileName: 'year_header',
+    'LibrarySkeleton — static loading preview of memories + months',
+    fileName: 'library_skeleton',
+    builder: () => themedGroup(
+      const SizedBox(
+        width: 360,
+        child: LibrarySkeleton(),
+      ),
+    ),
+  );
+
+  goldenTest(
+    'MonthHeader — sentence-case label with count',
+    fileName: 'month_header',
     builder: () => themedGroup(
       const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          YearHeader(year: 2026, count: 412),
-          SizedBox(height: 8),
-          SectionHeader(label: 'July 2026'),
+          MonthHeader(month: YearMonth(2026, 7), count: 128),
           SizedBox(height: 16),
-          YearHeader(year: 2025, count: 1),
+          MonthHeader(month: YearMonth(2026, 6), count: 1),
         ],
+      ),
+    ),
+  );
+
+  goldenTest(
+    'YearHeader over a month section label',
+    fileName: 'year_header',
+    builder: () => themedGroup(
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const YearHeader(year: 2026, count: 412),
+          const SizedBox(height: 8),
+          MonthHeader(month: const YearMonth(2026, 7), count: 128, onTap: () {}),
+          const SizedBox(height: 16),
+          const YearHeader(year: 2025, count: 1),
+        ],
+      ),
+    ),
+  );
+
+  // The null-bytes fake renders the placeholder cells deterministically; the
+  // golden pins the section label, the r12 square cells, and the s4 gutter.
+  goldenTest(
+    'RecentlyViewedRow — label and square thumbnail cells',
+    fileName: 'recently_viewed_row',
+    builder: () => themedGroup(
+      ProviderScope(
+        overrides: [
+          photoLibraryServiceProvider.overrideWithValue(
+            FakePhotoLibraryService(),
+          ),
+        ],
+        child: const RecentlyViewedRow(assetIds: ['a', 'b', 'c']),
       ),
     ),
   );

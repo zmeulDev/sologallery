@@ -21,6 +21,13 @@ class MemoriesRow extends TimelineRow {
   const MemoriesRow();
 }
 
+/// The filter bar that lives inside the scrollable body, immediately below the
+/// memories carousel on [LibraryFilter.all] and at the top of the body on every
+/// other filter.
+class FilterBarRow extends TimelineRow {
+  const FilterBarRow();
+}
+
 /// A year hero announcing the months below it, carrying that year's total.
 class YearRow extends TimelineRow {
   const YearRow(this.year, this.count);
@@ -55,7 +62,10 @@ List<TimelineRow> buildTimelineRows({
   required int olderCount,
   required LibraryFilter filter,
 }) {
-  final rows = <TimelineRow>[if (filter.showsMemories) const MemoriesRow()];
+  final rows = <TimelineRow>[
+    if (filter.showsMemories) const MemoriesRow(),
+    const FilterBarRow(),
+  ];
   int? lastYear;
   for (final entry in counts) {
     final year = entry.month.year;
@@ -70,4 +80,48 @@ List<TimelineRow> buildTimelineRows({
   }
   if (olderCount > 0) rows.add(OlderRow(olderCount));
   return rows;
+}
+
+const _weekdayNames = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
+const _shortMonthNames = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+/// Human-readable label for a calendar day in the `This week` list.
+///
+/// * The current calendar day → `'Today'`.
+/// * The previous calendar day → `'Yesterday'`.
+/// * Otherwise → `'Monday, Jul 21'` (weekday + short month + day of month).
+///
+/// The window is at most seven days, so the year is never shown.
+String formatDayHeader(DateTime day, {DateTime? reference}) {
+  final now = reference ?? DateTime.now();
+  final dayStart = DateTime(day.year, day.month, day.day);
+  final today = DateTime(now.year, now.month, now.day);
+  if (dayStart == today) return 'Today';
+  final yesterday = today.subtract(const Duration(days: 1));
+  if (dayStart == yesterday) return 'Yesterday';
+  final weekday = _weekdayNames[day.weekday - 1];
+  final month = _shortMonthNames[day.month - 1];
+  return '$weekday, $month ${day.day}';
 }

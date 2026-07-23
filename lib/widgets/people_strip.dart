@@ -68,7 +68,7 @@ class PeopleStrip extends StatelessWidget {
       ),
       child: AppCard(
         child: Padding(
-          padding: const EdgeInsets.all(AppSpace.s16),
+          padding: const EdgeInsets.all(AppSpace.s12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -82,17 +82,19 @@ class PeopleStrip extends StatelessWidget {
               const SizedBox(height: AppSpace.s8),
               SizedBox(
                 height: _avatarSize + band,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  padding: EdgeInsets.zero,
-                  itemCount: people.length,
-                  separatorBuilder: (_, _) =>
-                      const SizedBox(width: AppSpace.s16),
-                  itemBuilder: (context, i) => _PersonTile(
-                    person: people[i],
-                    size: _avatarSize,
-                    captionBand: band,
-                    captionGap: _captionGap,
+                child: RepaintBoundary(
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: EdgeInsets.zero,
+                    itemCount: people.length,
+                    separatorBuilder: (_, _) =>
+                        const SizedBox(width: AppSpace.s20),
+                    itemBuilder: (context, i) => _PersonTile(
+                      person: people[i],
+                      size: _avatarSize,
+                      captionBand: band,
+                      captionGap: _captionGap,
+                    ),
                   ),
                 ),
               ),

@@ -8,6 +8,7 @@ mixin _$IndexDaoMixin on DatabaseAccessor<AppDatabase> {
   $PhotoLabelsTable get photoLabels => attachedDatabase.photoLabels;
   $PhotoTextsTable get photoTexts => attachedDatabase.photoTexts;
   $FavoritesTable get favorites => attachedDatabase.favorites;
+  $RecentlyViewedTable get recentlyViewed => attachedDatabase.recentlyViewed;
   IndexDaoManager get managers => IndexDaoManager(this);
 }
 
@@ -22,4 +23,9 @@ class IndexDaoManager {
       $$PhotoTextsTableTableManager(_db.attachedDatabase, _db.photoTexts);
   $$FavoritesTableTableManager get favorites =>
       $$FavoritesTableTableManager(_db.attachedDatabase, _db.favorites);
+  $$RecentlyViewedTableTableManager get recentlyViewed =>
+      $$RecentlyViewedTableTableManager(
+        _db.attachedDatabase,
+        _db.recentlyViewed,
+      );
 }

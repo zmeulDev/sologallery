@@ -4335,6 +4335,226 @@ class MemoryEntriesCompanion extends UpdateCompanion<MemoryEntry> {
   }
 }
 
+class $RecentlyViewedTable extends RecentlyViewed
+    with TableInfo<$RecentlyViewedTable, RecentlyViewedData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RecentlyViewedTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _assetIdMeta = const VerificationMeta(
+    'assetId',
+  );
+  @override
+  late final GeneratedColumn<String> assetId = GeneratedColumn<String>(
+    'asset_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _viewedAtMeta = const VerificationMeta(
+    'viewedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> viewedAt = GeneratedColumn<DateTime>(
+    'viewed_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [assetId, viewedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'recently_viewed';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RecentlyViewedData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('asset_id')) {
+      context.handle(
+        _assetIdMeta,
+        assetId.isAcceptableOrUnknown(data['asset_id']!, _assetIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_assetIdMeta);
+    }
+    if (data.containsKey('viewed_at')) {
+      context.handle(
+        _viewedAtMeta,
+        viewedAt.isAcceptableOrUnknown(data['viewed_at']!, _viewedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_viewedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {assetId};
+  @override
+  RecentlyViewedData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RecentlyViewedData(
+      assetId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}asset_id'],
+      )!,
+      viewedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}viewed_at'],
+      )!,
+    );
+  }
+
+  @override
+  $RecentlyViewedTable createAlias(String alias) {
+    return $RecentlyViewedTable(attachedDatabase, alias);
+  }
+}
+
+class RecentlyViewedData extends DataClass
+    implements Insertable<RecentlyViewedData> {
+  /// `photo_manager` asset id.
+  final String assetId;
+  final DateTime viewedAt;
+  const RecentlyViewedData({required this.assetId, required this.viewedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['asset_id'] = Variable<String>(assetId);
+    map['viewed_at'] = Variable<DateTime>(viewedAt);
+    return map;
+  }
+
+  RecentlyViewedCompanion toCompanion(bool nullToAbsent) {
+    return RecentlyViewedCompanion(
+      assetId: Value(assetId),
+      viewedAt: Value(viewedAt),
+    );
+  }
+
+  factory RecentlyViewedData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RecentlyViewedData(
+      assetId: serializer.fromJson<String>(json['assetId']),
+      viewedAt: serializer.fromJson<DateTime>(json['viewedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'assetId': serializer.toJson<String>(assetId),
+      'viewedAt': serializer.toJson<DateTime>(viewedAt),
+    };
+  }
+
+  RecentlyViewedData copyWith({String? assetId, DateTime? viewedAt}) =>
+      RecentlyViewedData(
+        assetId: assetId ?? this.assetId,
+        viewedAt: viewedAt ?? this.viewedAt,
+      );
+  RecentlyViewedData copyWithCompanion(RecentlyViewedCompanion data) {
+    return RecentlyViewedData(
+      assetId: data.assetId.present ? data.assetId.value : this.assetId,
+      viewedAt: data.viewedAt.present ? data.viewedAt.value : this.viewedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RecentlyViewedData(')
+          ..write('assetId: $assetId, ')
+          ..write('viewedAt: $viewedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(assetId, viewedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RecentlyViewedData &&
+          other.assetId == this.assetId &&
+          other.viewedAt == this.viewedAt);
+}
+
+class RecentlyViewedCompanion extends UpdateCompanion<RecentlyViewedData> {
+  final Value<String> assetId;
+  final Value<DateTime> viewedAt;
+  final Value<int> rowid;
+  const RecentlyViewedCompanion({
+    this.assetId = const Value.absent(),
+    this.viewedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  RecentlyViewedCompanion.insert({
+    required String assetId,
+    required DateTime viewedAt,
+    this.rowid = const Value.absent(),
+  }) : assetId = Value(assetId),
+       viewedAt = Value(viewedAt);
+  static Insertable<RecentlyViewedData> custom({
+    Expression<String>? assetId,
+    Expression<DateTime>? viewedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (assetId != null) 'asset_id': assetId,
+      if (viewedAt != null) 'viewed_at': viewedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  RecentlyViewedCompanion copyWith({
+    Value<String>? assetId,
+    Value<DateTime>? viewedAt,
+    Value<int>? rowid,
+  }) {
+    return RecentlyViewedCompanion(
+      assetId: assetId ?? this.assetId,
+      viewedAt: viewedAt ?? this.viewedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (assetId.present) {
+      map['asset_id'] = Variable<String>(assetId.value);
+    }
+    if (viewedAt.present) {
+      map['viewed_at'] = Variable<DateTime>(viewedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RecentlyViewedCompanion(')
+          ..write('assetId: $assetId, ')
+          ..write('viewedAt: $viewedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4352,6 +4572,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $AppSettingsTable appSettings = $AppSettingsTable(this);
   late final $MemoriesTable memories = $MemoriesTable(this);
   late final $MemoryEntriesTable memoryEntries = $MemoryEntriesTable(this);
+  late final $RecentlyViewedTable recentlyViewed = $RecentlyViewedTable(this);
   late final Index photoAssetDatedCreated = Index(
     'photo_asset_dated_created',
     'CREATE INDEX photo_asset_dated_created ON photo_assets (is_dated, created_at)',
@@ -4402,6 +4623,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     appSettings,
     memories,
     memoryEntries,
+    recentlyViewed,
     photoAssetDatedCreated,
     photoLabelAsset,
     photoLabelLabel,
@@ -8577,6 +8799,155 @@ typedef $$MemoryEntriesTableProcessedTableManager =
       MemoryEntry,
       PrefetchHooks Function({bool memoryId, bool assetId})
     >;
+typedef $$RecentlyViewedTableCreateCompanionBuilder =
+    RecentlyViewedCompanion Function({
+      required String assetId,
+      required DateTime viewedAt,
+      Value<int> rowid,
+    });
+typedef $$RecentlyViewedTableUpdateCompanionBuilder =
+    RecentlyViewedCompanion Function({
+      Value<String> assetId,
+      Value<DateTime> viewedAt,
+      Value<int> rowid,
+    });
+
+class $$RecentlyViewedTableFilterComposer
+    extends Composer<_$AppDatabase, $RecentlyViewedTable> {
+  $$RecentlyViewedTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get assetId => $composableBuilder(
+    column: $table.assetId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get viewedAt => $composableBuilder(
+    column: $table.viewedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$RecentlyViewedTableOrderingComposer
+    extends Composer<_$AppDatabase, $RecentlyViewedTable> {
+  $$RecentlyViewedTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get assetId => $composableBuilder(
+    column: $table.assetId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get viewedAt => $composableBuilder(
+    column: $table.viewedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$RecentlyViewedTableAnnotationComposer
+    extends Composer<_$AppDatabase, $RecentlyViewedTable> {
+  $$RecentlyViewedTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get assetId =>
+      $composableBuilder(column: $table.assetId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get viewedAt =>
+      $composableBuilder(column: $table.viewedAt, builder: (column) => column);
+}
+
+class $$RecentlyViewedTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $RecentlyViewedTable,
+          RecentlyViewedData,
+          $$RecentlyViewedTableFilterComposer,
+          $$RecentlyViewedTableOrderingComposer,
+          $$RecentlyViewedTableAnnotationComposer,
+          $$RecentlyViewedTableCreateCompanionBuilder,
+          $$RecentlyViewedTableUpdateCompanionBuilder,
+          (
+            RecentlyViewedData,
+            BaseReferences<
+              _$AppDatabase,
+              $RecentlyViewedTable,
+              RecentlyViewedData
+            >,
+          ),
+          RecentlyViewedData,
+          PrefetchHooks Function()
+        > {
+  $$RecentlyViewedTableTableManager(
+    _$AppDatabase db,
+    $RecentlyViewedTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RecentlyViewedTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RecentlyViewedTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$RecentlyViewedTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> assetId = const Value.absent(),
+                Value<DateTime> viewedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => RecentlyViewedCompanion(
+                assetId: assetId,
+                viewedAt: viewedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String assetId,
+                required DateTime viewedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => RecentlyViewedCompanion.insert(
+                assetId: assetId,
+                viewedAt: viewedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$RecentlyViewedTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $RecentlyViewedTable,
+      RecentlyViewedData,
+      $$RecentlyViewedTableFilterComposer,
+      $$RecentlyViewedTableOrderingComposer,
+      $$RecentlyViewedTableAnnotationComposer,
+      $$RecentlyViewedTableCreateCompanionBuilder,
+      $$RecentlyViewedTableUpdateCompanionBuilder,
+      (
+        RecentlyViewedData,
+        BaseReferences<_$AppDatabase, $RecentlyViewedTable, RecentlyViewedData>,
+      ),
+      RecentlyViewedData,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -8605,4 +8976,6 @@ class $AppDatabaseManager {
       $$MemoriesTableTableManager(_db, _db.memories);
   $$MemoryEntriesTableTableManager get memoryEntries =>
       $$MemoryEntriesTableTableManager(_db, _db.memoryEntries);
+  $$RecentlyViewedTableTableManager get recentlyViewed =>
+      $$RecentlyViewedTableTableManager(_db, _db.recentlyViewed);
 }

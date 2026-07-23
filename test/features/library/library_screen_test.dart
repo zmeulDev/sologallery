@@ -10,12 +10,13 @@ import 'package:sologallery/features/library/library_screen.dart';
 import 'package:sologallery/features/library/widgets/year_header.dart';
 import 'package:sologallery/features/memories/memories_providers.dart';
 import 'package:sologallery/features/memories/widgets/memories_carousel.dart';
-import 'package:sologallery/widgets/asset_grid.dart';
 import 'package:sologallery/services/indexing_service.dart';
 import 'package:sologallery/services/permission_provider.dart';
 import 'package:sologallery/services/photo_library_service.dart';
 import 'package:sologallery/widgets/asset_thumbnail.dart';
+import 'package:sologallery/features/library/widgets/library_skeleton.dart';
 import 'package:sologallery/widgets/limited_access_banner.dart';
+import 'package:sologallery/widgets/section_header.dart';
 
 import '../../support/asset_fixtures.dart';
 import '../../support/fake_photo_library_service.dart';
@@ -52,6 +53,17 @@ void main() {
     final yearCounts = [
       for (final year in byYear.keys.toList()..sort((a, b) => b.compareTo(a)))
         (year: year, count: byYear[year]!.length),
+    ];
+
+    // Day grouping for the `This week` filter, derived from [weekAssets].
+    final byDay = <DateTime, List<AssetRef>>{};
+    for (final a in weekAssets) {
+      final d = a.createdAt;
+      (byDay[DateTime(d.year, d.month, d.day)] ??= []).add(a);
+    }
+    final dayCounts = [
+      for (final day in byDay.keys.toList()..sort((a, b) => b.compareTo(a)))
+        (day: day, count: byDay[day]!.length),
     ];
 
     final fake = FakePhotoLibraryService(access: access);
@@ -101,7 +113,14 @@ void main() {
               ].take(6).toList(),
             ),
           ),
-          thisWeekAssetsProvider.overrideWithValue(AsyncData(weekAssets)),
+          thisWeekDayCountsProvider.overrideWithValue(AsyncData(dayCounts)),
+          dayPreviewsProvider.overrideWith(
+            (ref, day) => Stream.value(
+              [
+                for (final a in byDay[day] ?? const <AssetRef>[]) a.id,
+              ].take(6).toList(),
+            ),
+          ),
         ],
         child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
       ),
@@ -120,7 +139,7 @@ void main() {
     expect(find.text('No photos yet'), findsOneWidget);
   });
 
-  testWidgets('spinner while the cache is not yet ready', (tester) async {
+  testWidgets('skeleton while the cache is not yet ready', (tester) async {
     await pump(
       tester,
       access: PhotoAccess.granted,
@@ -128,7 +147,8 @@ void main() {
       settle: false,
     );
     expect(find.text('No photos yet'), findsNothing);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byType(LibrarySkeleton), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
   testWidgets('renders a month section with header, previews and count', (
@@ -140,12 +160,16 @@ void main() {
       assets: assetsInMonth(2026, 8, 7),
     );
 
-    expect(find.text('AUGUST 2026'), findsOneWidget);
+    expect(find.text('August 2026'), findsOneWidget);
     // A quiet tally, not a button: "items" because a month mixes stills and
     // video, and the grid below shows both.
     expect(find.text('7 items'), findsOneWidget);
     // Preview is capped at six thumbnails.
     expect(find.byType(AssetThumbnail), findsNWidgets(6));
+    // Each heavy timeline item is isolated so thumbnail decode completion does
+    // not repaint neighbours. The list plus Material/ListView internals add
+    // extra RepaintBoundaries; assert at least one per timeline item.
+    expect(find.byType(RepaintBoundary), findsAtLeastNWidgets(2));
   });
 
   // The floating nav capsule reaches the screen as a bottom inset; the timeline
@@ -180,7 +204,7 @@ void main() {
 
     // The whole header row is the target — the label included, not just a
     // trailing control.
-    await tester.tap(find.text('AUGUST 2026'));
+    await tester.tap(find.text('August 2026'));
     await tester.pumpAndSettle();
     expect(find.text('month'), findsOneWidget);
   });
@@ -210,7 +234,7 @@ void main() {
       undatedAssets: assetsInMonth(2020, 1, 4),
     );
 
-    expect(find.text('AUGUST 2026'), findsOneWidget);
+    expect(find.text('August 2026'), findsOneWidget);
     expect(find.text('OLDER'), findsOneWidget);
     expect(find.text('4 items'), findsOneWidget);
   });
@@ -269,7 +293,7 @@ void main() {
         expect(find.text(f.label), findsOneWidget, reason: f.name);
       }
       // All is the default, so the month sections and the carousel are up.
-      expect(find.text('AUGUST 2026'), findsOneWidget);
+      expect(find.text('August 2026'), findsOneWidget);
       // With no memories the carousel collapses to zero height, and a viewport
       // reports a zero-extent child as offstage — so its presence in the
       // timeline only shows with skipOffstage off.
@@ -291,9 +315,9 @@ void main() {
       await pump(tester, access: PhotoAccess.granted, assets: twoYears());
       await selectFilter(tester, LibraryFilter.months);
 
-      expect(find.text('AUGUST 2026'), findsOneWidget);
-      expect(find.text('FEBRUARY 2026'), findsOneWidget);
-      expect(find.text('NOVEMBER 2025'), findsOneWidget);
+      expect(find.text('August 2026'), findsOneWidget);
+      expect(find.text('February 2026'), findsOneWidget);
+      expect(find.text('November 2025'), findsOneWidget);
       // One hero per year, not per month.
       expect(find.byType(YearHeader), findsNWidgets(2));
       expect(find.text('2026'), findsOneWidget);
@@ -327,11 +351,11 @@ void main() {
       expect(find.text('5 photos'), findsOneWidget); // 2026
       expect(find.text('4 photos'), findsOneWidget); // 2025
       // The month axis is gone entirely.
-      expect(find.text('AUGUST 2026'), findsNothing);
+      expect(find.text('August 2026'), findsNothing);
       expect(find.text('FEBRUARY 2026'), findsNothing);
     });
 
-    testWidgets('This week shows the window as one flat grid', (tester) async {
+    testWidgets('This week groups by calendar day sections', (tester) async {
       await pump(
         tester,
         access: PhotoAccess.granted,
@@ -340,9 +364,11 @@ void main() {
       );
       await selectFilter(tester, LibraryFilter.thisWeek);
 
-      expect(find.byType(AssetGrid), findsOneWidget);
-      // No sections — a week doesn't need dividing.
-      expect(find.text('AUGUST 2026'), findsNothing);
+      // Four assets on a single calendar day become one section with a day
+      // header and up to six previews.
+      expect(find.byType(SectionHeader), findsOneWidget);
+      expect(find.text('4 items'), findsOneWidget);
+      expect(find.byType(AssetThumbnail), findsNWidgets(4));
       expect(find.byType(YearHeader), findsNothing);
     });
 
@@ -353,7 +379,6 @@ void main() {
       await selectFilter(tester, LibraryFilter.thisWeek);
 
       expect(find.text('No photos in the last 7 days.'), findsOneWidget);
-      expect(find.byType(AssetGrid), findsNothing);
     });
 
     testWidgets('switching back to All restores the full timeline', (
@@ -361,10 +386,10 @@ void main() {
     ) async {
       await pump(tester, access: PhotoAccess.granted, assets: twoYears());
       await selectFilter(tester, LibraryFilter.year);
-      expect(find.text('AUGUST 2026'), findsNothing);
+      expect(find.text('August 2026'), findsNothing);
 
       await selectFilter(tester, LibraryFilter.all);
-      expect(find.text('AUGUST 2026'), findsOneWidget);
+      expect(find.text('August 2026'), findsOneWidget);
       expect(find.byType(YearHeader), findsNothing);
       expect(
         find.byType(MemoriesCarousel, skipOffstage: false),
@@ -397,5 +422,19 @@ void main() {
       assets: assetsInMonth(2026, 8, 2),
     );
     expect(find.byType(LimitedAccessBanner), findsNothing);
+  });
+
+  testWidgets('pull-to-refresh wraps the month timeline', (tester) async {
+    await pump(
+      tester,
+      access: PhotoAccess.granted,
+      assets: assetsInMonth(2026, 8, 3),
+    );
+    expect(find.byType(RefreshIndicator), findsOneWidget);
+  });
+
+  testWidgets('pull-to-refresh wraps the empty month state', (tester) async {
+    await pump(tester, access: PhotoAccess.granted);
+    expect(find.byType(RefreshIndicator), findsOneWidget);
   });
 }

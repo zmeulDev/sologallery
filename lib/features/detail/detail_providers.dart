@@ -50,6 +50,15 @@ final albumsListProvider = StreamProvider.autoDispose<List<Album>>(
   (ref) => ref.watch(albumsDaoProvider).watchAllAlbums(),
 );
 
+/// Records that [assetId] was viewed in the detail screen. The future is
+/// intentionally fire-and-forget: callers must not await it on the UI isolate.
+final viewRecorderProvider = Provider.autoDispose<Future<void> Function(String)>(
+  (ref) {
+    final dao = ref.watch(indexDaoProvider);
+    return (String assetId) => dao.recordView(assetId);
+  },
+);
+
 /// Side-effecting detail actions. Kept out of widgets (Riverpod conventions):
 /// favoriting, album membership, OS delete + local purge, and OS share.
 final detailActionsProvider = Provider<DetailActions>(DetailActions.new);

@@ -86,6 +86,13 @@ final searchAlbumsProvider = Provider.autoDispose<List<AlbumSummary>>((ref) {
 /// scannable block above the privacy note without turning into a tag cloud.
 const browseLabelCount = 10;
 
+/// The most recently viewed photos, newest first, for the idle Search screen.
+/// A small bounded shortcut rather than a full history log.
+final recentlyViewedProvider =
+    StreamProvider.autoDispose.family<List<String>, int>((ref, limit) {
+  return ref.watch(indexDaoProvider).watchRecentlyViewed(limit: limit);
+});
+
 /// The browse chips on the idle screen: the [browseLabelCount] labels this
 /// library actually carries most often, most photos first.
 ///

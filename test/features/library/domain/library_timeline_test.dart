@@ -15,10 +15,11 @@ void main() {
       buildTimelineRows(counts: counts, olderCount: olderCount, filter: filter);
 
   group('all', () {
-    test('leads with the carousel, then one row per month', () {
+    test('leads with the carousel, filter bar, then one row per month', () {
       final result = rows([m(2026, 7, 4), m(2026, 6, 2)]);
       expect(result, [
         isA<MemoriesRow>(),
+        isA<FilterBarRow>(),
         isA<MonthRow>().having((r) => r.month, 'month', YearMonth(2026, 7)),
         isA<MonthRow>().having((r) => r.month, 'month', YearMonth(2026, 6)),
       ]);
@@ -29,19 +30,20 @@ void main() {
       expect(result.whereType<YearRow>(), isEmpty);
     });
 
-    test('keeps the carousel even with no months at all', () {
-      expect(rows([]), [isA<MemoriesRow>()]);
+    test('keeps the carousel and filter bar even with no months at all', () {
+      expect(rows([]), [isA<MemoriesRow>(), isA<FilterBarRow>()]);
     });
   });
 
   group('months', () {
-    test('opens each year with a hero carrying that year\'s total', () {
+    test('opens with the filter bar, then a hero per year carrying totals', () {
       final result = rows([
         m(2026, 7, 4),
         m(2026, 6, 2),
         m(2025, 12, 9),
       ], filter: LibraryFilter.months);
       expect(result, [
+        isA<FilterBarRow>(),
         isA<YearRow>()
             .having((r) => r.year, 'year', 2026)
             .having((r) => r.count, 'count', 6), // 4 + 2
@@ -57,6 +59,7 @@ void main() {
     test('drops the carousel — the time filters read as pure navigation', () {
       final result = rows([m(2026, 7, 1)], filter: LibraryFilter.months);
       expect(result.whereType<MemoriesRow>(), isEmpty);
+      expect(result.first, isA<FilterBarRow>());
     });
 
     test('emits one hero per year, not one per month', () {
@@ -100,8 +103,9 @@ void main() {
       expect(result.whereType<YearRow>(), hasLength(1));
     });
 
-    test('can be the only row', () {
+    test('can be the only content row', () {
       expect(rows([], olderCount: 5, filter: LibraryFilter.months), [
+        isA<FilterBarRow>(),
         isA<OlderRow>(),
       ]);
     });

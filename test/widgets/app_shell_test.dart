@@ -128,24 +128,34 @@ void main() {
     await disposeTree(tester);
   });
 
-  testWidgets('search field takes focus with the tab and releases it on leave',
-      (tester) async {
-    await pumpApp(tester);
-    // skipOffstage: false — once another tab is selected the Search branch
-    // stays in the tree (indexed shell) but goes offstage.
-    final field = find.byType(TextField, skipOffstage: false);
+  testWidgets(
+    'search field does not auto-focus on Search tab entry and releases it on leave',
+    (tester) async {
+      await pumpApp(tester);
+      // skipOffstage: false — once another tab is selected the Search branch
+      // stays in the tree (indexed shell) but goes offstage.
+      final field = find.byType(TextField, skipOffstage: false);
 
-    await tester.tap(find.byTooltip('Search'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
-    expect(tester.widget<TextField>(field).focusNode?.hasFocus, isTrue);
+      // The redesigned Search screen keeps the keyboard hidden on entry so the
+      // recent-history ribbon is visible first.
+      await tester.tap(find.byTooltip('Search'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(tester.widget<TextField>(field).focusNode?.hasFocus, isFalse);
 
-    // Leaving the tab releases focus so the keyboard doesn't linger.
-    await tester.tap(find.byTooltip('Saved'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
-    expect(tester.widget<TextField>(field).focusNode?.hasFocus, isFalse);
+      // Manually focusing the field then leaving the tab releases focus so the
+      // keyboard doesn't linger.
+      await tester.tap(field);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(tester.widget<TextField>(field).focusNode?.hasFocus, isTrue);
 
-    await disposeTree(tester);
-  });
+      await tester.tap(find.byTooltip('Saved'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(tester.widget<TextField>(field).focusNode?.hasFocus, isFalse);
+
+      await disposeTree(tester);
+    },
+  );
 }

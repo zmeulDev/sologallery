@@ -78,7 +78,14 @@
       "Bash(bash tool/check.sh)",
       "Bash(PATH=\"$HOME/Library/Android/sdk/platform-tools:$HOME/.pub-cache/bin:$PATH\" patrol test *)",
       "Bash(git checkout *)",
-      "Bash(PATH=\"$HOME/Library/Android/sdk/platform-tools:$PATH\" ~/.pub-cache/bin/patrol test *)"
+      "Bash(PATH=\"$HOME/Library/Android/sdk/platform-tools:$PATH\" ~/.pub-cache/bin/patrol test *)",
+      "Bash(git -C /Users/zml-m4/Dev/sologallery diff -- lib/features/library/ lib/widgets/app_shell.dart lib/widgets/section_header.dart lib/widgets/filter_pill.dart lib/widgets/asset_grid.dart)",
+      "Bash(adb -s 46121FDAS008AA install -r build/app/outputs/flutter-apk/app-profile.apk)",
+      "Bash(PATH=/Users/zml-m4/Library/Android/sdk/platform-tools:__TRACKED_VAR__ adb -s 46121FDAS008AA install -r build/app/outputs/flutter-apk/app-profile.apk)",
+      "Bash(PATH=/Users/zml-m4/Library/Android/sdk/platform-tools:__TRACKED_VAR__ adb -s 46121FDAS008AA shell am start -n com.zmeul.sologallery/.MainActivity)",
+      "Bash(PATH=/Users/zml-m4/Library/Android/sdk/platform-tools:__TRACKED_VAR__ adb -s 46121FDAS008AA shell am force-stop com.zmeul.sologallery)",
+      "Bash(PATH=/Users/zml-m4/Library/Android/sdk/platform-tools:__TRACKED_VAR__ adb -s 46121FDAS008AA logcat -s flutter:V SoloGallery:V -d)",
+      "Bash(PATH=/Users/zml-m4/Library/Android/sdk/platform-tools:__TRACKED_VAR__ adb -s 46121FDAS008AA logcat -s flutter:V SoloGallery:V)"
     ]
   }
 }

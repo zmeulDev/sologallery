@@ -17,6 +17,7 @@ import '../../widgets/filter_pill.dart';
 import '../../widgets/section_header.dart';
 import '../../widgets/people_strip.dart';
 import '../people/people_providers.dart';
+import 'widgets/recently_viewed_row.dart';
 import '../settings/consent_provider.dart';
 import 'domain/search_date.dart';
 import 'search_providers.dart';
@@ -77,15 +78,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Focus follows the tab: typing starts as soon as Search is selected, and
-    // the keyboard leaves with the tab rather than lingering over the branch
-    // the user switched to.
+    // Keep the keyboard from lingering over another branch when the user
+    // leaves Search; do not auto-focus on entry so the idle screen opens calm.
     ref.listen<bool>(searchTabActiveProvider, (_, active) {
-      if (active) {
-        _focusNode.requestFocus();
-      } else {
-        _focusNode.unfocus();
-      }
+      if (!active) _focusNode.unfocus();
     });
 
     final query = ref.watch(searchQueryProvider);
@@ -96,43 +92,51 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final idle =
         query.trim().isEmpty && type == MediaTypeFilter.all && !favoritesOnly;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Search')),
-      body: Column(
-        children: [
-          // The field mirrors the query through its controller, so it doesn't
-          // rebuild on every keystroke — only the hint depends on a provider,
-          // and only on whether content search is enabled. Watch that one
-          // provider in a Consumer scoped to the field so a keystroke (which
-          // ticks searchQueryProvider) doesn't rebuild it.
-          Consumer(
-            builder: (context, ref, _) => _SearchField(
-              controller: _controller,
-              focusNode: _focusNode,
-              onChanged: _onChanged,
-              onClear: _clear,
-              // The hint only promises content matching when the user has
-              // actually enabled it — otherwise typing "dog" would silently
-              // return nothing after the field invited it.
-              hintText: ref.watch(searchEnabledProvider).value ?? false
-                  ? 'Photos, places, people, text…'
-                  : 'Dates, albums, media type…',
-            ),
-          ),
-          // Facets are an answer-narrowing tool, so they arrive with the
-          // answers. On the idle screen they would be four controls narrowing
-          // nothing, competing with the browse entry points that are the
-          // actual invitation.
-          if (!idle) _FilterBar(type: type, favoritesOnly: favoritesOnly),
-          // "Still analyzing" is an app-wide condition, not a Search one — the
-          // shell's `IndexingDial` says it once, beside the nav capsule.
-          Expanded(
-            child: idle
-                ? _IdleView(onBrowseLabel: _search)
-                : _Results(albums: albums, showNoMatch: albums.isEmpty),
-          ),
-        ],
+    // The field mirrors the query through its controller, so it doesn't
+    // rebuild on every keystroke — only the hint depends on a provider,
+    // and only on whether content search is enabled. Watch that one
+    // provider in a Consumer scoped to the field so a keystroke (which
+    // ticks searchQueryProvider) doesn't rebuild it.
+    final searchField = Consumer(
+      builder: (context, ref, _) => _SearchField(
+        controller: _controller,
+        focusNode: _focusNode,
+        onChanged: _onChanged,
+        onClear: _clear,
+        // The hint only promises content matching when the user has
+        // actually enabled it — otherwise typing "dog" would silently
+        // return nothing after the field invited it.
+        hintText: ref.watch(searchEnabledProvider).value ?? false
+            ? 'Photos, places, people, text…'
+            : 'Dates, albums, media type…',
       ),
+    );
+
+    return Scaffold(
+      appBar: AppBar(),
+      body: idle
+          ? _IdleView(
+              searchField: searchField,
+              onBrowseLabel: _search,
+            )
+          : Column(
+              children: [
+                searchField,
+                // Facets are an answer-narrowing tool, so they arrive with the
+                // answers. On the idle screen they would be four controls
+                // narrowing nothing, competing with the browse entry points that
+                // are the actual invitation.
+                _FilterBar(type: type, favoritesOnly: favoritesOnly),
+                // "Still analyzing" is an app-wide condition, not a Search one —
+                // the shell's `IndexingDial` says it once, beside the nav capsule.
+                Expanded(
+                  child: _Results(
+                    albums: albums,
+                    showNoMatch: albums.isEmpty,
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }
@@ -172,6 +176,7 @@ class _SearchField extends StatelessWidget {
       child: TextField(
         controller: controller,
         focusNode: focusNode,
+        autofocus: false,
         textInputAction: TextInputAction.search,
         onChanged: onChanged,
         style: styles.body.copyWith(color: scheme.onSurface),
@@ -373,15 +378,22 @@ class _AlbumsResult extends StatelessWidget {
   }
 }
 
-/// The idle state: browse entry points — a People strip (when clusters exist),
-/// then label chips (when content search is on) — closed by the note explaining
-/// where all of this is computed.
+/// The idle state: a recency ribbon and a lowered search field above the
+/// existing browse entry points — People strip, label chips, and the privacy
+/// note.
 ///
 /// Device folders deliberately live on the Albums tab and not here: they are a
 /// place you browse *collections*, not a way to narrow a query, and Albums is
 /// already the screen that gathers every collection in one list.
 class _IdleView extends ConsumerWidget {
-  const _IdleView({required this.onBrowseLabel});
+  const _IdleView({
+    required this.searchField,
+    required this.onBrowseLabel,
+  });
+
+  /// The shared search field, placed lower on the idle screen than on the
+  /// results screen.
+  final Widget searchField;
 
   /// Commits a tapped label chip as the active query.
   final void Function(String) onBrowseLabel;
@@ -401,6 +413,9 @@ class _IdleView extends ConsumerWidget {
       // Clears the floating nav capsule (reported as the bottom inset).
       padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
       children: [
+        const _PageHeader(),
+        const _RecentlyViewedStrip(),
+        searchField,
         // Nothing to browse yet — a new library, an unfinished index, or every
         // analysis declined. The prompt explains what the field accepts
         // instead of leaving a blank screen under it.
@@ -410,6 +425,57 @@ class _IdleView extends ConsumerWidget {
           _BrowseLabels(labels: labels, onTap: onBrowseLabel),
         const _PrivacyNote(),
       ],
+    );
+  }
+}
+
+/// Large page title and subtitle for the idle Search screen.
+class _PageHeader extends StatelessWidget {
+  const _PageHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppColors>()!;
+    final styles = Theme.of(context).extension<AppTextStyles>()!;
+    final scheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpace.s16,
+        AppSpace.s16,
+        AppSpace.s16,
+        AppSpace.s20,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Search',
+            style: styles.pageTitle.copyWith(color: scheme.onSurface),
+          ),
+          const SizedBox(height: AppSpace.s4),
+          Text(
+            'Find photos, dates, albums, and more',
+            style: styles.body.copyWith(color: colors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The recently viewed ribbon: watches the DAO stream and delegates to the
+/// public [RecentlyViewedRow] widget. Loading/error states are silent.
+class _RecentlyViewedStrip extends ConsumerWidget {
+  const _RecentlyViewedStrip();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final recent = ref.watch(recentlyViewedProvider(12));
+    return recent.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
+      data: (ids) => RecentlyViewedRow(assetIds: ids),
     );
   }
 }

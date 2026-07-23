@@ -1,0 +1,103 @@
+# Plan: Redesign Search screen — recency-first, lower search field, no auto-focus
+
+## Status
+Implemented and verified (2026-07-23). `tool/check.sh` passes; unit + widget tests pass; golden generated.
+
+## Changes requested
+
+1. **Move the search field lower on the idle screen.** The search bar should no longer be the first element under the app bar. Instead it sits below a new "Recently viewed" section so the screen opens with the user’s own history, not an empty input.
+2. **Add a "Recently viewed" section.** A horizontally scrolling ribbon of the most recently opened photos, newest first, at the top of the idle Search screen. Tapping a thumbnail opens its detail view. The section hides when empty.
+3. **Do not focus the search field when the Search tab opens.** Remove the auto-focus request so the keyboard stays hidden on entry; the user can still tap the field to focus it.
+4. **Use only the existing app theme.** No new colors, fonts, or radii — derive everything from `AppColors`, `AppTextStyles`, `AppSpace`, and `AppRadius` already in the design system.
+
+## Proposed design details
+
+### Visual hierarchy (idle state)
+
+Top to bottom inside a scrollable body:
+
+- **Page header** — large title "Search" plus a short subtitle hint (uses `pageTitle` + `body`/textSecondary). Kept minimal; the photos are the content.
+- **Recently viewed** — horizontal `ListView` of square thumbnail chips (r12, s4 gutter, ~72 dp cell). Each cell is the photo itself; no border, no shadow. Section label "Recently viewed" in `sectionLabel`.
+- **Search field** — the existing filled rounded input (`surface2`, r12, search icon, clear button), now placed after the recency ribbon. Hint text unchanged.
+- **Browse aids** — existing People strip, on-device label chips, and the privacy note, below the search field.
+
+This inverts the usual "search bar first" pattern and makes the user’s recent trail the fastest path back. It is distinctive within the app: Library groups by month, Saved is masonry, Albums shows collections, and Search alone surfaces a personal recency ribbon.
+
+### Layout notes
+
+- The whole idle body scrolls as one `CustomScrollView`/`ListView` so the search field can be scrolled into view if the keyboard ever covers it.
+- Section spacing follows the existing Library rhythm: `s20` between major sections, `s12` between a section label and its content, `s16` horizontal inset.
+- The search field keeps its current internal padding; it just changes position.
+- Filter pills (media type, favorites) remain hidden while idle and appear once a query or facet is active, exactly as today.
+
+### Focus behavior
+
+- Remove `ref.listen(searchTabActiveProvider, ...)` and the `_focusNode.requestFocus()` call in `SearchScreen`.
+- Keep `unfocus` when the tab becomes inactive so the keyboard does not linger over another branch.
+- `TextField` keeps `autofocus: false` explicitly.
+
+### Recently viewed data model
+
+Add a dedicated Drift table rather than overloading `PhotoAssets`, because view history is user behavior, not indexer state, and it must work for assets that have not been ML-indexed yet.
+
+- New table `RecentlyViewed`:
+  - `assetId` (Text, PK) — `photo_manager` asset id.
+  - `viewedAt` (DateTime) — last time the user viewed this asset.
+- Schema bump to **v10**. Migration is a simple `createTable` from v9.
+- New DAO methods on `IndexDao` (or a tiny `RecentlyViewedDao` if separation is cleaner):
+  - `recordView(String assetId)` — insert or upsert `viewedAt = now`.
+  - `watchRecentlyViewed({int limit = 12})` — stream of asset ids, newest first.
+- Record views in `PhotoDetailScreen` whenever the displayed asset changes (initial open and horizontal swipe). This makes the ribbon reflect what the user actually looked at, not just the asset they tapped from Search.
+
+### Providers
+
+- Add `recentlyViewedProvider` in `search_providers.dart` (autoDispose, watches the DAO stream).
+- Add a small `_RecentViewedRow` widget in `search_screen.dart` that builds from the provider.
+- Loading/error states for the ribbon are silent: empty/error yields no section (the screen still works without it).
+
+### Results state
+
+Once the user types or selects a facet, the screen switches to the existing results layout (`_FilterBar` + albums + photos). The recently viewed ribbon and the large header are not shown during active search; the search field stays visible at the top of the results body so the user can edit the query.
+
+## Files changed
+
+| File | Change |
+|------|--------|
+| `lib/core/database/tables.dart` | Added `RecentlyViewed` table. |
+| `lib/core/database/app_database.dart` | Bumped `schemaVersion` to 10; added v10 migration (`createTable(recentlyViewed)`); registered table in `@DriftDatabase`. |
+| `lib/core/database/daos/index_dao.dart` | Added `recordView` + `watchRecentlyViewed` methods; added `RecentlyViewed` to `@DriftAccessor` tables. |
+| `lib/core/database/app_database.g.dart` | Regenerated by `build_runner`. |
+| `lib/core/database/daos/index_dao.g.dart` | Regenerated by `build_runner`. |
+| `lib/features/search/search_providers.dart` | Added `recentlyViewedProvider` family (limit configurable at call site). |
+| `lib/features/search/search_screen.dart` | Redesigned idle body: page header, `_RecentlyViewedStrip`, lowered search field, existing browse aids. Removed auto-focus; kept unfocus on leaving Search. |
+| `lib/features/search/widgets/recently_viewed_row.dart` | New public widget: horizontal square thumbnail ribbon with detail navigation. |
+| `lib/features/detail/detail_screen.dart` | Records a view on initial open and on every horizontal page change. |
+| `lib/features/detail/detail_providers.dart` | Added `viewRecorderProvider`. |
+| `test/core/database/generated_migrations/schema_v10.dart` | New generated migration artifact. |
+| `test/core/database/generated_migrations/schema.dart` | Updated to include v10. |
+| `test/core/database/migration_test.dart` | Added v9→v10 migration test; updated all target versions to 10. |
+| `test/core/database/index_dao_test.dart` | Added `recordView`/`watchRecentlyViewed` tests. |
+| `test/features/search/search_screen_test.dart` | Added idle layout, ribbon, no-focus, and navigation tests; updated provider override for family. |
+| `test/features/search/search_providers_test.dart` | Added `recentlyViewedProvider` tests. |
+| `test/widgets/design_goldens_test.dart` | Added golden test for `RecentlyViewedRow`. |
+| `test/widgets/goldens/ci/recently_viewed_row.png` | New golden file. |
+| `drift_schemas/drift_schema_v10.json` | New committed schema dump. |
+
+## Verification completed
+
+1. `dart run build_runner build` — regenerated drift artifacts; `schema_v10` artifacts committed.
+2. `flutter analyze` — zero warnings.
+3. `tool/check.sh` — analyze + build_runner + unit/widget tests all pass (663 tests).
+4. Migration tests — v1→v10 … v9→v10 pass; `recently_viewed` table exists post-upgrade and holds rows.
+5. Widget tests — idle header precedes the field, ribbon renders/hides correctly, no auto-focus, recent thumbnail opens detail.
+6. Golden — `recently_viewed_row.png` generated and matches.
+
+## Next step
+
+Manual end-to-end on Pixel 9 Pro XL:
+- Search tab opens with keyboard hidden and recent ribbon visible.
+- Tapping a recent thumbnail opens detail; returning bumps it to the front.
+- Typing a query switches to results and keeps the search field visible.
+
+Run the integration test for the touched flow once manual verification confirms behavior.
+

@@ -8,13 +8,14 @@ import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/library/domain/year_month.dart';
 import 'package:sologallery/features/library/library_providers.dart';
 import 'package:sologallery/features/library/library_screen.dart';
+import 'package:sologallery/features/library/widgets/library_filter_bar.dart';
+import 'package:sologallery/features/library/widgets/month_header.dart';
 import 'package:sologallery/features/memories/memories_providers.dart';
 import 'package:sologallery/features/memories/widgets/memories_carousel.dart';
 import 'package:sologallery/services/indexing_service.dart';
 import 'package:sologallery/services/permission_provider.dart';
 import 'package:sologallery/services/photo_library_service.dart';
 import 'package:sologallery/widgets/asset_thumbnail.dart';
-import 'package:sologallery/widgets/section_header.dart';
 
 import '../../support/asset_fixtures.dart';
 import '../../support/fake_photo_library_service.dart';
@@ -114,7 +115,7 @@ void main() {
       assets: [...assetsInMonth(2026, 8, 6), ...assetsInMonth(2026, 7, 6)],
     );
 
-    final headers = find.byType(SectionHeader);
+    final headers = find.byType(MonthHeader);
     expect(headers, findsNWidgets(2));
 
     // Last photo of the first section, then the header of the second: the gap
@@ -140,7 +141,7 @@ void main() {
       assets: [...assetsInMonth(2026, 8, 6), ...assetsInMonth(2026, 7, 6)],
     );
 
-    final headers = find.byType(SectionHeader);
+    final headers = find.byType(MonthHeader);
     final gap = gapBetween(tester, lastPreviewOfFirstSection(), headers.at(1));
     // Unchanged by the inset: the same rhythm as with no system padding.
     expect(gap, AppSpace.s20);
@@ -163,28 +164,33 @@ void main() {
       of: carousel,
       matching: find.byType(ListView),
     );
-    // SectionHeader 0 is the carousel's own "MEMORIES" label; 1 and 2 are the
-    // two months.
-    final headers = find.byType(SectionHeader, skipOffstage: false);
-    final toFirstMonth = gapBetween(tester, cardRow, headers.at(1));
+    // The filter bar now rides between the carousel and the first month; the
+    // break is split into two section-rhythm gaps (carousel → filter bar, and
+    // filter bar → first month).
+    final filterBar = find.byType(LibraryFilterBar);
+    final monthHeaders = find.byType(MonthHeader, skipOffstage: false);
+    final toFilterBar = gapBetween(tester, cardRow, filterBar);
+    final toFirstMonth = gapBetween(tester, filterBar, monthHeaders.at(0));
     final betweenMonths =
-        gapBetween(tester, lastPreviewOfFirstSection(), headers.at(2));
+        gapBetween(tester, lastPreviewOfFirstSection(), monthHeaders.at(1));
 
     // closeTo, not equals: the carousel's height is derived from a card
     // aspect ratio, so the rows land on fractional pixels.
     expect(betweenMonths, closeTo(AppSpace.s20, 0.01));
-    expect(toFirstMonth, greaterThan(betweenMonths));
-    expect(toFirstMonth, closeTo(AppSpace.s20 * 2, 0.01));
+    expect(toFilterBar, closeTo(AppSpace.s20, 0.01));
+    expect(toFirstMonth, closeTo(AppSpace.s20, 0.01));
   });
 
   testWidgets('with no memories the timeline keeps its own rhythm at the top',
       (tester) async {
     // The carousel renders nothing at all when empty, so its break must not
-    // leave dead space above the first month.
+    // leave dead space above the first month. The filter bar then sits at the
+    // top of the body, immediately above the first section.
     await pump(tester, assets: assetsInMonth(2026, 8, 6));
 
     // skipOffstage: false — a viewport reports a zero-extent child as offstage.
     final carousel = find.byType(MemoriesCarousel, skipOffstage: false);
     expect(tester.getSize(carousel).height, 0);
+    expect(find.byType(LibraryFilterBar), findsOneWidget);
   });
 }

@@ -161,7 +161,7 @@ class _Sections extends StatelessWidget {
                 crossAxisCount: 2,
                 mainAxisSpacing: AppSpace.s20,
                 crossAxisSpacing: AppSpace.s16,
-                childAspectRatio: 0.82, // square cover + two label lines
+                childAspectRatio: 0.75, // surface card + square cover + padded labels
               ),
               delegate: SliverChildBuilderDelegate(
                 (context, i) => AlbumCard(

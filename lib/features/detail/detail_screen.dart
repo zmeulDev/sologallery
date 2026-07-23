@@ -41,6 +41,16 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
 
   String get _currentId => _ids[_index];
 
+  void _recordView(String assetId) {
+    ref.read(viewRecorderProvider)(assetId);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (_ids.isNotEmpty) _recordView(_currentId);
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -119,7 +129,10 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
             child: PageView.builder(
               controller: _controller,
               itemCount: _ids.length,
-              onPageChanged: (i) => setState(() => _index = i),
+              onPageChanged: (i) {
+                setState(() => _index = i);
+                _recordView(_currentId);
+              },
               itemBuilder: (context, i) => _DetailPage(
                 assetId: _ids[i],
                 onDismissed: () => Navigator.of(context).maybePop(),

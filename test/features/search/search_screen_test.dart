@@ -23,6 +23,11 @@ import 'package:sologallery/widgets/asset_thumbnail.dart';
 import '../../support/asset_fixtures.dart';
 import '../../support/fake_photo_library_service.dart';
 
+class _ActiveSearchTabNotifier extends SearchTabActiveNotifier {
+  @override
+  bool build() => true;
+}
+
 void main() {
   Future<void> pump(
     WidgetTester tester, {
@@ -32,6 +37,8 @@ void main() {
     List<DeviceFolder> folders = const [],
     bool searchEnabled = false,
     List<String> browseLabels = const [],
+    List<String> recentlyViewed = const [],
+    bool searchTabActive = false,
     IndexingStatus indexing = const IndexingStatus.idle(),
   }) async {
     final fake = FakePhotoLibraryService(assets: assets, folders: folders);
@@ -52,6 +59,12 @@ void main() {
             body: Text('folder-detail:${state.uri.queryParameters['id']}'),
           ),
         ),
+        GoRoute(
+          path: '/photo/:id',
+          builder: (_, state) => Scaffold(
+            body: Text('photo-detail:${state.pathParameters['id']}'),
+          ),
+        ),
       ],
     );
     await tester.pumpWidget(
@@ -69,6 +82,14 @@ void main() {
           // itself is covered by the DAO and provider tests.
           topBrowseLabelsProvider.overrideWith(
             (ref) => Stream.value(browseLabels),
+          ),
+          recentlyViewedProvider.overrideWith(
+            (ref, limit) => Stream.value(recentlyViewed),
+          ),
+          searchTabActiveProvider.overrideWith(
+            () => searchTabActive
+                ? _ActiveSearchTabNotifier()
+                : SearchTabActiveNotifier(),
           ),
         ],
         child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
@@ -154,6 +175,66 @@ void main() {
       find.textContaining('Search runs entirely on this device'),
       findsOneWidget,
     );
+    await settle(tester);
+  });
+
+  testWidgets('the page header sits above the search field on idle', (
+    tester,
+  ) async {
+    // The redesigned idle screen opens with history and a header, not the field.
+    await pump(tester);
+
+    final headerTop = tester.getTopLeft(find.text('Search')).dy;
+    final fieldTop = tester.getTopLeft(find.byType(TextField)).dy;
+    expect(headerTop, lessThan(fieldTop),
+        reason: 'The page header should precede the search field.');
+    await settle(tester);
+  });
+
+  testWidgets(
+    'the search field is not the first focusable node and stays unfocused',
+    (tester) async {
+      // Simulate Search becoming the active branch; the field must not steal
+      // focus and pop the keyboard.
+      await pump(tester, searchTabActive: true);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.focusNode, isNotNull);
+      expect(field.focusNode!.hasFocus, isFalse);
+      await settle(tester);
+    },
+  );
+
+  testWidgets('the recently viewed ribbon renders thumbnails when it has ids', (
+    tester,
+  ) async {
+    await pump(tester, recentlyViewed: const ['recent-1', 'recent-2']);
+
+    // SectionHeader renders the label uppercase.
+    expect(find.text('RECENTLY VIEWED'), findsOneWidget);
+    expect(find.byType(AssetThumbnail), findsNWidgets(2));
+    await settle(tester);
+  });
+
+  testWidgets('the recently viewed ribbon hides when it is empty', (
+    tester,
+  ) async {
+    await pump(tester);
+
+    expect(find.text('RECENTLY VIEWED'), findsNothing);
+    await settle(tester);
+  });
+
+  testWidgets('tapping a recent thumbnail opens its detail view', (tester) async {
+    await pump(tester, recentlyViewed: const ['recent-1']);
+
+    await tester.tap(find.byType(AssetThumbnail));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('photo-detail:recent-1'), findsOneWidget);
     await settle(tester);
   });
 

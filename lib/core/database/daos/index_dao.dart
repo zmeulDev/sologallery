@@ -33,7 +33,7 @@ typedef FavoriteAsset = ({
 /// indexing cursor), the [PhotoLabels] image labels, and the [PhotoTexts] OCR
 /// text. Pure data layer — no UI, no ML. The background [IndexingService] sweeps
 /// metadata and writes ML rows here; the Library/Saved grids and Search read.
-@DriftAccessor(tables: [PhotoAssets, PhotoLabels, PhotoTexts, Favorites])
+@DriftAccessor(tables: [PhotoAssets, PhotoLabels, PhotoTexts, Favorites, RecentlyViewed])
 class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
   IndexDao(super.db);
 
@@ -345,6 +345,51 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
     );
   }
 
+  /// Non-empty calendar days over *dated* assets on or after [cutoff] with their
+  /// exact counts, newest first. Groups by local calendar day, matching how
+  /// [watchMonthCounts] groups by local month so a capture near midnight ends up
+  /// in the day the user sees.
+  Stream<List<({DateTime day, int count})>> watchDayCounts(DateTime cutoff) {
+    final key = CustomExpression<String>(
+      "STRFTIME('%Y-%m-%d', created_at, 'unixepoch', 'localtime')",
+      precedence: Precedence.primary,
+    );
+    final count = photoAssets.assetId.count();
+    final q = selectOnly(photoAssets)
+      ..addColumns([key, count])
+      ..where(photoAssets.isDated.equals(true) & photoAssets.createdAt.isBiggerOrEqualValue(cutoff))
+      ..groupBy([key])
+      ..orderBy([OrderingTerm.desc(key)]);
+    return q.map((r) {
+      final parts = r.read(key)!.split('-');
+      return (
+        day: DateTime(
+          int.parse(parts[0]),
+          int.parse(parts[1]),
+          int.parse(parts[2]),
+        ),
+        count: r.read(count)!,
+      );
+    }).watch();
+  }
+
+  /// Up to [limit] newest preview ids for one calendar [day], reactive — the
+  /// day-section mirror of [watchMonthPreviews].
+  Stream<List<String>> watchDayPreviews(DateTime day, {int limit = 6}) {
+    final start = DateTime(day.year, day.month, day.day);
+    final end = start.add(const Duration(days: 1));
+    final q = selectOnly(photoAssets)
+      ..addColumns([photoAssets.assetId])
+      ..where(
+        photoAssets.isDated.equals(true) &
+            photoAssets.createdAt.isBiggerOrEqualValue(start) &
+            photoAssets.createdAt.isSmallerThanValue(end),
+      )
+      ..orderBy([OrderingTerm.desc(photoAssets.createdAt)])
+      ..limit(limit);
+    return q.map((r) => r.read(photoAssets.assetId)!).watch();
+  }
+
   Expression<bool> _datedInMonth(YearMonth month) =>
       photoAssets.isDated.equals(true) &
       photoAssets.createdAt.isBiggerOrEqualValue(month.start) &
@@ -414,6 +459,30 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
           ),
       ],
     );
+  }
+
+  // --- Recently viewed -----------------------------------------------------
+
+  /// Records that [assetId] was just viewed, moving it to the top of the
+  /// Search "recently viewed" list. Upserts on [assetId] so re-viewing updates
+  /// [viewedAt] rather than duplicating.
+  Future<void> recordView(String assetId) async {
+    await into(recentlyViewed).insertOnConflictUpdate(
+      RecentlyViewedCompanion(
+        assetId: Value(assetId),
+        viewedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// The [limit] most recently viewed asset ids, newest first. Reactive: the
+  /// Search strip updates as new views land.
+  Stream<List<String>> watchRecentlyViewed({int limit = 12}) {
+    final q = selectOnly(recentlyViewed)
+      ..addColumns([recentlyViewed.assetId])
+      ..orderBy([OrderingTerm.desc(recentlyViewed.viewedAt)])
+      ..limit(limit);
+    return q.map((r) => r.read(recentlyViewed.assetId)!).watch();
   }
 
   // --- Search --------------------------------------------------------------

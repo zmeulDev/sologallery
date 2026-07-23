@@ -260,6 +260,21 @@ class MemoryEntries extends Table {
       ];
 }
 
+/// Recently viewed assets for the Search screen's "recently viewed" row.
+/// Independent of [PhotoAssets] so it works before ML indexing: opening a photo
+/// records a view by asset id, and Search reads the most recent ids. The
+/// `upsert` semantics on [assetId] mean re-viewing the same photo moves it to
+/// the top by refreshing [viewedAt].
+class RecentlyViewed extends Table {
+  /// `photo_manager` asset id.
+  TextColumn get assetId => text()();
+
+  DateTimeColumn get viewedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {assetId};
+}
+
 /// One detected face: its on-device embedding vector plus the bounding box.
 /// [personId] is the cluster it was assigned to (null until clustered).
 /// Cascades from [PhotoAssets]; a deleted [Persons] row nulls the link (faces
