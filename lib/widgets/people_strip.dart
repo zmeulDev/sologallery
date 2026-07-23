@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/database/daos/faces_dao.dart' show PersonSummary;
+import '../core/theme/app_radius.dart';
 import '../core/theme/app_space.dart';
 import '../core/theme/app_text_styles.dart';
 import '../features/people/widgets/face_avatar.dart';
@@ -9,13 +10,15 @@ import 'app_button.dart';
 import 'app_card.dart';
 import 'section_header.dart';
 
-/// A horizontal row of circular person tiles under a "People" header, linking
-/// into the People screens. Shared by the Search idle view and the Albums tab so
-/// both read as the same browse affordance.
+/// A "People" section header plus a horizontally scrolling row of circular
+/// person tiles inside a rounded card, linking into the People screens. Shared
+/// by the Search idle view and the Albums tab so both read as the same browse
+/// affordance.
 ///
-/// The row sits in an [AppCard] — the app's one grouping container — so on
-/// Search it reads as the same kind of box as the privacy note below it, and
-/// the faces get air on all four sides instead of running to the screen edge.
+/// The section header sits outside the card so it aligns with other screen
+/// sections; the row of faces sits in an [AppCard] with the navbar-matched
+/// `br30` radius, giving the faces air on all four sides instead of running to
+/// the screen edge.
 ///
 /// Names come from [PersonSummary.displayName], which is **nullable** —
 /// clustering names nobody on its own. A named person carries their name on a
@@ -66,21 +69,22 @@ class PeopleStrip extends StatelessWidget {
         AppSpace.s16,
         AppSpace.s4,
       ),
-      child: AppCard(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpace.s12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SectionHeader(
-                label: 'People',
-                trailing: AppButton.quiet(
-                  label: 'See all',
-                  onPressed: () => context.push('/people'),
-                ),
-              ),
-              const SizedBox(height: AppSpace.s8),
-              SizedBox(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionHeader(
+            label: 'People',
+            trailing: AppButton.quiet(
+              label: 'See all',
+              onPressed: () => context.push('/people'),
+            ),
+          ),
+          const SizedBox(height: AppSpace.s8),
+          AppCard(
+            borderRadius: AppRadius.br30,
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpace.s12),
+              child: SizedBox(
                 height: _avatarSize + band,
                 child: RepaintBoundary(
                   child: ListView.separated(
@@ -98,9 +102,9 @@ class PeopleStrip extends StatelessWidget {
                   ),
                 ),
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
