@@ -6,20 +6,16 @@ import 'package:sologallery/widgets/nav_pill_bar.dart';
 void main() {
   /// Wraps the bar the way the shell does — bottom of a Scaffold whose body is
   /// extended under it.
-  Widget host(int currentIndex, ValueChanged<int> onTap,
-      {bool reduced = false, Widget? trailing}) {
+  Widget host(int currentIndex, ValueChanged<int> onTap, {Widget? trailing}) {
     return MaterialApp(
       theme: AppTheme.light,
-      home: MediaQuery(
-        data: MediaQueryData(disableAnimations: reduced),
-        child: Scaffold(
-          extendBody: true,
-          body: const SizedBox.expand(),
-          bottomNavigationBar: NavPillBar(
-            currentIndex: currentIndex,
-            onTap: onTap,
-            trailing: trailing,
-          ),
+      home: Scaffold(
+        extendBody: true,
+        body: const SizedBox.expand(),
+        bottomNavigationBar: NavPillBar(
+          currentIndex: currentIndex,
+          onTap: onTap,
+          trailing: trailing,
         ),
       ),
     );
@@ -60,17 +56,24 @@ void main() {
     expect(taps, [0, 1, 2, 3]);
   });
 
-  testWidgets('the knob sits over the active destination', (tester) async {
+  testWidgets('the knob sits over the active destination, with no travel', (
+    tester,
+  ) async {
     await tester.pumpWidget(host(0, (_) {}));
     await tester.pump(const Duration(milliseconds: 500));
     final first = knobRect(tester);
 
+    // The knob lands on the very next frame — there is no slide to wait out.
     await tester.pumpWidget(host(3, (_) {}));
-    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump();
     final last = knobRect(tester);
 
     expect(last.left, greaterThan(first.left));
     expect(first.width, first.height); // circular, not squashed
+
+    // And it stays put — no deferred animation drifts it elsewhere.
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(knobRect(tester).left, last.left);
 
     // The capsule hugs its four slots, so the outer knobs clear its ends by the
     // same inset they clear its top and bottom by — no dead ink at the ends.
@@ -159,21 +162,5 @@ void main() {
     expect(dial.left, greaterThan(bareCapsule.right)); // clears the capsule
     expect(dial.right, 360 - AppSpace.s12);
     expect(dial.center.dy, closeTo(bareCapsule.center.dy, 0.01));
-  });
-
-  testWidgets('reduced motion lands the knob with no animation', (tester) async {
-    await tester.pumpWidget(host(0, (_) {}, reduced: true));
-    await tester.pump(const Duration(milliseconds: 500));
-    final settled = knobRect(tester);
-
-    // Rebuild at a new index and read the knob on the very next frame: with
-    // animations disabled there is no travel to wait out.
-    await tester.pumpWidget(host(2, (_) {}, reduced: true));
-    await tester.pump();
-    final moved = knobRect(tester);
-
-    expect(moved.left, greaterThan(settled.left));
-    await tester.pump(const Duration(milliseconds: 500));
-    expect(knobRect(tester).left, moved.left);
   });
 }

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme/app_colors.dart';
-import '../core/theme/app_motion.dart';
 import '../core/theme/app_radius.dart';
 import '../services/thumbnail_provider.dart';
 
@@ -38,15 +37,15 @@ class AssetThumbnail extends ConsumerWidget {
     final async = ref.watch(
       thumbnailProvider(ThumbnailRequest(assetId, width: size, height: size)),
     );
-    // Placeholder and image are keyed so the switcher fades exactly once per
-    // asset: placeholder → first bytes. A byte refresh for the same asset keeps
-    // the same key (no re-fade; gaplessPlayback swaps in place), and an initial
-    // build with already-cached bytes shows instantly (AnimatedSwitcher never
-    // animates its first child). Pure opacity on the decoded thumbnail — no
-    // extra decode, no per-frame allocation.
-    final resolved = async.when(
+    // Placeholder until the bytes arrive, then the photo fills the cell. A byte
+    // refresh for the same asset keeps `gaplessPlayback` so the swap does not
+    // flash; an initial build with already-cached bytes shows the photo
+    // instantly. Both branches fill the cell exactly — the placeholder via
+    // `SizedBox.expand`, the image via infinite width/height — so there is no
+    // intermediate layout.
+    final image = async.when(
       data: (bytes) => bytes == null
-          ? _Placeholder(colors, key: const ValueKey('ph'))
+          ? _Placeholder(colors)
           : Image.memory(
               bytes,
               key: ValueKey(assetId),
@@ -55,13 +54,8 @@ class AssetThumbnail extends ConsumerWidget {
               width: double.infinity,
               height: double.infinity,
             ),
-      loading: () => _Placeholder(colors, key: const ValueKey('ph')),
-      error: (e, st) => _Placeholder(colors, key: const ValueKey('ph')),
-    );
-    final image = AnimatedSwitcher(
-      duration: AppMotion.of(context, AppMotion.medium),
-      layoutBuilder: _fillLayout,
-      child: resolved,
+      loading: () => _Placeholder(colors),
+      error: (e, st) => _Placeholder(colors),
     );
     if (!showVideoBadge) return image;
 
@@ -77,19 +71,6 @@ class AssetThumbnail extends ConsumerWidget {
           child: DurationBadge(duration: duration),
         ),
       ],
-    );
-  }
-
-  /// The default switcher layout centers children in a loose [Stack]; this one
-  /// keeps the widget's fill-the-cell geometry ([StackFit.expand]) so the
-  /// outgoing placeholder and incoming image both cover the cell exactly.
-  static Widget _fillLayout(
-    Widget? currentChild,
-    List<Widget> previousChildren,
-  ) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [...previousChildren, ?currentChild],
     );
   }
 }
@@ -147,7 +128,7 @@ class DurationBadge extends StatelessWidget {
 }
 
 class _Placeholder extends StatelessWidget {
-  const _Placeholder(this.colors, {super.key});
+  const _Placeholder(this.colors);
   final AppColors colors;
 
   @override

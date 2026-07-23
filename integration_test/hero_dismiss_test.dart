@@ -6,21 +6,26 @@ import 'package:sologallery/app.dart';
 import 'package:sologallery/features/detail/widgets/dismissible_photo.dart';
 import 'package:sologallery/widgets/asset_thumbnail.dart';
 
-/// On-device: the grid→detail Hero flight and drag-to-dismiss gesture, the
-/// UI Wow-Factor pass's signature interaction
-/// (docs/plans/ui-wow-factor.md). A host widget test already covers
-/// [DismissiblePhoto]'s drag-progress/threshold contract in isolation
-/// (test/features/detail/widgets/dismissible_photo_test.dart) — that test
-/// caught a real bug (the gesture's element tree changed shape mid-drag,
-/// silently killing the recognizer before release), but never exercised the
-/// real `Navigator.maybePop()` (its `onDismissed` was a plain flag), nor a
-/// real [InteractiveViewer] (its `detailImageProvider` was stubbed to null
-/// bytes). This is the paired real-device check of both, under actual touch
-/// input (CLAUDE.md "fake-pairing rule").
+/// On-device: the grid→detail open and drag-to-dismiss gesture. A host widget
+/// test already covers [DismissiblePhoto]'s threshold/axis contract in
+/// isolation (test/features/detail/widgets/dismissible_photo_test.dart) —
+/// that test caught a real bug (the gesture's element tree changed shape
+/// mid-drag, silently killing the recognizer before release), but never
+/// exercised the real `Navigator.maybePop()` (its `onDismissed` was a plain
+/// flag), nor a real [InteractiveViewer] (its `detailImageProvider` was
+/// stubbed to null bytes). This is the paired real-device check of both,
+/// under actual touch input (CLAUDE.md "fake-pairing rule").
+///
+/// Decorative motion was removed app-wide (Part 1): the open is a hard cut
+/// (no Hero flight) and the drag no longer visually tracks the finger — it
+/// pops the instant the threshold is crossed on release. So this asserts the
+/// route pops back to the grid, not any in-flight opacity.
 ///
 /// Run with: `patrol test -t integration_test/hero_dismiss_test.dart`.
 void main() {
-  patrolTest('tap opens with a Hero flight; drag down dismisses', ($) async {
+  patrolTest('tap opens detail; drag down past the threshold dismisses', (
+    $,
+  ) async {
     await $.pumpWidgetAndSettle(const ProviderScope(child: SoloGalleryApp()));
     expect($('Allow photo access'), findsOneWidget);
     await $('Allow photo access').tap();
@@ -30,20 +35,11 @@ void main() {
     await $.pumpAndSettle();
     expect($(AssetThumbnail), findsWidgets);
 
-    // Open the first photo — the Hero flight from its grid cell.
+    // Open the first photo. With route transitions removed (Part 1 A1) this
+    // is a hard cut, no Hero flight.
     await $(AssetThumbnail).first.tap();
     await $.pumpAndSettle();
     expect($(DismissiblePhoto), findsOneWidget);
-
-    Opacity currentOpacity() => $.tester
-        .widgetList<Opacity>(
-          find.descendant(
-            of: find.byType(DismissiblePhoto),
-            matching: find.byType(Opacity),
-          ),
-        )
-        .first;
-    expect(currentOpacity().opacity, 1, reason: 'opacity before any drag');
 
     // Drag well past the dismiss threshold. A manual startGesture/moveBy/up
     // sequence, not the one-shot `tester.drag` helper — the same technique
@@ -54,20 +50,14 @@ void main() {
     );
     await gesture.moveBy(const Offset(0, 300));
     await $.tester.pump();
-    expect(
-      currentOpacity().opacity,
-      lessThan(1),
-      reason: 'opacity should drop once a 300px vertical drag is tracked',
-    );
     await gesture.moveBy(const Offset(0, 300));
     await $.tester.pump();
     await gesture.up();
 
-    // onDismissed fires synchronously from the pointer-up handler. The route
-    // has no transition (NoTransitionPage — instant pop), so a single pump is
-    // enough; the extra wait is harmless.
+    // onDismissed fires synchronously from the pointer-up handler; the route
+    // has no transition (NoTransitionPage — instant pop).
     await $.tester.pump();
-    await $.tester.pump(const Duration(milliseconds: 500));
+    await $.tester.pump(const Duration(milliseconds: 100));
 
     // Back on the Library grid, not the detail viewer.
     expect($(DismissiblePhoto), findsNothing);

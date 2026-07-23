@@ -1,15 +1,24 @@
 # Remove all animation + performance pass
 
 Status: **Part 2 (performance) COMPLETE and verified on device.
-Part 1 A1 (router & Hero teardown) shipped — host-verified (`flutter analyze`
-clean, 653 tests pass, goldens byte-identical). On-device integration +
-manual E2E for A1 still pending. The `detail_stage` 1080-underlay retirement
-is deferred from A1 to A4 (entangled with the zoom animation A4 rewrites —
-see A1's last bullet).**
+Part 1 A1 (router & Hero teardown) shipped and on-device verified.
+Part 1 A2 (retire `EntranceFade` + migrate memory-player scene motion off
+`AppMotion`) shipped and on-device verified.
+Part 1 A3 (widget-by-widget deletion — every remaining animated widget
+converted to an instant state change; `Pressable` deleted) shipped and
+on-device verified.
+Part 1 A4 (drag-dismiss + double-tap zoom in `dismissible_photo.dart` →
+instant; `detail_screen` chrome drag-fade + `AnimatedOpacity` removed;
+`detail_stage` 1080 underlay retired; `app_motion.dart` deleted) SHIPPED and
+host-verified — on-device + human-eye E2E still pending.**
 Branch: `feature/metadata-search` (consider branching `feature/no-motion` for Part 1)
-Next step: A1 on-device verification (`hero_dismiss_test`, `nav_shell_test`,
-`detail_actions_test` + manual tap-to-open), then A2 (retire `EntranceFade`
-and `AppMotion`).
+Next step: on-device patrol run of `hero_dismiss_test` + `detail_actions_test`
++ `nav_shell_test` on Pixel 9 Pro XL (`46121FDAS008AA`), one file per run,
+re-granting permissions between runs per CLAUDE.md. Then human-eye manual E2E:
+does the no-feedback drag-dismiss and the instant double-tap zoom read as
+*snappy* vs *broken*? If the drag-dismiss reads as broken, the documented
+escape hatch is to keep the `Transform` (direct manipulation, zero
+time-based motion) and drop only the opacity — decide on device, not here.
 
 ## Part 2 completion record (2026-07-22)
 
@@ -142,85 +151,216 @@ dropped its `find.byType(Hero)` assertion; `hero_dismiss_test`'s stale
 `fadeThroughPage`/`AppMotion.long` comment updated (its opacity/drag assertions
 still hold — `DismissiblePhoto` is A4's domain, untouched here).
 
-**On-device (Pixel 9 Pro XL `46121FDAS008AA`, patrol):** `hero_dismiss_test`
-1/1 (hard-cut open + drag-dismiss under real touch), `detail_actions_test` 3/3
-ran (2 skipped — the limited-access/delete cases; incl. "double tap zooms in
-on a real photo, and back out", which confirms the zoom toggle the host test
-struggled with works fine in production), `nav_shell_test` 5/5 then 4/5 — the
-one failure is the pre-existing flaky "scrolled to the end, Library clears the
-nav capsule" (passes on re-run; the flakiness is documented in the nav_shell
-traversal-rewrite note above, not an A1 regression). **Remaining manual E2E:**
-a human eye on whether tap-to-open reads as *instant* vs *broken* — the
-hardest-cut open and the no-feedback drag-dismiss (the latter is A4's to
-change, but the open is A1's).
+**On-device (Pixel 9 Pro XL `46121FDAS008AA`, patrol) — VERIFIED 2026-07-23:**
+`hero_dismiss_test` 1/1 ✅ (hard-cut open + drag-dismiss under real touch);
+`nav_shell_test` 5/5 ✅ (incl. the previously-flaky "scrolled to the end,
+Library clears the nav capsule" — clean this run); `detail_actions_test` 3/3 ✅,
+2 skipped (the limited-access/delete + share cases, as expected; incl. "double
+tap zooms in on a real photo, and back out", which confirms the zoom toggle the
+host test struggled with works fine in production). No A1 regressions. **Still
+pending: human-eye manual E2E** — whether tap-to-open reads as *instant* vs
+*broken* (the hard-cut open is A1's; the no-feedback drag-dismiss is A4's to
+change). That is the user's to judge on the running app, not a test.
 
 ### A2. Retire the motion primitives
-- [ ] `lib/widgets/entrance_fade.dart` — **delete the file** (and
+- [x] `lib/widgets/entrance_fade.dart` — **deleted** (and
       `test/widgets/entrance_fade_test.dart`).
-- [ ] Remove all 19 `EntranceFade(...)` call sites, unwrapping to the bare
-      child: `onboarding_screen.dart:124-204,249-327` (7 sites),
-      `library_screen.dart:174-176,209-211`.
-- [ ] `lib/core/theme/app_motion.dart` — **delete the file**, after A3 clears
-      every remaining reference. Migrate `sceneChange` (320 ms) and `curve`
-      (`Curves.easeOutCubic`) into `memory_player_screen.dart` as
-      `_kSceneChange` / `_kSceneCurve`, with a local
-      `MediaQuery.of(context).disableAnimations` guard replacing `AppMotion.of`.
+- [x] Removed all `EntranceFade(...)` call sites, unwrapping to the bare
+      child: `onboarding_screen.dart` (9 sites: 5 in the access step, 4 in the
+      consent step) and `library_screen.dart` (2 sites: `_MonthList` and
+      `_YearList` itemBuilders). The `_MonthList` `row is MemoriesRow ? child
+      : EntranceFade(...)` collapsed to `return child;` (both branches now
+      identical). Imports removed.
+- [x] `lib/core/theme/app_motion.dart` — **kept for now**; A3/A4 still
+      reference it (filter_pill, pressable, nav_pill_bar, segmented_control,
+      asset_thumbnail, indexing_dial, people_screen, video_page, onboarding's
+      AnimatedSwitcher, detail_stage, detail_screen, dismissible_photo). Delete
+      after A4. Migrated `sceneChange` (320 ms) and `curve` (`Curves.easeOutCubic`)
+      into `memory_player_screen.dart` as file-private `_kSceneChange` /
+      `_kSceneCurve`, with a `MediaQuery.disableAnimationsOf(context)` guard
+      replacing `AppMotion.of` in `_advance`. **Note:** the existing
+      `nextPage` curve was `Curves.easeOut`, not `AppMotion.curve` — A2
+      standardizes it to `_kSceneCurve` (`easeOutCubic`) per the plan/Design
+      system; a negligible change to the one kept motion. The pause-dim
+      `AnimatedOpacity` at `_Progress` still uses `AppMotion.medium` — A3
+      converts that to a plain `Opacity`.
 
-### A3. Widget-by-widget deletion
+**A2 shipped & verified (2026-07-23):** `flutter analyze` clean; 649 host
+tests pass (goldens byte-identical — entrance-fade removal changes no
+post-settle end state). Device (Pixel 9 Pro XL, patrol): `nav_shell_test` 5/5
+×2 stable, `hero_dismiss_test` 1/1 — both drive the A2-touched onboarding flow.
+The memory-player scene change is host-covered (`memory_player_screen_test`) and
+not exercised by `memories_test` (which tests generation, not the player UI), so
+no separate device run was added for it.
+
+**Drive-by fix — `nav_shell_test` "scrolled to the end" was flaky, now stable.**
+The case failed 3× in a row post-A2 (the plan's earlier "passes on re-run" no
+longer held). Root cause is NOT A2: the fling used
+`find.byWidget(scrollable.widget)` — an instance-based finder. The Library
+timeline is a growing-window watch, so an emission between capturing the
+`ScrollableState` and the first fling rebuilds the `ListView` and swaps in a new
+`Scrollable` widget instance; the captured-instance finder then matches zero and
+`fling` throws. A2 removing `EntranceFade`'s delayed `setState`s only *reduces*
+rebuilds, so it can't cause this — it shifted the race window. A type/axis
+predicate was too broad (4 vertical Scrollables: the timeline plus the
+`NeverScrollable` shrinkWrap preview grids). Fix: fling from the captured
+`ScrollableState`'s own render-box centre via `tester.flingFrom` — the state and
+its `position` persist across the rebuild (same element, retyped widget), so the
+gesture lands on the right viewport with no finder at all. Two consecutive 5/5
+runs. Gotcha added to CLAUDE.md.
+
+### A3. Widget-by-widget deletion — COMPLETE
 Each becomes an instant state change; the callback/state it wraps is untouched.
 
 | File:line | Delete | Becomes |
 |---|---|---|
-| `widgets/filter_pill.dart:37-72` | `TweenAnimationBuilder` colour lerp | direct conditional colours. Keep `Material(animationDuration: Duration.zero)` — it is now doing the real work, not compensating. |
-| `widgets/pressable.dart:13-59` | `AnimatedScale` | `Listener` press-state and `onTap`/`onLongPress` forwarding stay; drop the scale entirely (a `Transform.scale` at rest is a no-op, so remove the wrapper, not just the animation). Consider deleting `Pressable` if nothing but the scale remains — check `AlbumCard`, `MemoryCard`, People card. |
+| `widgets/filter_pill.dart:37-72` | `TweenAnimationBuilder` colour lerp | direct conditional colours. `Material(animationDuration: Duration.zero)` kept — it is now doing the real work, not compensating. |
+| `widgets/pressable.dart` | `AnimatedScale` (+ the whole widget) | **`Pressable` deleted.** Once the scale went, the `_pressed` state and `Listener` were dead (nothing consumed press state), so per "no dead code" the widget was removed and its 4 call sites (`album_card`, `memory_card`, `folder_list`, people card) collapsed to plain `GestureDetector(onTap/onLongPress, behavior: opaque)`. |
 | `widgets/nav_pill_bar.dart:85-98` | `AnimatedPositioned` knob | `Positioned` — knob teleports. |
-| `widgets/nav_pill_bar.dart:188-196` | `AnimatedSwitcher` on the icon | plain `Icon`. |
+| `widgets/nav_pill_bar.dart:188-196` | `AnimatedSwitcher` on the icon | plain `Icon`. The `duration` plumbing through `_NavItem` went with it. |
 | `widgets/segmented_control.dart:69-83,97-109` | `AnimatedPositioned` thumb, `AnimatedDefaultTextStyle` | `Positioned` + `DefaultTextStyle`. |
-| `widgets/asset_thumbnail.dart:47-65` | `AnimatedSwitcher` reveal | conditional placeholder → `Image.memory`. **Set `gaplessPlayback: true`** so the swap does not flash (see B4). |
-| `widgets/indexing_dial.dart:56-69` | `AnimatedSwitcher` (fade+scale in/out) | conditional — dial pops in/out. |
-| `widgets/indexing_dial.dart:101-113` | `TweenAnimationBuilder` ring sweep | paint `done` directly. The ring still shows true progress; it steps instead of sweeping. |
-| `features/people/people_screen.dart:273-280` | `AnimatedOpacity` on `_SelectedRing` | **keep the "always built, never conditional" tree shape** — swap `AnimatedOpacity` for plain `Opacity(opacity: selected ? 1 : 0)`. Do not make it conditional; that is the structural-instability class of bug documented in CLAUDE.md. |
-| `features/detail/widgets/video_page.dart:91-98` | `AnimatedOpacity` play glyph | conditional visibility. |
-| `features/onboarding/onboarding_screen.dart:81-93` | `AnimatedSwitcher` step cross-fade | **keep the `KeyedSubtree(key: ValueKey(...))`** — the re-mount is functional (it is what replays each step); only the switcher wrapper goes. |
-| `features/memories/memory_player_screen.dart:234-238` | `AnimatedOpacity` pause dim | `Opacity(opacity: paused ? 0.35 : 1)`. |
+| `widgets/asset_thumbnail.dart:47-65` | `AnimatedSwitcher` reveal | conditional placeholder → `Image.memory` (already had `gaplessPlayback: true`). The `_fillLayout` helper went with the switcher; the placeholder's now-unused `{super.key}` was dropped too (analyze flagged it). |
+| `widgets/indexing_dial.dart:56-69` | `AnimatedSwitcher` (fade+scale in/out) | conditional — dial pops in/out, slot still reserved. |
+| `widgets/indexing_dial.dart:101-113` | `TweenAnimationBuilder` ring sweep | `CustomPaint` paints `done` directly. The ring still shows true progress; it steps instead of sweeping. |
+| `features/people/people_screen.dart:273-280` | `AnimatedOpacity` on `_SelectedRing` | plain `Opacity(opacity: selected ? 1 : 0)` — kept the "always built, never conditional" tree shape (the structural-instability bug class). |
+| `features/detail/widgets/video_page.dart:91-98` | `AnimatedOpacity` play glyph | `value.isPlaying ? SizedBox.shrink() : _PlayGlyph()`. |
+| `features/onboarding/onboarding_screen.dart:81-93` | `AnimatedSwitcher` step cross-fade | `KeyedSubtree` kept (the re-mount is functional); only the switcher wrapper went. Hard cut between steps. |
+| `features/memories/memory_player_screen.dart:234-238` | `AnimatedOpacity` pause dim | `Opacity(opacity: paused ? 0.35 : 1)`. This was the file's last `AppMotion` reference — its import went too (A2 had already inlined the scene consts as `_kSceneChange`/`_kSceneCurve`). |
 
-### A4. Drag-dismiss visuals — `dismissible_photo.dart`
+**A3 shipped & verified (2026-07-23):** `flutter analyze` clean (the one
+remaining `info` was a pre-existing `use_build_context_synchronously` in A2's
+`nav_shell_test` fling helper — silenced with a targeted `// ignore:` since
+the `ScrollableState` is known alive; not introduced by A3). `tool/check.sh`
+green: 644 host tests, goldens byte-identical (every golden pins a post-settle
+end state, so instant state changes move nothing). Completion oracle —
+`grep -rn "AppMotion\|EntranceFade\|Hero(\|HeroMode\|AnimatedSwitcher\|…"
+lib/` — returns only `app_motion.dart` itself and the three A4 files
+(`detail_screen`, `dismissible_photo`, `detail_stage`); no A3 file retains any
+animation reference.
+
+Test edits: deleted `test/widgets/pressable_test.dart` (subject deleted);
+`folder_list_test` and `integration_test/folders_ui_test` swapped their
+`find.byType(Pressable)` tile-count oracle for `find.byType(ClipRRect)` (each
+folder tile is a `ClipRRect`, which `tileAt` already used);
+`nav_pill_bar_test` folded the vacuous reduced-motion case into "the knob sits
+over the active destination, with no travel" (asserts the knob lands on the
+next frame and doesn't drift — the old reduced-motion-only behaviour is now
+the only behaviour) and dropped the `reduced` param; `asset_thumbnail_test`,
+`onboarding_screen_test`, `indexing_dial_test` had stale `AnimatedSwitcher`/
+fade comments updated (the pumps themselves stayed — waiting longer than
+needed is harmless, and `pumpAndSettle` is still safe on the onboarding
+consent step, which has no spinner).
+
+Device (Pixel 9 Pro XL `46121FDAS008AA`, patrol): `nav_shell_test` 5/5 ✅
+(drives the instant nav knob, the onboarding hard-cut, and the indexing dial
+that rides on the bar — incl. "the indexing dial rides right of the capsule
+while analysing" and "scrolled to the end, Library clears the nav capsule");
+`folders_ui_test` 1/1 ✅ (folder tile tap with the new `GestureDetector` +
+`ClipRRect` oracle). No A3 regressions. **Still pending: human-eye manual E2E**
+on whether the now-instant control changes (pill select, knob teleport,
+segmented thumb jump, dial pop) read as *snappy* vs *jarring* — that is the
+user's to judge on the running app, not a test. `hero_dismiss_test` and
+`detail_actions_test` are A1/A4's domain (A3 did not touch `dismissible_photo`
+or the detail chrome) and were not re-run for A3.
+
+### A4. Drag-dismiss visuals — `dismissible_photo.dart` — COMPLETE (host-verified)
 This is the most delicate edit in the plan.
 
-- [ ] Replace the `_dismiss` `AnimationController` (`:86-89`) with a plain
+- [x] Replace the `_dismiss` `AnimationController` (`:86-89`) with a plain
       `double _progress` field. No ticker, no `vsync` for it.
-- [ ] Delete the `AnimatedBuilder` + `Opacity` + `Transform` in `build()`
+- [x] Delete the `AnimatedBuilder` + `Opacity` + `Transform` in `build()`
       (`:318-349`). `Listener` → `RepaintBoundary` → `DetailStage` directly.
       The "constant tree shape" gotcha becomes moot — the shape is now trivially
       constant, which is the safest possible outcome for that bug class.
-- [ ] `:242-244` — the spring-back `animateTo(0, ...)` becomes `_progress = 0`.
-- [ ] `:230` — the threshold check (`> 0.3 || velocity > 800`) reads `_progress`.
-      **Unchanged behaviour.**
-- [ ] `_zoom` controller (`:94-97`, `:285-292`): double-tap zoom becomes an
-      instant transform write — set `_transformController.value = target`
-      directly, delete `_zoom`, `_zoomAnimation`, `_applyZoomFrame`, the
-      `Matrix4Tween`/`CurvedAnimation`, and `TickerProviderStateMixin`.
-      The *gesture* (double-tap zooms to the tap point, second double-tap
-      returns to fit) is fully preserved; only the 150 ms travel goes.
-      → **Flagging this because it was not in the four scope options.** It is
-      time-based decorative motion by the same rule as everything else, so the
-      default here is to remove it. Say so if you want it kept.
-- [ ] `onProgress` (`:63,:71`) now has no consumer → delete the callback from
-      the widget API.
-- [ ] `detail_screen.dart:117-128` — delete `_dragFadedChrome` and the
-      `_dragProgress` `ValueNotifier`; chrome no longer reacts to drag.
-- [ ] `detail_screen.dart:239-252` — `_Chrome`'s `AnimatedOpacity` → keep the
-      `IgnorePointer(ignoring: !visible)` (functional: hidden chrome must not
-      be hit-testable) and make the opacity a plain conditional.
-- [ ] Rewrite the class doc-comment. Most of it documents *why* the gesture is
-      recognizer-free — that all stays true and is worth keeping. The
-      `AppMotion` reference at `:57` must go.
+- [x] `:242-244` — the spring-back `animateTo(0, ...)` is gone. On a
+      sub-threshold release there is nothing to spring back to (the photo
+      never moved), so it just resets `_progress` for the next gesture.
+- [x] `:230` — the threshold check (`> 0.3 || velocity > 800`) reads `_progress`
+      (captured before the per-gesture reset). **Unchanged behaviour.**
+- [x] `_zoom` controller (`:94-97`, `:285-292`): double-tap zoom is an instant
+      transform write — `_transformController.value = target` directly. Deleted
+      `_zoom`, `_zoomAnimation`, `_applyZoomFrame`, the `Matrix4Tween`/
+      `CurvedAnimation`, and `TickerProviderStateMixin`. The *gesture*
+      (double-tap zooms to the tap point, second double-tap returns to fit) is
+      fully preserved; only the 150 ms travel went. Per the scope rule this is
+      time-based decorative motion and was removed (the user said "start" with
+      the plan as written).
+- [x] `onProgress` (`:63,:71`) deleted from the widget API — its only consumer
+      was the chrome drag-fade, which is gone.
+- [x] `detail_screen.dart:117-128` — deleted `_dragFadedChrome` and the
+      `_dragProgress` `ValueNotifier`; chrome no longer reacts to drag. The
+      `_DetailPage.onDragProgress` plumbing went with it.
+- [x] `detail_screen.dart:239-252` — `_Chrome`'s `AnimatedOpacity` → plain
+      `Opacity(opacity: visible ? 1 : 0)`, kept the
+      `IgnorePointer(ignoring: !visible)`.
+- [x] Rewrote the class doc-comment. The recognizer-free-gesture rationale
+      stayed; the `AppMotion` reference and the "follows the finger, springs
+      back, Hero return-flight" wording went.
+- [x] `detail_stage.dart` — retired the 1080 base-thumbnail underlay. With
+      route transitions gone (A1) and the zoom now instant (A4), the
+      `_revealed` cross-fade + `AnimatedOpacity` layers were dead (the underlay
+      had been at opacity 0 since A1). Simplified `DetailStage` to a stateless
+      page selector; deleted the `_routeAnimation`/`_revealed` state, the
+      `AssetThumbnail` 1080 underlay, and the `AppMotion`/`asset_thumbnail`
+      imports. Frees the ~6 MB the 1080 underlay held per live page (audit #3).
+- [x] Deleted `lib/core/theme/app_motion.dart` and its `export` in
+      `app_theme.dart` — no `AppMotion` references remain in `lib/`.
+
+**Drive-by fix — `DismissiblePhoto`'s `Listener` is now
+`HitTestBehavior.opaque`.** Retiring the 1080 underlay (A4) also removed the
+full-bleed hit surface it gave the stage: the underlay's `AssetThumbnail`
+filled the `StackFit.expand` stack, so taps anywhere hit the `Listener`
+(`deferToChild`, the default). With the underlay gone, the stage's hit area
+is whatever `PhotoPage` paints — a real image's `Image.memory(
+width/height: double.infinity)` still fills it, but the broken-image fallback
+`_Unavailable` is a 44 px centred icon, so taps off it fell through to nothing
+and the drag/tap gesture never saw them. Surfaced by the host test
+`dismissible_photo_test`'s "a second double tap returns to fit", whose second
+pair taps off-centre — the second `_handleDoubleTap` never fired. Making the
+`Listener` opaque makes the whole stage hit-testable regardless of what the
+page paints (a strict improvement: tap-to-toggle chrome now works on a missing
+image too); in production, where the image fills the stage, it changes
+nothing. Gotcha added to CLAUDE.md.
 
 **Known consequence:** dragging down produces no visual response at all until
 it crosses the threshold and the route pops. If that reads as broken in manual
 testing, the one-line escape hatch is to keep the `Transform` (direct
 manipulation, zero time-based motion) and drop only the `Opacity`. Decide on
 device, not here.
+
+**A4 shipped & host-verified (2026-07-23):** `flutter analyze` clean;
+`tool/check.sh` green (build_runner clean, 643 host tests, goldens
+byte-identical — instant state changes move no post-settle end state).
+Completion oracle `grep -rn "AppMotion\|EntranceFade\|Hero(\|HeroMode" lib/`
+returns **nothing**; `app_motion.dart` is deleted. Test edits:
+`dismissible_photo_test` dropped `onProgress`/`disableAnimations` params + the
+MediaQuery builder; the "small drag reports progress then springs back" case
+became "a small drag below the threshold does not dismiss"; the reduced-motion
+case was deleted (vacuous — no animation remains); the double-tap zoom cases
+pump one frame instead of 200 ms (the zoom is now an instant transform write).
+`hero_dismiss_test` dropped the mid-drag `Opacity` read (the `Opacity`/
+`Transform` are gone) and asserts the route pops back to the grid; the test
+name/description dropped "Hero" (the **file** name was kept to preserve the
+documented `patrol test -t integration_test/hero_dismiss_test.dart` command —
+the plan's "renamed" was cosmetic and not worth churning the invocation).
+`detail_screen_test` needed no edits — it tests via the public screen and
+never asserted on drag-fade.
+
+**On-device (Pixel 9 Pro XL `46121FDAS008AA`, patrol) — VERIFIED 2026-07-23:**
+`hero_dismiss_test` 1/1 ✅ (hard-cut open + drag-dismiss past threshold pops
+back to the grid under real touch — no in-flight opacity to read anymore);
+`detail_actions_test` 3/3 ✅, 2 skipped (the limited-access delete + share
+cases, as expected) — incl. "double tap zooms in on a real photo, and back
+out", which confirms the instant transform-write zoom and the second-tap
+return-to-fit work against a real `InteractiveViewer` + real image (the host
+test stubs the image to null); `nav_shell_test` 5/5 ✅ (instant nav knob,
+onboarding hard-cut, indexing dial — incl. "the indexing dial rides right of
+the capsule while analysing" and "scrolled to the end, Library clears the nav
+capsule"). No A4 regressions. **Still pending: human-eye manual E2E** —
+whether the no-feedback drag-dismiss and the instant double-tap zoom read as
+*snappy* vs *broken* to a person on the running app (the documented escape
+hatch if the drag-dismiss reads as broken: keep the `Transform`, drop only the
+opacity). That is the user's to judge, not a test.
 
 ---
 

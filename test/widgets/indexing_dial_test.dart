@@ -113,8 +113,8 @@ void main() {
     expect(find.text('3'), findsOneWidget);
 
     await pump(tester, const AsyncData(IndexingStatus.idle()));
-    // Past the switch-out, so the outgoing dial is gone rather than fading.
-    await tester.pump(const Duration(milliseconds: 300));
+    // The dial drops the instant the pass ends — no fade to wait out.
+    await tester.pump();
 
     expect(find.byType(Text), findsNothing);
     expect(arcFraction(tester), isNull);

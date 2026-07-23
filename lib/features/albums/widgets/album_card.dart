@@ -6,7 +6,6 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../widgets/asset_thumbnail.dart';
-import '../../../widgets/pressable.dart';
 
 /// One album in the Albums grid: a square cover with the name and photo count
 /// set quietly beneath it. The cover photo is the only color; the label chrome
@@ -31,9 +30,10 @@ class AlbumCard extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final cover = summary.coverAssetId;
 
-    return Pressable(
+    return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
+      behavior: HitTestBehavior.opaque,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

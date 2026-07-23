@@ -5,7 +5,6 @@ import 'package:patrol/patrol.dart';
 import 'package:sologallery/app.dart';
 import 'package:sologallery/widgets/asset_thumbnail.dart';
 import 'package:sologallery/widgets/folder_list.dart';
-import 'package:sologallery/widgets/pressable.dart';
 
 /// On-device UI flow for the Albums tab's Device folders section, driving the
 /// real app against the real device library — the end-to-end counterpart to the
@@ -73,11 +72,12 @@ void main() {
     // Open the first folder row. The target is the row itself, not its cover:
     // a folder tile draws the cover *blurred behind* the name (see
     // [FolderList]), so the thumbnail is not hit-testable and
-    // `scrollUntilVisible` never resolves it. Scoped to the [FolderList]
-    // because album cards are [Pressable] rows too, and they come first.
+    // `scrollUntilVisible` never resolves it. Scoped to the [FolderList] —
+    // each tile is a `ClipRRect` — because album cards come first and would
+    // otherwise match a looser finder.
     final firstFolderRow = find.descendant(
       of: find.byType(FolderList),
-      matching: find.byType(Pressable),
+      matching: find.byType(ClipRRect),
     );
     expect(firstFolderRow, findsWidgets,
         reason: 'Folder rows should be tappable.');

@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/format/count_labels.dart';
 import '../core/theme/app_colors.dart';
-import '../core/theme/app_motion.dart';
 import '../core/theme/app_text_styles.dart';
 import '../services/indexing_service.dart';
 
@@ -47,25 +46,12 @@ class IndexingDial extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final status = ref.watch(indexingStatusProvider).value;
     // A dial that flashed before the first status arrived would claim work that
-    // may not exist, so an unresolved stream shows nothing.
+    // may not exist, so an unresolved stream shows nothing. The slot is reserved
+    // either way so the bar's trailing edge never shifts.
     final showing = status != null && status.isIndexing;
-    final duration = AppMotion.of(context, AppMotion.medium);
-
     return SizedBox.square(
       dimension: size,
-      child: AnimatedSwitcher(
-        duration: duration,
-        switchInCurve: AppMotion.curve,
-        switchOutCurve: AppMotion.curve,
-        transitionBuilder: (child, animation) => FadeTransition(
-          opacity: animation,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.6, end: 1).animate(animation),
-            child: child,
-          ),
-        ),
-        child: showing ? _Dial(status: status) : const SizedBox.shrink(),
-      ),
+      child: showing ? _Dial(status: status) : const SizedBox.shrink(),
     );
   }
 }
@@ -98,18 +84,10 @@ class _Dial extends StatelessWidget {
             color: colors.pillActiveBg,
             shape: BoxShape.circle,
           ),
-          child: TweenAnimationBuilder<double>(
-            // Sweeps to each new fraction rather than stepping, so the ring
-            // reads as work in progress and not as a series of redraws.
-            tween: Tween<double>(end: done.clamp(0.0, 1.0)),
-            duration: AppMotion.of(context, AppMotion.medium),
-            curve: AppMotion.curve,
-            builder: (context, value, child) => CustomPaint(
-              painter: IndexingRingPainter(
-                progress: value,
-                color: colors.pillActiveText,
-              ),
-              child: child,
+          child: CustomPaint(
+            painter: IndexingRingPainter(
+              progress: done.clamp(0.0, 1.0),
+              color: colors.pillActiveText,
             ),
             child: Center(
               // Compacted: a five-digit library would otherwise overflow the

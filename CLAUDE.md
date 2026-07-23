@@ -345,20 +345,17 @@ Library's month rhythm silently drifted to 36px.
 | r20 | sheets AND dialogs |
 | — | pills = `StadiumBorder` |
 
-### Motion (`AppMotion`)
+### Motion
 
-| Token | ms | Use |
-|---|---|---|
-| pressed | 110 | Pressable card scale |
-| short | 150 | pill selection, play glyph |
-| medium | 180 | thumbnail fade, chrome |
-| nav | 260 | nav-capsule knob slide |
-| sceneChange | 320 | memory-player scene change |
-| long | 450 | `fadeThroughPage` route transition, `DismissiblePhoto` settle |
-| stagger | 40 | `EntranceFade` per-item delay |
-
-Curve `easeOutCubic`; every duration via `AppMotion.of(context, d)`
-(reduced-motion → `Duration.zero`).
+The app has **no decorative motion** — every animated widget was physically
+deleted (Part 1). State changes are instant: filter pills, nav-capsule knob,
+segmented thumb, indexing dial, thumbnail reveal, chrome show/hide, onboarding
+step changes, and the detail drag-dismiss + double-tap zoom all snap. Two
+exceptions remain: **Material defaults** (`showDialog`/`showModalBottomSheet`/
+`SnackBar` keep Flutter's built-in transitions) and the **memory-player scene
+change** (a 320 ms `easeOutCubic` cross-slide between story photos, inlined as
+file-private consts in `memory_player_screen.dart` with a
+`MediaQuery.disableAnimations` guard for reduced-motion jump-cuts).
 
 ### Over-media (`AppOverMedia`, app_colors.dart)
 
@@ -385,7 +382,7 @@ Theme-invariant consts for content over photos/video: scrims
   `SectionHeader` (uppercase section label; `onTap` makes the whole row the
   destination and adds a chevron), `EmptyState`, `CoverRow` (`showChevron` for
   rows that stand alone in a card), `AppSheet`/`AppSheetNote`, `app_dialog`
-  helpers, `Pressable` (cards only — never grid cells), `IndexingDial` (the
+  helpers, `IndexingDial` (the
   app-wide "analysis is running" indicator: a 44 disc in the capsule's own
   inverted ink carrying the remaining count and a progress ring, mounted once as
   `NavPillBar`'s `trailing` in `AppShell`, shows nothing when idle — never say it
@@ -1118,6 +1115,25 @@ Short form; full postmortems in `docs/postmortems/`.
   sit below the nav capsule by construction — filter to rects inside the
   viewport before measuring, and assert at least one qualified or the test proves
   nothing.
+- **Don't fling a growing-window-watch scroller via an instance-based finder —
+  fling from the captured `ScrollableState`'s render-box centre instead.**
+  `nav_shell_test`'s "scrolled to the end" case captured the timeline's
+  `ScrollableState` then flung with `find.byWidget(scrollable.widget)`. The
+  Library timeline is a `WatchedAssetsNotifier` growing-window watch, so a
+  watch emission between capture and the first fling rebuilds the `ListView`
+  and swaps in a *new* `Scrollable` widget instance; the captured-instance
+  finder then matches zero and `tester.fling` throws ("Found 0 widgets").
+  This is a race independent of the padding under test — it failed 3× in a row
+  after the no-motion A2 pass, which only *removed* `EntranceFade`'s delayed
+  `setState`s (fewer rebuilds, not more) but shifted the race window. A
+  type/axis predicate is too broad: the `shrinkWrap` section preview grids are
+  vertical `NeverScrollable` `Scrollable`s too (4 matches on Library). Fix:
+  `final box = state.context.findRenderObject() as RenderBox;` then
+  `tester.flingFrom(box.localToGlobal(box.size.center(Offset.zero)), offset,
+  duration)`. The `ScrollableState` and its `position` persist across the
+  rebuild (same element, retyped widget), so the centre and the pixel
+  measurement stay valid and the gesture lands on the right viewport with no
+  finder at all. Two consecutive 5/5 runs after the fix.
 - **`cacheExtent` is deprecated — use `scrollCacheExtent`**
   (`ScrollCacheExtent.pixels(n)` / `.viewport(n)`); it lives in
   `package:flutter/rendering.dart`, not `material.dart`. Prefer
@@ -1156,6 +1172,24 @@ Short form; full postmortems in `docs/postmortems/`.
   Same shape for a pushed route whose screen opens on an `AsyncValue` loading
   branch: the future only resolves after the frame that subscribes to it, so
   the pushed screen needs one more pump before its content exists.
+- **A `Listener` defaults to `HitTestBehavior.deferToChild`, so it sees no
+  events where its child paints nothing — make a full-bleed gesture surface
+  `behavior: HitTestBehavior.opaque`.** `DismissiblePhoto`'s raw-pointer
+  drag/tap `Listener` relied on the stage underneath filling the screen to be
+  hit-testable everywhere. While the 1080 base-thumbnail underlay sat beneath
+  the real page (a `StackFit.expand` stack) that held — the underlay covered
+  the whole stage. Retiring the underlay (Part 1 A4) left the hit area as
+  whatever `PhotoPage` paints: a real image's `Image.memory(
+  width/height: double.infinity)` still fills it, but the broken-image
+  fallback `_Unavailable` is a 44 px centred icon, so taps off it fell through
+  to nothing and the gesture silently never saw them. It surfaced as a host
+  test (`dismissible_photo_test`'s "a second double tap returns to fit", whose
+  second pair taps off-centre) where the second `_handleDoubleTap` never fired
+  — the value stayed at the first zoom. `HitTestBehavior.opaque` makes the
+  `Listener` hit-testable across its whole bounds regardless of what the child
+  paints; in production (image fills the stage) it is a no-op, and it makes
+  tap-to-toggle chrome work on a missing image too. The same trap hides any
+  gesture on a widget whose content is async/empty/sparse.
 
 ---
 

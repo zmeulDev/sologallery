@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format/count_labels.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../services/photo_library_service.dart' show AssetRef;
@@ -13,6 +12,13 @@ import '../../widgets/asset_thumbnail.dart';
 import '../../widgets/precache_adjacent.dart';
 import '../detail/widgets/photo_page.dart';
 import 'memories_providers.dart';
+
+/// Scene-transition motion for the memory player — the one piece of decorative
+/// motion the app keeps (see docs/plans/remove-animations-and-performance.md).
+/// Inlined here so there is no app-wide motion token to misuse; the reduced
+/// motion gate is read locally via [MediaQuery.disableAnimationsOf].
+const Duration _kSceneChange = Duration(milliseconds: 320);
+const Curve _kSceneCurve = Curves.easeOutCubic;
 
 /// Plays one memory as a full-screen story: a title card, then each photo in
 /// turn, advancing on a timer.
@@ -80,14 +86,13 @@ class _MemoryPlayerScreenState extends ConsumerState<MemoryPlayerScreen> {
       Navigator.of(context).maybePop();
       return;
     }
-    // The reduced-motion gate still applies — a zero duration jump-cuts the
-    // auto-advance, which is exactly what "remove animations" asks for.
+    // The reduced-motion gate still applies — under "remove animations" the
+    // auto-advance jump-cuts, which is exactly what that setting asks for.
     // PageController.nextPage asserts a non-zero duration, so jump instead.
-    final d = AppMotion.of(context, AppMotion.sceneChange);
-    if (d == Duration.zero) {
+    if (MediaQuery.disableAnimationsOf(context)) {
       _controller.jumpToPage(_index + 1);
     } else {
-      _controller.nextPage(duration: d, curve: Curves.easeOut);
+      _controller.nextPage(duration: _kSceneChange, curve: _kSceneCurve);
     }
   }
 
@@ -230,11 +235,10 @@ class _Progress extends StatelessWidget {
       top: MediaQuery.of(context).padding.top + 10,
       left: AppSpace.s16,
       right: AppSpace.s16,
-      child: AnimatedOpacity(
+      child: Opacity(
         // Dimming the whole bar is the only "paused" signal — no icon, no
         // overlay covering the photo you paused to look at.
         opacity: paused ? 0.35 : 1,
-        duration: AppMotion.of(context, AppMotion.medium),
         child: Row(
           children: [
             for (var i = 0; i < pages; i++) ...[

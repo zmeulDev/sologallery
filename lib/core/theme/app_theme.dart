@@ -6,7 +6,6 @@ import 'app_space.dart';
 import 'app_text_styles.dart';
 
 export 'app_colors.dart';
-export 'app_motion.dart';
 export 'app_radius.dart';
 export 'app_space.dart';
 export 'app_text_styles.dart';

@@ -11,7 +11,6 @@ import 'package:sologallery/services/permission_provider.dart';
 import 'package:sologallery/services/photo_library_service.dart';
 import 'package:sologallery/widgets/asset_thumbnail.dart';
 import 'package:sologallery/widgets/folder_list.dart';
-import 'package:sologallery/widgets/pressable.dart';
 
 import '../support/fake_photo_library_service.dart';
 
@@ -74,7 +73,7 @@ void main() {
 
   testWidgets('renders nothing at all for no folders', (tester) async {
     await pump(tester, const []);
-    expect(find.byType(Pressable), findsNothing);
+    expect(find.byType(ClipRRect), findsNothing);
     // A sliver has no box size to measure, so assert the extent it contributes
     // to its viewport instead. It needs `skipOffstage: false` to be found at
     // all: a viewport reports a zero-extent sliver as offstage, which is itself
@@ -97,7 +96,7 @@ void main() {
       DeviceFolder(id: 'shots', name: 'Screenshots', count: 318),
       DeviceFolder(id: 'one', name: 'Scans', count: 1),
     ]);
-    expect(find.byType(Pressable), findsNWidgets(3));
+    expect(find.byType(ClipRRect), findsNWidgets(3));
     expect(find.text('Camera'), findsOneWidget);
     expect(find.text('1204 photos'), findsOneWidget);
     expect(find.text('318 photos'), findsOneWidget);

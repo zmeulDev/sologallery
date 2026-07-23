@@ -5,14 +5,12 @@ import 'package:go_router/go_router.dart';
 import '../../core/database/daos/faces_dao.dart' show PersonSummary;
 import '../../core/format/count_labels.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../widgets/app_button.dart';
 import '../../widgets/asset_grid.dart' show kPhotoGridCacheExtent;
 import '../../widgets/app_dialog.dart';
 import '../../widgets/empty_state.dart';
-import '../../widgets/pressable.dart';
 import '../settings/consent_provider.dart';
 import 'people_providers.dart';
 import 'widgets/face_avatar.dart';
@@ -250,8 +248,9 @@ class _PersonCard extends StatelessWidget {
     final styles = Theme.of(context).extension<AppTextStyles>()!;
     final scheme = Theme.of(context).colorScheme;
     final name = person.displayName ?? 'Unnamed';
-    return Pressable(
+    return GestureDetector(
       onTap: selecting ? onToggle : onOpen,
+      behavior: HitTestBehavior.opaque,
       child: Column(
         children: [
           // The avatar takes the space left after the two text lines and sizes
@@ -273,10 +272,8 @@ class _PersonCard extends StatelessWidget {
                         // Always built, never conditional, so the tree shape is
                         // stable across selection changes.
                         Positioned.fill(
-                          child: AnimatedOpacity(
+                          child: Opacity(
                             opacity: selected ? 1 : 0,
-                            duration: AppMotion.of(context, AppMotion.short),
-                            curve: AppMotion.curve,
                             child: _SelectedRing(edge: edge),
                           ),
                         ),

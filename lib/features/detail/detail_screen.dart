@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_space.dart';
 import '../../widgets/app_dialog.dart';
 import '../../widgets/circle_icon_button.dart';
@@ -40,18 +39,11 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
   late final PageController _controller = PageController(initialPage: _index);
   bool _chromeVisible = true;
 
-  /// 0 (settled) → 1 (dismissed), mirrored up from whichever page is being
-  /// drag-dismissed so the chrome — a sibling of the [PageView], not a
-  /// descendant of any one page — fades in lockstep without a full-screen
-  /// rebuild on every drag frame.
-  final ValueNotifier<double> _dragProgress = ValueNotifier(0);
-
   String get _currentId => _ids[_index];
 
   @override
   void dispose() {
     _controller.dispose();
-    _dragProgress.dispose();
     super.dispose();
   }
 
@@ -110,23 +102,6 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
     _snack('Photo deleted');
   }
 
-  /// Multiplies [child]'s opacity by `1 - _dragProgress` and disables its
-  /// hit-testing mid-drag, on top of [child]'s own `visible`-driven fade —
-  /// the two compose independently, so chrome hides the instant a dismiss
-  /// drag starts regardless of whether it was toggled visible.
-  Widget _dragFadedChrome({required Widget child}) {
-    return ValueListenableBuilder<double>(
-      valueListenable: _dragProgress,
-      builder: (context, progress, chromeChild) {
-        if (progress == 0) return chromeChild!;
-        return IgnorePointer(
-          child: Opacity(opacity: 1 - progress, child: chromeChild),
-        );
-      },
-      child: child,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_ids.isEmpty) {
@@ -147,7 +122,6 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
               onPageChanged: (i) => setState(() => _index = i),
               itemBuilder: (context, i) => _DetailPage(
                 assetId: _ids[i],
-                onDragProgress: (p) => _dragProgress.value = p,
                 onDismissed: () => Navigator.of(context).maybePop(),
                 onSwipeUp: _onExif,
                 onTap: _toggleChrome,
@@ -160,35 +134,31 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
           // kDetailImageMaxEdge, not decoded bitmaps, so six neighbours cost
           // ~10-15MB resident and buy a run of spinner-free swipes.
           PrecacheAdjacent(assetIds: _ids, index: _index, ahead: 3, behind: 3),
-          _dragFadedChrome(
-            child: _Chrome(
-              visible: _chromeVisible,
-              alignment: Alignment.topCenter,
-              child: _TopBar(
-                onAddToAlbum: _onAddToAlbum,
-                onShare: _onShare,
-              ),
+          _Chrome(
+            visible: _chromeVisible,
+            alignment: Alignment.topCenter,
+            child: _TopBar(
+              onAddToAlbum: _onAddToAlbum,
+              onShare: _onShare,
             ),
           ),
           // The favorite flag is watched in a Consumer scoped to the action bar
           // alone: a favorite tick then rebuilds only this chrome layer, not the
           // whole PageView/Stage above it.
-          _dragFadedChrome(
-            child: _Chrome(
-              visible: _chromeVisible,
-              alignment: Alignment.bottomCenter,
-              child: Consumer(
-                builder: (context, ref, _) {
-                  final isFavorite =
-                      ref.watch(isFavoriteProvider(_currentId)).value ?? false;
-                  return DetailActionBar(
-                    isFavorite: isFavorite,
-                    onFavorite: _onFavorite,
-                    onInfo: _onExif,
-                    onDelete: _onDelete,
-                  );
-                },
-              ),
+          _Chrome(
+            visible: _chromeVisible,
+            alignment: Alignment.bottomCenter,
+            child: Consumer(
+              builder: (context, ref, _) {
+                final isFavorite =
+                    ref.watch(isFavoriteProvider(_currentId)).value ?? false;
+                return DetailActionBar(
+                  isFavorite: isFavorite,
+                  onFavorite: _onFavorite,
+                  onInfo: _onExif,
+                  onDelete: _onDelete,
+                );
+              },
             ),
           ),
         ],
@@ -198,21 +168,18 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
 }
 
 /// One page of the viewer: routes to [DismissiblePhoto] (drag-to-dismiss),
-/// which itself wraps [DetailStage] (Hero + reveal) branching on
-/// [isVideoProvider] into a [VideoPage]/[PhotoPage] once revealed. Shows the
-/// still while the kind resolves so a video never flashes as a photo page and
-/// vice versa.
+/// which itself wraps [DetailStage] branching on [isVideoProvider] into a
+/// [VideoPage]/[PhotoPage]. Shows the still while the kind resolves so a
+/// video never flashes as a photo page and vice versa.
 class _DetailPage extends ConsumerWidget {
   const _DetailPage({
     required this.assetId,
-    required this.onDragProgress,
     required this.onDismissed,
     required this.onSwipeUp,
     required this.onTap,
   });
 
   final String assetId;
-  final ValueChanged<double> onDragProgress;
   final VoidCallback onDismissed;
   final VoidCallback onSwipeUp;
   final VoidCallback onTap;
@@ -223,7 +190,6 @@ class _DetailPage extends ConsumerWidget {
     return DismissiblePhoto(
       assetId: assetId,
       isVideo: isVideo,
-      onProgress: onDragProgress,
       onDismissed: onDismissed,
       onSwipeUp: onSwipeUp,
       onTap: onTap,
@@ -231,7 +197,10 @@ class _DetailPage extends ConsumerWidget {
   }
 }
 
-/// Fades and disables a chrome layer pinned to [alignment] when hidden.
+/// Hides and disables a chrome layer pinned to [alignment] when not visible.
+/// The opacity is a plain conditional — decorative motion is gone app-wide, so
+/// the chrome snaps in and out rather than fading. [IgnorePointer] stays: hidden
+/// chrome must not be hit-testable.
 class _Chrome extends StatelessWidget {
   const _Chrome({
     required this.visible,
@@ -249,11 +218,7 @@ class _Chrome extends StatelessWidget {
       alignment: alignment,
       child: IgnorePointer(
         ignoring: !visible,
-        child: AnimatedOpacity(
-          opacity: visible ? 1 : 0,
-          duration: AppMotion.of(context, AppMotion.medium),
-          child: child,
-        ),
+        child: Opacity(opacity: visible ? 1 : 0, child: child),
       ),
     );
   }

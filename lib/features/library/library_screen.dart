@@ -14,7 +14,6 @@ import '../../widgets/asset_grid.dart';
 import '../../widgets/asset_thumbnail.dart';
 import '../../widgets/circle_icon_button.dart';
 import '../../widgets/empty_state.dart';
-import '../../widgets/entrance_fade.dart';
 import '../../widgets/limited_access_banner.dart';
 import '../../widgets/section_header.dart';
 import '../detail/photo_viewer_args.dart';
@@ -165,15 +164,7 @@ class _MonthList extends StatelessWidget {
           ),
           OlderRow(:final count) => _OlderSection(count: count),
         };
-        // Each section plays its entrance once, the first time it scrolls
-        // into view and gets built — index staggers the start, not the
-        // scroll position, so a fast scroll never leaves a backlog. The
-        // carousel sits outside the timeline and outside its stagger; it
-        // collapses to zero height when there are no memories, so it needs no
-        // other special-casing.
-        return row is MemoriesRow
-            ? child
-            : EntranceFade(index: i, child: child);
+        return child;
       },
     );
   }
@@ -206,10 +197,7 @@ class _YearList extends ConsumerWidget {
             bottom: AppSpace.s24 + MediaQuery.paddingOf(context).bottom,
           ),
           itemCount: counts.length,
-          itemBuilder: (context, i) => EntranceFade(
-            index: i,
-            child: _YearSection(entry: counts[i]),
-          ),
+          itemBuilder: (context, i) => _YearSection(entry: counts[i]),
         );
       },
     );

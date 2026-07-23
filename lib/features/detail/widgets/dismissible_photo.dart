@@ -3,16 +3,16 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_motion.dart';
 import '../domain/zoom_transform.dart';
 import 'detail_stage.dart';
 
 /// Wraps one detail page with an interactive drag-down-to-dismiss gesture:
-/// the photo follows the finger, scaling and fading as it goes, and on
-/// release either springs back (animated here) or pops the route
-/// immediately, handing off to the page route's own Hero return-flight
-/// rather than finishing a separate exit animation first — see
-/// [_onPointerEnd].
+/// a downward drag past a threshold (or a fast-enough flick) pops the route
+/// immediately on release. The photo no longer visually tracks the finger —
+/// decorative motion was removed app-wide (Part 1) — so a sub-threshold
+/// release leaves it exactly where it was, with nothing to spring back from.
+/// The gesture itself, its threshold, its velocity check and its axis lock
+/// all stay; only the visual output is gone.
 ///
 /// Tracked via raw [Listener] pointer events, not a competing
 /// [GestureDetector] recognizer. [InteractiveViewer] (photo pages only —
@@ -29,10 +29,6 @@ import 'detail_stage.dart';
 /// axis (vertical vs horizontal) the drag reads as dominant once it clears
 /// touch slop, deferring to the [PageView]'s own horizontal swipe rather
 /// than fighting it.
-///
-/// [onProgress] mirrors the live 0 (settled) → 1 (dismissed) value up to the
-/// parent screen so its chrome — a sibling of the [PageView], not a
-/// descendant of any one page — can fade in lockstep.
 ///
 /// The same axis lock serves the opposite direction: an upward fling has
 /// nothing to dismiss, so it opens the details sheet via [onSwipeUp]. Both
@@ -53,14 +49,13 @@ import 'detail_stage.dart';
 /// be the opening half of a double-tap. Toggling the chrome immediately and
 /// undoing it on the second tap would be instant but would flash the whole
 /// chrome in and out of every zoom, which reads as a bug. That delay is
-/// gesture disambiguation, not motion, so it is deliberately *not* routed
-/// through [AppMotion.of] and stays put under reduced motion.
+/// gesture disambiguation, not motion, so it stays put regardless of any
+/// reduced-motion setting.
 class DismissiblePhoto extends StatefulWidget {
   const DismissiblePhoto({
     super.key,
     required this.assetId,
     required this.isVideo,
-    required this.onProgress,
     required this.onDismissed,
     required this.onSwipeUp,
     required this.onTap,
@@ -68,7 +63,6 @@ class DismissiblePhoto extends StatefulWidget {
 
   final String assetId;
   final bool isVideo;
-  final ValueChanged<double> onProgress;
   final VoidCallback onDismissed;
   final VoidCallback onSwipeUp;
 
@@ -80,22 +74,8 @@ class DismissiblePhoto extends StatefulWidget {
   State<DismissiblePhoto> createState() => _DismissiblePhotoState();
 }
 
-class _DismissiblePhotoState extends State<DismissiblePhoto>
-    with TickerProviderStateMixin {
+class _DismissiblePhotoState extends State<DismissiblePhoto> {
   final _transformController = TransformationController();
-  late final AnimationController _dismiss = AnimationController(
-    vsync: this,
-    duration: AppMotion.long,
-  )..addListener(() => widget.onProgress(_dismiss.value));
-
-  /// Drives the double-tap zoom. Created unconditionally (never a `late final`
-  /// only read from a conditional branch — a controller first touched in
-  /// `dispose()` throws while creating its ticker).
-  late final AnimationController _zoom = AnimationController(
-    vsync: this,
-    duration: AppMotion.short,
-  )..addListener(_applyZoomFrame);
-  Animation<Matrix4>? _zoomAnimation;
 
   bool _zoomed = false;
 
@@ -103,9 +83,13 @@ class _DismissiblePhotoState extends State<DismissiblePhoto>
   int? _activePointer;
   bool? _verticalIntent; // null = undecided; true/false once slop clears.
   // Signed vertical travel of the current drag. Kept separately from
-  // _dismiss.value, which clamps at 0 and so can't tell "at rest" from
+  // _progress, which clamps at 0 and so can't tell "at rest" from
   // "dragged upward".
   double _totalDy = 0;
+  // 0 (settled) → 1 (dismissed). Purely the threshold the release handler
+  // tests — there is no visual output and no listener on the drag path, so
+  // dragging does no frame work at all until release.
+  double _progress = 0;
   VelocityTracker? _velocityTracker;
   Duration _pointerDownTime = Duration.zero;
   // Read once per drag (didChangeDependencies), not per pointer-move event
@@ -143,8 +127,6 @@ class _DismissiblePhotoState extends State<DismissiblePhoto>
     _pendingTap?.cancel();
     _transformController.removeListener(_onTransformChanged);
     _transformController.dispose();
-    _dismiss.dispose();
-    _zoom.dispose();
     super.dispose();
   }
 
@@ -156,7 +138,6 @@ class _DismissiblePhotoState extends State<DismissiblePhoto>
     _withinDoubleTapWindow = _pendingTap?.isActive ?? false;
     _pendingTap?.cancel();
     _pendingTap = null;
-    _zoom.stop();
     // The tap path stays open while zoomed — a double-tap is how you get back
     // to fit — but the drag path does not: at scale > 1 a one-finger move is a
     // pan for [InteractiveViewer], not a dismiss.
@@ -165,10 +146,10 @@ class _DismissiblePhotoState extends State<DismissiblePhoto>
     _pointerDownTime = event.timeStamp;
     _verticalIntent = null;
     _totalDy = 0;
+    _progress = 0;
     if (_zoomed) return;
     _velocityTracker = VelocityTracker.withKind(event.kind);
     _velocityTracker!.addPosition(event.timeStamp, event.position);
-    _dismiss.stop();
   }
 
   void _onPointerMove(PointerMoveEvent event) {
@@ -181,9 +162,9 @@ class _DismissiblePhotoState extends State<DismissiblePhoto>
         : null;
     if (_verticalIntent != true) return;
     _totalDy = total.dy;
-    // Only downward drag moves the photo; an upward one leaves it in place
-    // (clamped at 0) and is resolved on release as a details-sheet swipe.
-    _dismiss.value = (total.dy / _screenHeight).clamp(0.0, 1.0);
+    // Only downward drag counts toward dismiss; an upward one clamps at 0
+    // and is resolved on release as a details-sheet swipe.
+    _progress = (total.dy / _screenHeight).clamp(0.0, 1.0);
   }
 
   void _onPointerEnd(PointerEvent event) {
@@ -191,6 +172,7 @@ class _DismissiblePhotoState extends State<DismissiblePhoto>
     final wasVertical = _verticalIntent == true;
     final velocity = _velocityTracker?.getVelocity().pixelsPerSecond.dy ?? 0.0;
     final totalDy = _totalDy;
+    final progress = _progress;
     final travel = _pointerStart == null
         ? null
         : event.position - _pointerStart!;
@@ -199,6 +181,7 @@ class _DismissiblePhotoState extends State<DismissiblePhoto>
     _pointerStart = null;
     _verticalIntent = null;
     _totalDy = 0;
+    _progress = 0;
     _velocityTracker = null;
 
     // A release that never picked an axis, barely moved and was brief is a
@@ -217,7 +200,7 @@ class _DismissiblePhotoState extends State<DismissiblePhoto>
     _withinDoubleTapWindow = false;
     if (!wasVertical) return;
 
-    // Upward: nothing was displaced (_dismiss stayed clamped at 0), so this
+    // Upward: nothing was displaced (_progress stayed clamped at 0), so this
     // resolves purely from the gesture — a flick, or a deliberate drag past
     // a fraction of the screen.
     if (totalDy < 0) {
@@ -227,21 +210,15 @@ class _DismissiblePhotoState extends State<DismissiblePhoto>
       return;
     }
 
-    final shouldDismiss = _dismiss.value > 0.3 || velocity > 800;
+    final shouldDismiss = progress > 0.3 || velocity > 800;
     if (shouldDismiss) {
-      // Hand off to the route's own Hero return-flight immediately, rather
-      // than first finishing this drag's own shrink-to-nothing animation
-      // and popping only once it completes. Running both in sequence reads
-      // as two disconnected motions — the photo fades out to a black
-      // screen, a pause, and only then does a *second*, seemingly
-      // unrelated animation fly it back into the grid. Popping right away
-      // means there's exactly one motion: the Hero flight takes over
-      // wherever the drag left off.
+      // Pop immediately. The photo never visually moved, so there is no
+      // separate exit animation to finish first — handing off to the route's
+      // own pop transition (instant, NoTransitionPage) is exactly one motion.
       widget.onDismissed();
-    } else {
-      final duration = AppMotion.of(context, AppMotion.long);
-      _dismiss.animateTo(0, duration: duration, curve: AppMotion.curve);
     }
+    // Sub-threshold release: nothing to animate back. The photo was never
+    // displaced, so it is already at rest.
   }
 
   /// Decides whether the tap that just ended at [globalPosition] is the second
@@ -271,32 +248,23 @@ class _DismissiblePhotoState extends State<DismissiblePhoto>
   /// about. Videos have no [InteractiveViewer] and so no transform to drive;
   /// they deliberately do nothing rather than falling through to a chrome
   /// toggle, which would make the play/pause target ambiguous.
+  ///
+  /// The zoom is an instant transform write — the 150 ms travel is gone with
+  /// the rest of the decorative motion — so the photo snaps to the tapped
+  /// point on the second tap of the pair. Writing the [TransformationController]
+  /// fires [_onTransformChanged], so the drag gate tracks the zoom for free.
   void _handleDoubleTap(Offset globalPosition) {
     if (widget.isVideo) return;
     final box = context.findRenderObject() as RenderBox?;
     if (box == null) return;
     // This box is co-extensive with the InteractiveViewer whenever
-    // _dismiss.value is 0, which a tap guarantees (a drag would have set
+    // _progress is 0, which a tap guarantees (a drag would have set
     // _verticalIntent and never reached here).
     final local = box.globalToLocal(globalPosition);
     final target = _zoomed
         ? Matrix4.identity()
         : zoomedAt(local.dx, local.dy, scale: kDoubleTapZoomScale);
-    _zoomAnimation = Matrix4Tween(
-      begin: _transformController.value,
-      end: target,
-    ).animate(CurvedAnimation(parent: _zoom, curve: AppMotion.curve));
-    _zoom
-      ..duration = AppMotion.of(context, AppMotion.short)
-      ..forward(from: 0);
-  }
-
-  /// Writes one frame of the double-tap zoom into the shared
-  /// [TransformationController]. That in turn fires [_onTransformChanged], so
-  /// the drag gate tracks the zoom for free.
-  void _applyZoomFrame() {
-    final animation = _zoomAnimation;
-    if (animation != null) _transformController.value = animation.value;
+    _transformController.value = target;
   }
 
   @override
@@ -311,42 +279,20 @@ class _DismissiblePhotoState extends State<DismissiblePhoto>
     );
 
     return Listener(
+      // Opaque so the stage is hit-testable across its full bounds even when
+      // the page underneath paints nothing there — the broken-image fallback
+      // (`_Unavailable`) is a 44 px icon centred on the stage, and the
+      // default `deferToChild` would let taps off that icon fall through to
+      // nothing, so the drag/tap gesture never saw them. A real photo's
+      // `Image.memory(width/height: double.infinity)` already fills the stage,
+      // so this only changes the error/empty path — and makes tap-to-toggle
+      // chrome work on a missing image too.
+      behavior: HitTestBehavior.opaque,
       onPointerDown: _onPointerDown,
       onPointerMove: _onPointerMove,
       onPointerUp: _onPointerEnd,
       onPointerCancel: _onPointerEnd,
-      child: RepaintBoundary(
-        child: AnimatedBuilder(
-          animation: _dismiss,
-          builder: (context, child) {
-            final t = _dismiss.value;
-            // One Transform with a composed matrix, not two nested ones —
-            // each Transform with a non-identity matrix forces its own
-            // compositing layer, so nesting translate-then-scale paid for
-            // two layers every frame of the drag for no visual difference
-            // over one. (Alignment.center wraps the *whole* matrix in an
-            // origin shift, equivalent to nesting since a pure translation
-            // commutes with itself — it doesn't need to wrap only the scale
-            // part separately.)
-            return Opacity(
-              opacity: 1 - t,
-              child: Transform(
-                alignment: Alignment.center,
-                transform: Matrix4.identity()
-                  ..translateByDouble(0.0, t * _screenHeight * 0.4, 0.0, 1.0)
-                  ..scaleByDouble(
-                    1 - t * 0.25,
-                    1 - t * 0.25,
-                    1 - t * 0.25,
-                    1.0,
-                  ),
-                child: child,
-              ),
-            );
-          },
-          child: stage,
-        ),
-      ),
+      child: RepaintBoundary(child: stage),
     );
   }
 }

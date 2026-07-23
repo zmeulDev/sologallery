@@ -22,7 +22,10 @@ void main() {
     required PhotoAccess access,
     PhotoAccess? grantResult,
   }) async {
-    final fake = FakePhotoLibraryService(access: access, grantResult: grantResult);
+    final fake = FakePhotoLibraryService(
+      access: access,
+      grantResult: grantResult,
+    );
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -83,10 +86,7 @@ void main() {
     /// Pumps with [access] already sufficient to read, so the screen advances
     /// to step 2. `pumpAndSettle` — the consent step has no perpetually
     /// scheduling widget (no spinner, no focused TextField), so it's safe
-    /// here and, unlike a short bounded pump, reliably clears the staggered
-    /// EntranceFade reveal timers (up to 200ms + reveal duration) that back
-    /// the step's entrance choreography — a short pump leaves one pending at
-    /// teardown and trips the "Timer still pending" invariant.
+    /// here and reliably lets the step's providers resolve before asserting.
     Future<void> pumpConsentWith(
       WidgetTester tester,
       PhotoAccess access,
@@ -95,8 +95,9 @@ void main() {
         ProviderScope(
           overrides: [
             databaseProvider.overrideWithValue(db),
-            photoLibraryServiceProvider
-                .overrideWithValue(FakePhotoLibraryService(access: access)),
+            photoLibraryServiceProvider.overrideWithValue(
+              FakePhotoLibraryService(access: access),
+            ),
           ],
           child: MaterialApp(
             theme: AppTheme.light,
@@ -137,8 +138,9 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('asks once access is granted, with every feature off',
-        (tester) async {
+    testWidgets('asks once access is granted, with every feature off', (
+      tester,
+    ) async {
       await pumpConsent(tester);
 
       expect(find.text('What should stay\non the shelf?'), findsOneWidget);
@@ -152,8 +154,9 @@ void main() {
       );
     });
 
-    testWidgets('Continue persists exactly what was switched on',
-        (tester) async {
+    testWidgets('Continue persists exactly what was switched on', (
+      tester,
+    ) async {
       await pumpConsent(tester);
 
       // Turn Content search on (first row), leave Memories and Faces off.
@@ -162,8 +165,7 @@ void main() {
       await tester.tap(find.text('Continue'));
       // pumpAndSettle: recording consent flips the screen back to step 1
       // (canReadLibrary stays true, consent no longer "needed"), which
-      // mounts a fresh AnimatedSwitcher cross-fade and that step's own
-      // EntranceFade timers — a short bounded pump leaves those pending.
+      // remounts the access step under a fresh KeyedSubtree.
       await tester.pumpAndSettle();
 
       expect(await db.settingsDao.readSearchEnabled(), isTrue);
@@ -172,8 +174,9 @@ void main() {
       expect(await db.settingsDao.readConsentRecorded(), isTrue);
     });
 
-    testWidgets('Continue with nothing on still records the answer',
-        (tester) async {
+    testWidgets('Continue with nothing on still records the answer', (
+      tester,
+    ) async {
       await pumpConsent(tester);
 
       await tester.tap(find.text('Continue'));

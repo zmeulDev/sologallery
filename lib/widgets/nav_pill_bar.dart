@@ -25,10 +25,10 @@ const _destinations = <_Destination>[
 ];
 
 /// Custom bottom nav: a floating inverted-ink capsule of icon-only
-/// destinations, with a filled circular knob that slides to sit under the
-/// active one — the design-system signature. Labels are omitted so the knob is
-/// the only indicator; each destination still carries a semantic label and
-/// tooltip.
+/// destinations, with a filled circular knob that sits under the active one —
+/// the design-system signature. Labels are omitted so the knob is the only
+/// indicator; each destination still carries a semantic label and tooltip.
+/// The knob and the active glyph swap instantly on tap (no travel).
 ///
 /// The capsule floats over the page ([Scaffold.extendBody]), so every scroller
 /// in a shell branch pads its bottom by `MediaQuery.paddingOf(context).bottom`.
@@ -70,7 +70,6 @@ class NavPillBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<AppColors>()!;
-    final duration = AppMotion.of(context, AppMotion.nav);
 
     final capsule = Container(
       width: _pillWidth,
@@ -82,9 +81,7 @@ class NavPillBar extends StatelessWidget {
       child: Stack(
         children: [
           // Beneath the icons, so the active glyph reads on top of it.
-          AnimatedPositioned(
-            duration: duration,
-            curve: AppMotion.curve,
+          Positioned(
             left: _slotWidth * currentIndex + _knobInset,
             top: _knobInset,
             child: Container(
@@ -107,7 +104,6 @@ class NavPillBar extends StatelessWidget {
                     activeColor: colors.pillActiveBg,
                     inactiveColor: colors.pillActiveText
                         .withValues(alpha: _inactiveOpacity),
-                    duration: duration,
                     onTap: () => onTap(i),
                   ),
                 ),
@@ -159,7 +155,6 @@ class _NavItem extends StatelessWidget {
     required this.selected,
     required this.activeColor,
     required this.inactiveColor,
-    required this.duration,
     required this.onTap,
   });
 
@@ -167,7 +162,6 @@ class _NavItem extends StatelessWidget {
   final bool selected;
   final Color activeColor;
   final Color inactiveColor;
-  final Duration duration;
   final VoidCallback onTap;
 
   @override
@@ -178,21 +172,16 @@ class _NavItem extends StatelessWidget {
       label: destination.label,
       child: Tooltip(
         message: destination.label,
-        // The sliding knob is the press feedback; an ink splash would fight it
-        // and would have to be clipped to the capsule besides.
+        // The knob is the press feedback; an ink splash would fight it and
+        // would have to be clipped to the capsule besides.
         child: GestureDetector(
           onTap: onTap,
           behavior: HitTestBehavior.opaque,
           child: Center(
-            // The colour lands with the knob rather than snapping ahead of it.
-            child: AnimatedSwitcher(
-              duration: duration,
-              child: Icon(
-                selected ? destination.activeIcon : destination.icon,
-                key: ValueKey(selected),
-                size: NavPillBar._iconSize,
-                color: selected ? activeColor : inactiveColor,
-              ),
+            child: Icon(
+              selected ? destination.activeIcon : destination.icon,
+              size: NavPillBar._iconSize,
+              color: selected ? activeColor : inactiveColor,
             ),
           ),
         ),

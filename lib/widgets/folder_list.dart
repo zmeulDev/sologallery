@@ -11,7 +11,6 @@ import '../core/theme/app_space.dart';
 import '../core/theme/app_text_styles.dart';
 import '../services/photo_library_service.dart' show DeviceFolder;
 import 'asset_thumbnail.dart';
-import 'pressable.dart';
 
 /// The device's folders, two to a row, each linking to its `/folder` grid.
 /// Renders nothing when there are no folders, so callers can drop it into a list
@@ -103,13 +102,14 @@ class _FolderTile extends StatelessWidget {
         ? colors.textSecondary
         : AppOverMedia.glyphSoft;
 
-    return Pressable(
+    return GestureDetector(
       onTap: () => context.push(
         Uri(
           path: '/folder',
           queryParameters: {'id': folder.id, 'name': folder.name},
         ).toString(),
       ),
+      behavior: HitTestBehavior.opaque,
       child: ClipRRect(
         borderRadius: AppRadius.br12,
         child: Stack(

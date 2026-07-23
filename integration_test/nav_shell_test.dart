@@ -107,12 +107,28 @@ void main() {
     // Must be the *vertical* scroller specifically. `find.byType(Scrollable)`
     // picks the Library filter bar, which scrolls horizontally, so a vertical
     // fling on it moves nothing at all and the walk "finishes" at pixel 0.
-    final scroller = find.byWidget(scrollable.widget);
+    //
+    // Fling from the timeline's own centre — computed from the captured
+    // `ScrollableState`'s render box — rather than via a finder. The Library
+    // timeline is a growing-window watch, so an emission between capturing the
+    // scroller and the first fling rebuilds the ListView and swaps in a new
+    // `Scrollable` widget instance; an instance-based `find.byWidget` then
+    // finds zero and the fling throws. A type/axis predicate matches too many
+    // (the section preview grids are vertical `NeverScrollable` Scrollables
+    // too). The `ScrollableState`/`position` persist across the rebuild (same
+    // element, retyped widget), so the centre and the measurement stay valid
+    // and the gesture lands on the right viewport with no finder at all.
+    // The `ScrollableState` was captured after the tab settled and stays
+    // alive for the whole walk, so reading its render box here is safe
+    // despite the awaits above — the lint can't see that.
+    // ignore: use_build_context_synchronously
+    final box = scrollable.context.findRenderObject() as RenderBox;
+    final centre = box.localToGlobal(box.size.center(Offset.zero));
     for (var i = 0; i < 120; i++) {
       final before = position.pixels;
       final beforeMax = position.maxScrollExtent;
 
-      await $.tester.fling(scroller, const Offset(0, -600), 3000);
+      await $.tester.flingFrom(centre, const Offset(0, -600), 3000);
       // Let the ballistic simulation finish and the newly-revealed rows load,
       // in bounded pumps — a spinner anywhere on screen makes pumpAndSettle
       // hang forever (CLAUDE.md).

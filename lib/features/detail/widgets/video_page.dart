@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_motion.dart';
 import '../../../core/theme/app_space.dart';
 import '../detail_providers.dart';
 
@@ -90,11 +89,8 @@ class _PlayerState extends State<_Player> {
               VideoPlayer(_controller),
               ValueListenableBuilder<VideoPlayerValue>(
                 valueListenable: _controller,
-                builder: (context, value, _) => AnimatedOpacity(
-                  opacity: value.isPlaying ? 0 : 1,
-                  duration: AppMotion.of(context, AppMotion.short),
-                  child: const _PlayGlyph(),
-                ),
+                builder: (context, value, _) =>
+                    value.isPlaying ? const SizedBox.shrink() : const _PlayGlyph(),
               ),
               Positioned(
                 left: 0,
