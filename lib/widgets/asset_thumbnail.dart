@@ -20,6 +20,7 @@ class AssetThumbnail extends ConsumerWidget {
     required this.assetId,
     this.size = 256,
     this.showVideoBadge = false,
+    this.frameBuilder,
   });
 
   final String assetId;
@@ -30,6 +31,11 @@ class AssetThumbnail extends ConsumerWidget {
 
   /// Whether to overlay a duration badge when this asset is a video.
   final bool showVideoBadge;
+
+  /// Optional [Image.frameBuilder] forwarded to the underlying [Image.memory].
+  /// Used by callers that need to know when the first decoded frame has painted
+  /// (e.g. to swap a placeholder overlay).
+  final ImageFrameBuilder? frameBuilder;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -53,6 +59,7 @@ class AssetThumbnail extends ConsumerWidget {
               gaplessPlayback: true,
               width: double.infinity,
               height: double.infinity,
+              frameBuilder: frameBuilder,
             ),
       loading: () => _Placeholder(colors),
       error: (e, st) => _Placeholder(colors),

@@ -221,31 +221,23 @@ void main() {
             FakePhotoLibraryService(),
           ),
         ],
-        child: const Row(
+        child: const Column(
           children: [
-            SizedBox(
-              width: 150,
-              height: 190,
-              child: AlbumCard(
-                summary: AlbumSummary(
-                  id: 1,
-                  name: 'Iceland 2026',
-                  entryCount: 128,
-                  coverAssetId: 'x',
-                ),
+            AlbumCard(
+              summary: AlbumSummary(
+                id: 1,
+                name: 'Iceland 2026',
+                entryCount: 128,
+                coverAssetId: 'x',
               ),
             ),
-            SizedBox(width: 16),
-            SizedBox(
-              width: 150,
-              height: 190,
-              child: AlbumCard(
-                summary: AlbumSummary(
-                  id: 2,
-                  name: 'Empty',
-                  entryCount: 0,
-                  coverAssetId: null,
-                ),
+            SizedBox(height: 16),
+            AlbumCard(
+              summary: AlbumSummary(
+                id: 2,
+                name: 'Empty',
+                entryCount: 0,
+                coverAssetId: null,
               ),
             ),
           ],

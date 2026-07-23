@@ -1,44 +1,46 @@
-# Plan: Match Album card radius to navbar
+# Plan: Match Album card radius to navbar (two-column compact tile)
 
 ## Goal
-Tweak the Albums grid tiles so the card shape and the album cover share the same rounding vocabulary as the floating bottom-nav capsule, then make them compact enough that large album libraries don't require excessive scrolling.
+Tweak the Albums tab tiles so the card shape and album cover share the navbar's 30 dp corner radius, then make them compact enough that large album libraries don't require excessive scrolling.
 
-## Decision (first pass)
-User chose **Option A**: use the navbar's 30 dp corner radius while keeping the current card proportions. That version is implemented and passing tests.
+## Decision
+- User chose Option A for radius: use the navbar's 30 dp corner radius.
+- User chose Option A for compactness: horizontal list tiles.
+- User then asked about density for 28+ albums; chose Option A again: two-column compact cards.
+- User feedback: "top and bottom padding is too big" → reduced vertical padding from `s12` to `s8`.
 
-## New requirement
-User feedback: "make it more compact — maybe the cover should be half of the height; when you have a lot of albums it's hard to scroll."
+## Final approach
+- Added `r30`/`br30` to `AppRadius` and an optional `borderRadius` parameter to `AppCard` (defaults to `br12`).
+- `AlbumCard` is a compact horizontal card:
+  - `AppCard(borderRadius: AppRadius.br30)`.
+  - 56 dp square cover on the left, padded and clipped with `br30`.
+  - Album name + photo count stacked to the right, vertically centered.
+  - Inner padding: `horizontal: s12`, `vertical: s8`.
+  - `onTap`/`onLongPress` cover the whole card.
+- `AlbumsScreen` uses a 2-column `SliverGrid`:
+  - `crossAxisCount: 2`, `mainAxisSpacing: s16`, `crossAxisSpacing: s16`.
+  - `childAspectRatio: 1.9`.
+  - 28 albums now render as ~14 rows.
 
-## Compact redesign options
-
-### Option A — Horizontal list tile (recommended)
-- Switch the Albums grid from 2-column cards to a single-column list of horizontal tiles.
-- Each tile is a short horizontal row: square cover on the left (same 30 dp radius, `s12` padding), album name + count stacked to the right.
-- Keeps the navbar-matched 30 dp radius on both the card and the cover.
-- Most compact: each item is roughly 80–90 dp tall, so far more albums fit on screen than the current ~208 dp cards.
-- Trade-off: loses the dense 2-column photo-grid feel; reads more like a list.
-
-### Option B — Shorter 2-column card
-- Keep the 2-column grid but make each card shorter by giving the cover a fixed landscape aspect ratio (cover takes roughly the top half of the card, text below).
-- Card still uses 30 dp radius and padded cover.
-- Example: ~158 dp tall cards (down from ~208 dp).
-- Trade-off: the cover becomes a wide landscape rectangle rather than a square album cover; may look less like a photo album.
-
-## Open question
-Which direction do you want? My recommendation is **Option A** (horizontal list tiles) because it maximizes visible albums and "cover is half the height" maps naturally to a square thumbnail beside the text.
-
-## Files that will change once direction is chosen
-- `lib/features/albums/albums_screen.dart` (grid delegate / list structure)
-- `lib/features/albums/widgets/album_card.dart` (layout)
+## Files touched
+- `lib/core/theme/app_radius.dart`
+- `lib/widgets/app_card.dart`
+- `lib/features/albums/widgets/album_card.dart`
+- `lib/features/albums/albums_screen.dart`
+- `test/widgets/app_card_test.dart`
 - `test/features/albums/album_card_test.dart`
-- `test/features/albums/albums_screen_test.dart`
-- `test/widgets/design_goldens_test.dart` + golden PNGs
+- `test/widgets/design_goldens_test.dart`
+- `test/widgets/goldens/ci/album_card.png`
+- `test/widgets/goldens/ci/people_strip.png`
 
-## Current verification (already complete for first pass)
+## Verification
 - [x] `flutter analyze` — no issues.
-- [x] `flutter test test/widgets/app_card_test.dart test/features/albums/album_card_test.dart` — all passed.
-- [x] `flutter test test/features/albums/albums_screen_test.dart` — all passed.
-- [x] `flutter test test/widgets/design_goldens_test.dart` — all passed after regenerating affected goldens.
+- [x] `flutter test test/features/albums/album_card_test.dart test/features/albums/albums_screen_test.dart test/widgets/design_goldens_test.dart` — all passed.
+
+## Notes
+- `album_card_test.dart` wraps `AlbumCard` in a `ProviderScope` with a fake `PhotoLibraryService` so `AssetThumbnail` resolves.
+- `people_strip.png` golden was regenerated to account for a prior padding tweak.
+- Manual end-to-end verification on the connected Pixel device is still pending.
 
 ## Next step
-Wait for user to pick Option A or B (or propose a third option) before editing.
+User should verify visually on the Pixel device and run `tool/check.sh` when convenient.
