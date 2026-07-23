@@ -7,7 +7,6 @@ import '../core/theme/app_radius.dart';
 import '../core/theme/app_space.dart';
 import '../features/detail/photo_viewer_args.dart';
 import '../services/photo_library_service.dart';
-import 'asset_hero_tag.dart';
 import 'asset_thumbnail.dart';
 
 /// How far beyond the viewport a photo scroller pre-builds its children.
@@ -75,18 +74,12 @@ class AssetGrid extends StatelessWidget {
               '/photo/${items[i].id}',
               extra: PhotoViewerArgs([for (final a in items) a.id], i),
             ),
-            // The clip sits outside the Hero: inside it, the photo would round
-            // itself mid-flight while the detail viewer's destination is
-            // full-bleed.
             child: ClipRRect(
               borderRadius: AppRadius.br12,
-              child: Hero(
-                tag: assetHeroTag(items[i].id),
-                child: AssetThumbnail(
-                  assetId: items[i].id,
-                  size: 400,
-                  showVideoBadge: true,
-                ),
+              child: AssetThumbnail(
+                assetId: items[i].id,
+                size: 400,
+                showVideoBadge: true,
               ),
             ),
           );

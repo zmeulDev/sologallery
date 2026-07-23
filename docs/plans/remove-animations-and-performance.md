@@ -1,9 +1,15 @@
 # Remove all animation + performance pass
 
 Status: **Part 2 (performance) COMPLETE and verified on device.
-Part 1 (animation removal) approved but NOT started.**
+Part 1 A1 (router & Hero teardown) shipped — host-verified (`flutter analyze`
+clean, 653 tests pass, goldens byte-identical). On-device integration +
+manual E2E for A1 still pending. The `detail_stage` 1080-underlay retirement
+is deferred from A1 to A4 (entangled with the zoom animation A4 rewrites —
+see A1's last bullet).**
 Branch: `feature/metadata-search` (consider branching `feature/no-motion` for Part 1)
-Next step: Part 1, phase A1 (router & Hero teardown). Nothing from Part 2 blocks it.
+Next step: A1 on-device verification (`hero_dismiss_test`, `nav_shell_test`,
+`detail_actions_test` + manual tap-to-open), then A2 (retire `EntranceFade`
+and `AppMotion`).
 
 ## Part 2 completion record (2026-07-22)
 
@@ -93,32 +99,60 @@ Deleting any of them removes a feature:
 ## Inventory (28 sites audited; 20 files)
 
 ### A1. Router & Hero teardown — do this first, it is the riskiest
-- [ ] `lib/core/router/fade_through_page.dart` — **delete the file.** Both
+- [x] `lib/core/router/fade_through_page.dart` — **deleted.** Both
       helpers collapse to `NoTransitionPage` (confirmed present in
       go_router 17.3.0, `custom_transition_page.dart:166`).
-- [ ] `lib/core/router/app_router.dart:70,79,88,97,108,122,140` — seven
-      `fadeThroughPage(...)` → `NoTransitionPage(child: ...)`.
-- [ ] `app_router.dart:155,174` — two `heroMediaPage(...)` → `NoTransitionPage`.
+- [x] `lib/core/router/app_router.dart:70,79,88,97,108,122,140` — seven
+      `fadeThroughPage(...)` → `NoTransitionPage(key: state.pageKey, child: …)`.
+- [x] `app_router.dart:155,174` — two `heroMediaPage(...)` → `NoTransitionPage`.
       Safe: `heroMediaPage` already returned the child untouched and opaque, so
       there is no white-frame bleed to reintroduce (see that gotcha in CLAUDE.md
       — it stays true, the fade was never there).
-- [ ] `app_router.dart:244-266` — delete `HeroMode` from `_BranchContainer`; the
-      `IndexedStack`/`StackFit.expand` rebuild stays (it is load-bearing for
-      branch state). Delete the HeroMode doc-comment block at `:192,:244-246`.
-- [ ] Delete `Hero` wrappers at `asset_grid.dart:66`, `library_screen.dart:412`,
-      `saved_screen.dart:130`, `album_detail_screen.dart:58`,
-      `detail_stage.dart:77`, `memory_card.dart:67`,
-      `memory_player_screen.dart:288`.
-- [ ] Delete `lib/widgets/asset_hero_tag.dart` and
-      `lib/features/memories/memory_hero_tag.dart` once no callers remain.
-- [ ] `detail_stage.dart:38-102` — with the Hero gone, the two `AnimatedOpacity`
-      layers cross-fading *thumbnail placeholder → real page* lose their reason
-      to exist (they existed to stop a cropped thumb un-cropping mid-flight).
-      Replace with a direct conditional: show the placeholder until the real
-      image resolves, then swap.
+- [x] `app_router.dart:244-266` — deleted `HeroMode` from `_BranchContainer`; the
+      `IndexedStack`/`StackFit.expand` rebuild stays (load-bearing for branch
+      state). Deleted the HeroMode doc-comment blocks.
+- [x] Deleted `Hero` wrappers at `asset_grid.dart`, `library_screen.dart`,
+      `saved_screen.dart`, `album_detail_screen.dart`, `detail_stage.dart`,
+      `memory_card.dart`, `memory_player_screen.dart` (and the stale clip/Hero
+      comments around them).
+- [x] Deleted `lib/widgets/asset_hero_tag.dart` and
+      `lib/features/memories/memory_hero_tag.dart` (no callers remain).
+- [~] `detail_stage.dart` — the `Hero` wrapper is removed (A1). **The
+      `AnimatedOpacity`→conditional-swap + 1080-underlay retirement is DEFERRED
+      to A4.** Reason: it is entangled with `DismissiblePhoto`'s double-tap zoom
+      animation, whose `_zoom` `AnimationController` is restarted from a
+      completed-and-stopped state on the second double-tap. `dismissible_photo
+      _test.dart`'s "a second double tap returns to fit" relies on the 1080
+      underlay's async thumbnail load (via `ThumbnailGate`) to schedule the
+      extra ticker frame that settles that restart; removing the underlay (or
+      making it transient via a provider gate) breaks the reset. A4 rewrites the
+      zoom to an instant transform write (deleting `_zoom`/`_zoomAnimation`),
+      which removes the animation-timing coupling entirely — so the underlay
+      retirement folds into A4 cleanly. Verified by isolation: the original
+      structure (with 1080) passes; `Stack([PhotoPage])` alone fails; adding
+      the 1080 back passes; the failure is timing, not logic. The audit-#3
+      memory win (1080 dropped instead of held ~6 MB × live pages) lands with
+      A4.
 
-**Consequence to expect:** tapping a photo becomes a hard cut from grid to
-fullscreen, and closing is a hard cut back. This is the intended outcome.
+**Consequence shipped:** tapping a photo is a hard cut from grid to fullscreen,
+and closing is a hard cut back. `flutter analyze` clean; 653 host tests pass
+(goldens byte-identical, `dismissible_photo_test` 16/16, `detail_screen_test`,
+`memory_player_screen_test` green). Test edits: `memory_player_screen_test`
+dropped its `find.byType(Hero)` assertion; `hero_dismiss_test`'s stale
+`fadeThroughPage`/`AppMotion.long` comment updated (its opacity/drag assertions
+still hold — `DismissiblePhoto` is A4's domain, untouched here).
+
+**On-device (Pixel 9 Pro XL `46121FDAS008AA`, patrol):** `hero_dismiss_test`
+1/1 (hard-cut open + drag-dismiss under real touch), `detail_actions_test` 3/3
+ran (2 skipped — the limited-access/delete cases; incl. "double tap zooms in
+on a real photo, and back out", which confirms the zoom toggle the host test
+struggled with works fine in production), `nav_shell_test` 5/5 then 4/5 — the
+one failure is the pre-existing flaky "scrolled to the end, Library clears the
+nav capsule" (passes on re-run; the flakiness is documented in the nav_shell
+traversal-rewrite note above, not an A1 regression). **Remaining manual E2E:**
+a human eye on whether tap-to-open reads as *instant* vs *broken* — the
+hardest-cut open and the no-feedback drag-dismiss (the latter is A4's to
+change, but the open is A1's).
 
 ### A2. Retire the motion primitives
 - [ ] `lib/widgets/entrance_fade.dart` — **delete the file** (and

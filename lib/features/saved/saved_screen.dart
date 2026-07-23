@@ -8,7 +8,6 @@ import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../widgets/asset_grid.dart' show kPhotoGridCacheExtent;
-import '../../widgets/asset_hero_tag.dart';
 import '../../widgets/asset_thumbnail.dart';
 import '../../widgets/empty_state.dart';
 import '../detail/photo_viewer_args.dart';
@@ -129,21 +128,18 @@ class _SavedCell extends StatelessWidget {
           context.push('/photo/$id', extra: PhotoViewerArgs(assetIds, index)),
       child: ClipRRect(
         borderRadius: AppRadius.br12,
-        child: Hero(
-          tag: assetHeroTag(id),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              AssetThumbnail(assetId: id, size: 500, showVideoBadge: true),
-              // A quiet heart marks the whole grid as favorites at a glance;
-              // unfavoriting still flows through the detail viewer.
-              const Positioned(
-                top: AppSpace.s8,
-                right: AppSpace.s8,
-                child: _HeartBadge(),
-              ),
-            ],
-          ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            AssetThumbnail(assetId: id, size: 500, showVideoBadge: true),
+            // A quiet heart marks the whole grid as favorites at a glance;
+            // unfavoriting still flows through the detail viewer.
+            const Positioned(
+              top: AppSpace.s8,
+              right: AppSpace.s8,
+              child: _HeartBadge(),
+            ),
+          ],
         ),
       ),
     );

@@ -63,11 +63,9 @@ void main() {
     await $.tester.pump();
     await gesture.up();
 
-    // onDismissed fires synchronously from the pointer-up handler — no
-    // separate exit animation runs first. What's left to wait out is the
-    // route's own pop transition (fadeThroughPage's
-    // reverseTransitionDuration, AppMotion.long/450ms), which is also the
-    // Hero return-flight's own duration.
+    // onDismissed fires synchronously from the pointer-up handler. The route
+    // has no transition (NoTransitionPage — instant pop), so a single pump is
+    // enough; the extra wait is harmless.
     await $.tester.pump();
     await $.tester.pump(const Duration(milliseconds: 500));
 

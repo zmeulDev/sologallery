@@ -11,7 +11,6 @@ import '../../services/indexing_service.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
 import '../../widgets/asset_grid.dart';
-import '../../widgets/asset_hero_tag.dart';
 import '../../widgets/asset_thumbnail.dart';
 import '../../widgets/circle_icon_button.dart';
 import '../../widgets/empty_state.dart';
@@ -410,13 +409,10 @@ class _PreviewGrid extends StatelessWidget {
             ),
             child: ClipRRect(
               borderRadius: AppRadius.br12,
-              child: Hero(
-                tag: assetHeroTag(id),
-                child: AssetThumbnail(
-                  assetId: id,
-                  size: 300,
-                  showVideoBadge: true,
-                ),
+              child: AssetThumbnail(
+                assetId: id,
+                size: 300,
+                showVideoBadge: true,
               ),
             ),
           ),

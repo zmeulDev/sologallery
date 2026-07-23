@@ -8,7 +8,6 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../widgets/asset_thumbnail.dart';
 import '../../../widgets/pressable.dart';
 import '../domain/memory_kind.dart';
-import '../memory_hero_tag.dart';
 
 /// One memory in the Library carousel: a portrait cover with its title set
 /// over the photo, and a row of hairline segments marking how many photos the
@@ -64,10 +63,7 @@ class MemoryCard extends StatelessWidget {
                   if (cover == null)
                     ColoredBox(color: colors.surface2)
                   else
-                    Hero(
-                      tag: memoryHeroTag(memory.id),
-                      child: AssetThumbnail(assetId: cover, size: 500),
-                    ),
+                    AssetThumbnail(assetId: cover, size: 500),
                   // Ink from the bottom so the title stays legible over any
                   // photo, in either theme.
                   const DecoratedBox(

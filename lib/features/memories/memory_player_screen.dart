@@ -13,7 +13,6 @@ import '../../widgets/asset_thumbnail.dart';
 import '../../widgets/precache_adjacent.dart';
 import '../detail/widgets/photo_page.dart';
 import 'memories_providers.dart';
-import 'memory_hero_tag.dart';
 
 /// Plays one memory as a full-screen story: a title card, then each photo in
 /// turn, advancing on a timer.
@@ -285,10 +284,7 @@ class _TitleCard extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        Hero(
-          tag: memoryHeroTag(memoryId),
-          child: AssetThumbnail(assetId: coverAssetId, size: 1000),
-        ),
+        AssetThumbnail(assetId: coverAssetId, size: 1000),
         // Heavier than the card's scrim: the title is larger here and has to
         // hold against a full-bleed photo rather than a 150px thumbnail.
         const DecoratedBox(
