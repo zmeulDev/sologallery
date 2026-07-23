@@ -18,8 +18,13 @@ abstract final class AppRadius {
   /// Floating surfaces: bottom sheets and dialogs share one corner.
   static const double r20 = 20;
 
+  /// Matches the floating nav capsule's corner radius (60 dp high,
+  /// `StadiumBorder`). Used by album cards so their frame echoes the navbar.
+  static const double r30 = 30;
+
   static const BorderRadius br4 = BorderRadius.all(Radius.circular(r4));
   static const BorderRadius br8 = BorderRadius.all(Radius.circular(r8));
   static const BorderRadius br12 = BorderRadius.all(Radius.circular(r12));
   static const BorderRadius br20 = BorderRadius.all(Radius.circular(r20));
+  static const BorderRadius br30 = BorderRadius.all(Radius.circular(r30));
 }

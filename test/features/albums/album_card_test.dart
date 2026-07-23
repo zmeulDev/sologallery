@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sologallery/core/database/daos/albums_dao.dart'
     show AlbumSummary;
 import 'package:sologallery/core/format/count_labels.dart';
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/albums/widgets/album_card.dart';
+import 'package:sologallery/services/permission_provider.dart';
 import 'package:sologallery/widgets/app_card.dart';
 import 'package:sologallery/widgets/asset_thumbnail.dart';
+
+import '../../support/fake_photo_library_service.dart';
 
 void main() {
   Future<void> pump(
@@ -16,12 +20,19 @@ void main() {
     VoidCallback? onLongPress,
   }) {
     return tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light,
-        home: AlbumCard(
-          summary: summary,
-          onTap: onTap,
-          onLongPress: onLongPress,
+      ProviderScope(
+        overrides: [
+          photoLibraryServiceProvider.overrideWithValue(
+            FakePhotoLibraryService(),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          home: AlbumCard(
+            summary: summary,
+            onTap: onTap,
+            onLongPress: onLongPress,
+          ),
         ),
       ),
     );

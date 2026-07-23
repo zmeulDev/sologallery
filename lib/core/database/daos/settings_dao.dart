@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:flutter/material.dart' show ThemeMode;
 
@@ -18,6 +20,7 @@ class SettingsDao extends DatabaseAccessor<AppDatabase> with _$SettingsDaoMixin 
   static const _memoriesEnabledKey = 'memories_enabled';
   static const _facesEnabledKey = 'faces_enabled';
   static const _consentKey = 'ml_consent';
+  static const _excludedFolderIdsKey = 'excluded_folder_ids';
 
   /// The consent prompt's version. **Bump this when the prompt's scope changes**
   /// — a new analysis feature, or an existing one starting to do materially
@@ -133,6 +136,37 @@ class SettingsDao extends DatabaseAccessor<AppDatabase> with _$SettingsDaoMixin 
 
   /// Marks the current consent prompt as answered (whatever the answers were).
   Future<void> recordConsent() => put(_consentKey, consentVersion.toString());
+
+  // --- Folder exclusions for indexing ----------------------------------------
+  //
+  // The user can exclude device folders from on-device analysis. Excluded
+  // folders remain visible in Library/Saved/Search; their assets just receive no
+  // labels, OCR text, or face embeddings. The set is stored as JSON; missing or
+  // malformed values default to empty.
+
+  /// Reactive set of folder ids excluded from analysis.
+  Stream<Set<String>> watchExcludedFolderIds() =>
+      watch(_excludedFolderIdsKey).map(_decodeFolderIds);
+
+  /// One-shot read of excluded folder ids.
+  Future<Set<String>> readExcludedFolderIds() async =>
+      _decodeFolderIds(await read(_excludedFolderIdsKey));
+
+  /// Persists the excluded folder ids as a JSON-encoded list.
+  Future<void> setExcludedFolderIds(Set<String> ids) => put(
+        _excludedFolderIdsKey,
+        jsonEncode(ids.toList()),
+      );
+
+  static Set<String> _decodeFolderIds(String? value) {
+    if (value == null || value.isEmpty) return const {};
+    try {
+      final list = jsonDecode(value) as List<dynamic>;
+      return list.whereType<String>().toSet();
+    } on FormatException {
+      return const {};
+    }
+  }
 
   static bool _isCurrent(String? value) =>
       int.tryParse(value ?? '') == consentVersion;

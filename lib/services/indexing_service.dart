@@ -381,6 +381,30 @@ class IndexingService {
     }
   }
 
+  /// Applies a new set of folder ids excluded from analysis.
+  ///
+  /// Correctly identifying only the newly excluded/included assets requires the
+  /// same expensive folder paging the indexer already does, and the setting
+  /// changes rarely — so a full derived-data reset is the right trade-off.
+  Future<void> setExcludedFolderIds(Set<String> ids) async {
+    await settings.setExcludedFolderIds(ids);
+
+    // Wipe every inference that the new scope invalidates.
+    await dao.clearContent();
+    await faces.clearFaces();
+    await faces.clearPersons();
+    await settings.put(_reclusterBaselineKey, '0');
+    await memories.clearMemories();
+    await settings.put(_memoriesDateKey, '');
+    await settings.put(_memoriesCountKey, '0');
+
+    // Re-queue everything so the next pass re-analyzes only included folders.
+    await dao.resetMlPending();
+
+    _log.info('Excluded folder set changed — reset derived data');
+    unawaited(start());
+  }
+
   Future<void> dispose() async {
     _cancelled = true;
     _resweepTimer?.cancel();
@@ -466,6 +490,17 @@ class IndexingService {
       // metadata sweep that fills the grid, and the worker never spawns.
       final needsMl = searchEnabled || facesEnabled;
 
+      // Build the excluded-asset set once per round. If the user changes the
+      // exclusion list mid-pass, the next round re-reads it via _dirty.
+      Set<String> excludedAssetIds = const {};
+      if (needsMl) {
+        final excludedFolderIds = await settings.readExcludedFolderIds();
+        if (excludedFolderIds.isNotEmpty) {
+          excludedAssetIds = await _excludedAssetIds(excludedFolderIds);
+        }
+      }
+      if (_cancelled) return;
+
       await _sweepMetadata();
       if (_cancelled) return;
 
@@ -488,6 +523,7 @@ class IndexingService {
             id,
             searchEnabled: searchEnabled,
             facesEnabled: facesEnabled,
+            excluded: excludedAssetIds.contains(id),
           );
           done++;
           _emitProgress(
@@ -786,10 +822,36 @@ class IndexingService {
   /// trustworthy enough to headline a memory.
   static const _minPersonFaces = 15;
 
+  /// Collects every asset id contained in [folderIds] by paging each folder.
+  /// Checked once per indexing round; assets in the returned set get no ML work.
+  Future<Set<String>> _excludedAssetIds(Set<String> folderIds) async {
+    const pageSize = 500;
+    final excluded = <String>{};
+    for (final folderId in folderIds) {
+      var page = 0;
+      while (!_cancelled) {
+        await _awaitNotPaused();
+        if (_cancelled) break;
+        final refs = await photos.folderAssets(
+          folderId: folderId,
+          page: page,
+          pageSize: pageSize,
+        );
+        if (refs.isEmpty) break;
+        for (final r in refs) {
+          excluded.add(r.id);
+        }
+        page++;
+      }
+    }
+    return excluded;
+  }
+
   Future<void> _indexOne(
     String id, {
     required bool searchEnabled,
     required bool facesEnabled,
+    required bool excluded,
   }) async {
     try {
       final meta = await photos.assetIndexMeta(id);
@@ -798,29 +860,34 @@ class IndexingService {
       var labels = const <Label>[];
       var text = '';
       var detectedFaces = const <DetectedFace>[];
-      // No consented feature needs pixels, so don't even render a thumbnail.
-      // `indexing: true` routes these through the separate pool so a pass
-      // doesn't take slots from the grid's gate mid-fling. The bytes go
-      // straight to the worker over the SendPort — no temp file on the UI
-      // isolate (the worker writes its own).
-      final bytes = (searchEnabled || facesEnabled)
-          ? await photos.thumbnail(id, 512, 512, indexing: true)
-          : null;
-      if (bytes != null) {
-        // A larger thumbnail for OCR only — recovers small text the 512 misses.
-        // Labels/faces stay on the 512 bytes (bounded memory, stable box space).
-        final ocrBytes = searchEnabled
-            ? await photos.thumbnail(id, _ocrEdge, _ocrEdge, indexing: true)
+
+      // Assets in excluded folders are stamped as indexed but never analyzed:
+      // the setting is about analysis scope, not library visibility.
+      if (!excluded) {
+        // No consented feature needs pixels, so don't even render a thumbnail.
+        // `indexing: true` routes these through the separate pool so a pass
+        // doesn't take slots from the grid's gate mid-fling. The bytes go
+        // straight to the worker over the SendPort — no temp file on the UI
+        // isolate (the worker writes its own).
+        final bytes = (searchEnabled || facesEnabled)
+            ? await photos.thumbnail(id, 512, 512, indexing: true)
             : null;
-        final analysis = await worker.analyze(
-          bytes: bytes,
-          ocrBytes: ocrBytes,
-          content: searchEnabled,
-          faces: facesEnabled,
-        );
-        labels = analysis.labels;
-        text = analysis.text;
-        detectedFaces = analysis.faces;
+        if (bytes != null) {
+          // A larger thumbnail for OCR only — recovers small text the 512 misses.
+          // Labels/faces stay on the 512 bytes (bounded memory, stable box space).
+          final ocrBytes = searchEnabled
+              ? await photos.thumbnail(id, _ocrEdge, _ocrEdge, indexing: true)
+              : null;
+          final analysis = await worker.analyze(
+            bytes: bytes,
+            ocrBytes: ocrBytes,
+            content: searchEnabled,
+            faces: facesEnabled,
+          );
+          labels = analysis.labels;
+          text = analysis.text;
+          detectedFaces = analysis.faces;
+        }
       }
 
       await dao.upsertIndexed(
@@ -834,7 +901,8 @@ class IndexingService {
       );
       // FaceRecord is structurally identical to DetectedFace. Nothing to insert
       // when face detection is off — the worker returns no faces either.
-      if (facesEnabled) {
+      // Excluded assets also skip faces: the worker never ran for them.
+      if (facesEnabled && !excluded) {
         await faces.insertFaces(id, [
           for (final f in detectedFaces)
             (

@@ -69,4 +69,28 @@ void main() {
       expect(await db.settingsDao.readFacesEnabled(), isFalse);
     });
   });
+
+  group('excluded folders', () {
+    test('defaults to empty and round-trips a set', () async {
+      expect(await db.settingsDao.readExcludedFolderIds(), isEmpty);
+      expect(await db.settingsDao.watchExcludedFolderIds().first, isEmpty);
+
+      await db.settingsDao.setExcludedFolderIds({'f1', 'f2'});
+      expect(await db.settingsDao.readExcludedFolderIds(), {'f1', 'f2'});
+      expect(await db.settingsDao.watchExcludedFolderIds().first, {'f1', 'f2'});
+
+      await db.settingsDao.setExcludedFolderIds({});
+      expect(await db.settingsDao.readExcludedFolderIds(), isEmpty);
+    });
+
+    test('malformed stored value defaults to empty', () async {
+      await db.settingsDao.put('excluded_folder_ids', 'not-json');
+      expect(await db.settingsDao.readExcludedFolderIds(), isEmpty);
+    });
+
+    test('non-string entries are ignored', () async {
+      await db.settingsDao.put('excluded_folder_ids', '["a", 123, "b"]');
+      expect(await db.settingsDao.readExcludedFolderIds(), {'a', 'b'});
+    });
+  });
 }

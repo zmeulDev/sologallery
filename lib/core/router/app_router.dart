@@ -16,6 +16,7 @@ import '../../features/people/people_screen.dart';
 import '../../features/people/person_detail_screen.dart';
 import '../../features/saved/saved_screen.dart';
 import '../../features/search/search_screen.dart';
+import '../../features/settings/analysis_settings_screen.dart';
 import '../../features/settings/consent_provider.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../services/permission_provider.dart';
@@ -85,6 +86,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => NoTransitionPage(
           key: state.pageKey,
           child: const SettingsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/analysis',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) => NoTransitionPage(
+          key: state.pageKey,
+          child: const AnalysisSettingsScreen(),
         ),
       ),
       GoRoute(

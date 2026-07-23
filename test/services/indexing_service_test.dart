@@ -775,4 +775,116 @@ void main() {
     await service.dispose();
     expect(worker.disposed, isTrue);
   });
+
+  group('folder exclusions', () {
+    /// Two assets: one in the Camera folder, one in Screenshots.
+    FakePhotoLibraryService twoFolderPhotos() => FakePhotoLibraryService(
+          assets: [
+            AssetRef(id: 'camera', createdAt: DateTime(2026, 8, 2)),
+            AssetRef(id: 'screenshot', createdAt: DateTime(2026, 8, 1)),
+          ],
+          thumbnailBytes: Uint8List.fromList([1, 2, 3]),
+          folders: [
+            const DeviceFolder(id: 'camera-folder', name: 'Camera', count: 1),
+            const DeviceFolder(
+              id: 'screenshots-folder',
+              name: 'Screenshots',
+              count: 1,
+            ),
+          ],
+          folderAssetsById: {
+            'camera-folder': [
+              AssetRef(id: 'camera', createdAt: DateTime(2026, 8, 2)),
+            ],
+            'screenshots-folder': [
+              AssetRef(id: 'screenshot', createdAt: DateTime(2026, 8, 1)),
+            ],
+          },
+        );
+
+    test('excluded folder assets are stamped but not analyzed', () async {
+      await db.settingsDao.setExcludedFolderIds({'camera-folder'});
+      await consentTo(search: true);
+      final worker = FakeMlWorker(labels: const [('Dog', 0.9)]);
+      final service = serviceFor(twoFolderPhotos(), worker);
+      addTearDown(service.dispose);
+
+      await service.start();
+
+      // Both assets are cached, but only the screenshot got labels.
+      expect(await db.indexDao.allCachedIds(), hasLength(2));
+      expect(await db.indexDao.pendingMlIds(), isEmpty);
+      expect(worker.calls, hasLength(1));
+
+      final labels = await db.select(db.photoLabels).get();
+      expect(labels, hasLength(1));
+      expect(labels.single.assetId, 'screenshot');
+    });
+
+    test('excluded folder assets get no faces', () async {
+      await db.settingsDao.setExcludedFolderIds({'camera-folder'});
+      await consentTo(faces: true);
+      final worker = FakeMlWorker(
+        faces: [
+          (
+            left: 0,
+            top: 0,
+            right: 10,
+            bottom: 10,
+            embedding: Float32List.fromList(List.filled(192, 0.1)),
+          ),
+        ],
+      );
+      final service = serviceFor(twoFolderPhotos(), worker);
+      addTearDown(service.dispose);
+
+      await service.start();
+
+      final faceRows = await db.select(db.faceEmbeddings).get();
+      expect(faceRows, hasLength(1));
+      expect(faceRows.single.assetId, 'screenshot');
+    });
+
+    test('changing exclusions resets derived data and re-analyzes only included folders',
+        () async {
+      final photos = twoFolderPhotos();
+      await consentTo(search: true, faces: true);
+      final worker = FakeMlWorker(
+        labels: const [('Dog', 0.9)],
+        faces: [
+          (
+            left: 0,
+            top: 0,
+            right: 10,
+            bottom: 10,
+            embedding: Float32List.fromList(List.filled(192, 0.1)),
+          ),
+        ],
+      );
+      final service = serviceFor(photos, worker);
+      addTearDown(service.dispose);
+
+      await service.start();
+      expect(await db.select(db.photoLabels).get(), isNotEmpty);
+      expect(await db.select(db.faceEmbeddings).get(), isNotEmpty);
+
+      await service.setExcludedFolderIds({'camera-folder'});
+      // Wait for the re-analysis pass to finish.
+      for (var i = 0; i < 100; i++) {
+        if ((await db.indexDao.pendingMlIds()).isEmpty) break;
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+
+      // Reset happened: only the included folder's asset still has derived data.
+      expect(await db.indexDao.pendingMlIds(), isEmpty);
+      final labels = await db.select(db.photoLabels).get();
+      expect(labels, hasLength(1));
+      expect(labels.single.assetId, 'screenshot');
+      final faces = await db.select(db.faceEmbeddings).get();
+      expect(faces, hasLength(1));
+      expect(faces.single.assetId, 'screenshot');
+      // The re-cluster baseline was reset too.
+      expect(await db.settingsDao.read('faces_at_last_recluster'), '0');
+    });
+  });
 }
