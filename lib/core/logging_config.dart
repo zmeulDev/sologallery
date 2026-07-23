@@ -1,3 +1,4 @@
+import 'dart:async' show StreamSubscription;
 import 'dart:developer' as developer;
 
 import 'package:flutter/foundation.dart';
@@ -10,11 +11,14 @@ import 'package:logging/logging.dart';
 /// Loggers are created per-area at their point of use, e.g.
 /// `Logger('SoloGallery.db')`, `Logger('SoloGallery.ml')`; they inherit this
 /// root configuration by name.
+StreamSubscription<LogRecord>? _loggingSubscription;
+
 void configureLogging() {
   Logger.root.level = kReleaseMode ? Level.WARNING : Level.ALL;
-  Logger.root.onRecord.listen((record) {
+  _loggingSubscription?.cancel();
+  _loggingSubscription = Logger.root.onRecord.listen((record) {
     developer.log(
-      record.message,
+      '[${record.loggerName}] ${record.message}',
       time: record.time,
       level: record.level.value,
       name: record.loggerName,

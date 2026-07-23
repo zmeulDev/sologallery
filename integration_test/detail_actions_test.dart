@@ -30,6 +30,22 @@ void main() {
     expect($(AssetThumbnail), findsWidgets);
   }
 
+  /// Returns the first non-video asset in the library. The very first grid cell
+  /// can be a video on some seeded devices, and the double-tap zoom test needs
+  /// a still photo.
+  Future<String> firstStillAssetId(PatrolIntegrationTester $) async {
+    final service = PhotoLibraryService();
+    final page = await service.libraryMetadataPage(
+      dated: true,
+      page: 0,
+      pageSize: 60,
+    );
+    for (final asset in page) {
+      if (!await service.isVideoAsset(asset.id)) return asset.id;
+    }
+    throw Exception('no still assets on device — seed test_assets/');
+  }
+
   patrolTest('open a photo → favorite, view EXIF, add to album', ($) async {
     await bootAndGrant($);
 
@@ -66,7 +82,13 @@ void main() {
 
   patrolTest('double tap zooms in on a real photo, and back out', ($) async {
     await bootAndGrant($);
-    await $(AssetThumbnail).first.tap();
+    final stillId = await firstStillAssetId($);
+    await $.tester.tap(
+      find.byWidgetPredicate(
+        (w) => w is AssetThumbnail && w.assetId == stillId,
+        description: 'AssetThumbnail($stillId)',
+      ),
+    );
     await $.pumpAndSettle();
 
     Matrix4 transform() =>

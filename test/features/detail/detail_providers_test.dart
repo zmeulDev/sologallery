@@ -90,6 +90,21 @@ void main() {
     final detail = await makeContainer().read(assetDetailProvider('a1').future);
     expect(detail?.width, 4000);
   });
+
+  test('detailImageProvider uses the current max edge override', () async {
+    final container = ProviderContainer(
+      overrides: [
+        databaseProvider.overrideWithValue(db),
+        photoLibraryServiceProvider.overrideWithValue(fake),
+        detailImageMaxEdgeProvider.overrideWithValue(1024),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(detailImageProvider('a1').future);
+
+    expect(fake.previewMaxEdges, [1024]);
+  });
 }
 
 final _sample = DateTime(2026, 7, 12, 14, 33);

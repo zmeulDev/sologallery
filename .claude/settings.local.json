@@ -97,7 +97,15 @@
       "Bash(ffprobe *)",
       "Bash(brew list *)",
       "Bash(python3 *)",
-      "Bash(file /tmp/sg_timing_frames/*.png)"
+      "Bash(file /tmp/sg_timing_frames/*.png)",
+      "Bash(adb *)",
+      "Bash($HOME/Library/Android/sdk/platform-tools/adb *)",
+      "Bash(echo \"flutter run started, pid $!\")",
+      "Bash(/Users/zml-m4/Library/Android/sdk/platform-tools/adb -s 46121FDAS008AA shell uiautomator dump /sdcard/window_dump.xml)",
+      "Bash(/Users/zml-m4/Library/Android/sdk/platform-tools/adb -s 46121FDAS008AA pull /sdcard/window_dump.xml /tmp/sg_window_dump.xml)",
+      "Read(//tmp/**)",
+      "Bash(/Users/zml-m4/Library/Android/sdk/platform-tools/adb -s 46121FDAS008AA logcat -d --pid=19249)",
+      "Bash(/Users/zml-m4/Library/Android/sdk/platform-tools/adb -s 46121FDAS008AA logcat -d)"
     ]
   }
 }

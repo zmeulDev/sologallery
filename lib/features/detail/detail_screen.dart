@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -120,63 +122,65 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // No GestureDetector wrapping the PageView: tap and double-tap are
-          // resolved inside DismissiblePhoto, where the zoom transform lives
-          // and where the raw-pointer path already avoids the gesture arena.
-          Positioned.fill(
-            child: PageView.builder(
-              controller: _controller,
-              itemCount: _ids.length,
-              onPageChanged: (i) {
-                setState(() => _index = i);
-                _recordView(_currentId);
-              },
-              itemBuilder: (context, i) => _DetailPage(
-                assetId: _ids[i],
-                onDismissed: () => Navigator.of(context).maybePop(),
-                onSwipeUp: _onExif,
-                onTap: _toggleChrome,
+        body: Stack(
+          children: [
+            // No GestureDetector wrapping the PageView: tap and double-tap are
+            // resolved inside DismissiblePhoto, where the zoom transform lives
+            // and where the raw-pointer path already avoids the gesture arena.
+            Positioned.fill(
+              child: PageView.builder(
+                controller: _controller,
+                itemCount: _ids.length,
+                onPageChanged: (i) {
+                  setState(() => _index = i);
+                  _recordView(_currentId);
+                },
+                itemBuilder: (context, i) => _DetailPage(
+                  assetId: _ids[i],
+                  placeholderBytes:
+                      i == widget.args.initialIndex ? widget.args.initialBytes : null,
+                  onDismissed: () => Navigator.of(context).maybePop(),
+                  onSwipeUp: _onExif,
+                  onTap: _toggleChrome,
+                ),
               ),
             ),
-          ),
-          // Zero-size; warms the neighbouring pages' bytes. Sits in the Stack
-          // so it rebuilds with _index, without the stage rebuilding with it.
-          // Three each way: the payload is encoded bytes capped at
-          // kDetailImageMaxEdge, not decoded bitmaps, so six neighbours cost
-          // ~10-15MB resident and buy a run of spinner-free swipes.
-          PrecacheAdjacent(assetIds: _ids, index: _index, ahead: 3, behind: 3),
-          _Chrome(
-            visible: _chromeVisible,
-            alignment: Alignment.topCenter,
-            child: _TopBar(
-              onAddToAlbum: _onAddToAlbum,
-              onShare: _onShare,
+            // Zero-size; warms the neighbouring pages' bytes. Sits in the Stack
+            // so it rebuilds with _index, without the stage rebuilding with it.
+            // Three each way: the payload is encoded bytes capped at
+            // kDetailImageMaxEdge, not decoded bitmaps, so six neighbours cost
+            // ~10-15MB resident and buy a run of spinner-free swipes.
+            PrecacheAdjacent(assetIds: _ids, index: _index, ahead: 3, behind: 3),
+            _Chrome(
+              visible: _chromeVisible,
+              alignment: Alignment.topCenter,
+              child: _TopBar(
+                onAddToAlbum: _onAddToAlbum,
+                onShare: _onShare,
+              ),
             ),
-          ),
-          // The favorite flag is watched in a Consumer scoped to the action bar
-          // alone: a favorite tick then rebuilds only this chrome layer, not the
-          // whole PageView/Stage above it.
-          _Chrome(
-            visible: _chromeVisible,
-            alignment: Alignment.bottomCenter,
-            child: Consumer(
-              builder: (context, ref, _) {
-                final isFavorite =
-                    ref.watch(isFavoriteProvider(_currentId)).value ?? false;
-                return DetailActionBar(
-                  isFavorite: isFavorite,
-                  onFavorite: _onFavorite,
-                  onInfo: _onExif,
-                  onDelete: _onDelete,
-                );
-              },
+            // The favorite flag is watched in a Consumer scoped to the action bar
+            // alone: a favorite tick then rebuilds only this chrome layer, not the
+            // whole PageView/Stage above it.
+            _Chrome(
+              visible: _chromeVisible,
+              alignment: Alignment.bottomCenter,
+              child: Consumer(
+                builder: (context, ref, _) {
+                  final isFavorite =
+                      ref.watch(isFavoriteProvider(_currentId)).value ?? false;
+                  return DetailActionBar(
+                    isFavorite: isFavorite,
+                    onFavorite: _onFavorite,
+                    onInfo: _onExif,
+                    onDelete: _onDelete,
+                  );
+                },
+              ),
             ),
-          ),
-        ],
-      ),
-    );
+          ],
+        ),
+      );
   }
 }
 
@@ -187,12 +191,14 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
 class _DetailPage extends ConsumerWidget {
   const _DetailPage({
     required this.assetId,
+    this.placeholderBytes,
     required this.onDismissed,
     required this.onSwipeUp,
     required this.onTap,
   });
 
   final String assetId;
+  final Uint8List? placeholderBytes;
   final VoidCallback onDismissed;
   final VoidCallback onSwipeUp;
   final VoidCallback onTap;
@@ -200,9 +206,14 @@ class _DetailPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isVideo = ref.watch(isVideoProvider(assetId)).value ?? false;
+    // Start the still-image fetch in parallel with the kind check. For stills
+    // this removes the serial stall; for videos the provider is auto-disposed
+    // once the video branch replaces this page.
+    ref.watch(detailImageProvider(assetId));
     return DismissiblePhoto(
       assetId: assetId,
       isVideo: isVideo,
+      placeholderBytes: placeholderBytes,
       onDismissed: onDismissed,
       onSwipeUp: onSwipeUp,
       onTap: onTap,

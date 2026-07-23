@@ -8,11 +8,13 @@ import '../../core/theme/app_text_styles.dart';
 import '../../services/indexing_service.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
+import '../../services/thumbnail_provider.dart';
 import '../../widgets/asset_grid.dart' show kPhotoGridCacheExtent;
 import '../../widgets/asset_thumbnail.dart';
 import '../../widgets/circle_icon_button.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/limited_access_banner.dart';
+import '../detail/detail_providers.dart';
 import '../detail/photo_viewer_args.dart';
 import '../memories/widgets/memories_carousel.dart';
 import 'domain/library_filter.dart';
@@ -529,13 +531,13 @@ class _LibrarySection extends StatelessWidget {
 /// Implemented with [Wrap] rather than a nested `GridView.count` with
 /// `shrinkWrap: true` to avoid the extra intrinsic layout pass a scrollable
 /// inside a `ListView` item forces on every frame.
-class _PreviewGrid extends StatelessWidget {
+class _PreviewGrid extends ConsumerWidget {
   const _PreviewGrid({required this.assetIds});
 
   final List<String> assetIds;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final cellWidth = (constraints.maxWidth - 2 * AppSpace.s4) / 3;
@@ -550,10 +552,27 @@ class _PreviewGrid extends StatelessWidget {
                 width: cellWidth,
                 height: cellWidth,
                 child: GestureDetector(
-                  onTap: () => context.push(
-                    '/photo/$id',
-                    extra: PhotoViewerArgs(assetIds, index),
-                  ),
+                  onTap: () {
+                    final thumb = ref.read(
+                      thumbnailProvider(
+                        ThumbnailRequest(id, width: thumbSize, height: thumbSize),
+                      ),
+                    );
+                    // Start the high-res fetch before the route push so the
+                    // detail page is more likely to hit the in-memory cache.
+                    ref
+                        .read(photoLibraryServiceProvider)
+                        .previewImage(id, kDetailImageMaxEdge)
+                        .ignore();
+                    context.push(
+                      '/photo/$id',
+                      extra: PhotoViewerArgs(
+                        assetIds,
+                        index,
+                        initialBytes: thumb.value,
+                      ),
+                    );
+                  },
                   child: ClipRRect(
                     borderRadius: AppRadius.br12,
                     child: AssetThumbnail(

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import 'photo_page.dart';
@@ -23,12 +25,14 @@ class DetailStage extends StatelessWidget {
     super.key,
     required this.assetId,
     required this.isVideo,
+    this.placeholderBytes,
     this.transformController,
     this.panEnabled = true,
   });
 
   final String assetId;
   final bool isVideo;
+  final Uint8List? placeholderBytes;
   final TransformationController? transformController;
   final bool panEnabled;
 
@@ -38,6 +42,7 @@ class DetailStage extends StatelessWidget {
         ? VideoPage(assetId: assetId)
         : PhotoPage(
             assetId: assetId,
+            placeholderBytes: placeholderBytes,
             transformController: transformController,
             panEnabled: panEnabled,
           );

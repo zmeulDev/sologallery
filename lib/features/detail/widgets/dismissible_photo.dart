@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -56,6 +57,7 @@ class DismissiblePhoto extends StatefulWidget {
     super.key,
     required this.assetId,
     required this.isVideo,
+    this.placeholderBytes,
     required this.onDismissed,
     required this.onSwipeUp,
     required this.onTap,
@@ -63,6 +65,7 @@ class DismissiblePhoto extends StatefulWidget {
 
   final String assetId;
   final bool isVideo;
+  final Uint8List? placeholderBytes;
   final VoidCallback onDismissed;
   final VoidCallback onSwipeUp;
 
@@ -272,6 +275,7 @@ class _DismissiblePhotoState extends State<DismissiblePhoto> {
     final stage = DetailStage(
       assetId: widget.assetId,
       isVideo: widget.isVideo,
+      placeholderBytes: widget.placeholderBytes,
       transformController: widget.isVideo ? null : _transformController,
       // Harmless either way now that the dismiss gesture no longer competes
       // for the arena, but there's still nothing to pan to at scale 1.

@@ -8,6 +8,7 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../features/search/domain/search_date.dart';
+import 'detail_preview_cache.dart';
 import 'thumbnail_gate.dart';
 
 /// Coarse photo-library access state, mapped from `photo_manager`'s
@@ -115,6 +116,8 @@ class PhotoLibraryService {
   PhotoLibraryService();
 
   static final _log = Logger('SoloGallery.photos');
+  final _detailPreviewCache = DetailPreviewCache();
+  final Map<String, Future<Uint8List?>> _previewPending = {};
 
   /// Maps a raw plugin [PermissionState] onto our coarse [PhotoAccess].
   static PhotoAccess accessFromState(PermissionState state) {
@@ -564,9 +567,45 @@ class PhotoLibraryService {
   /// would crop); Android's scaler already fits within the box. The cap keeps a
   /// 48MP HEIC from decoding at full size (the OOM gotcha) while staying far
   /// sharper than a grid thumbnail. Never the full original (Absolute rules).
-  Future<Uint8List?> previewImage(String assetId, int maxEdge) async {
+  ///
+  /// Results are cached in a small in-memory LRU so revisiting the same photo
+  /// during a session is instant; call [clearDetailPreviewCache] on lifecycle
+  /// pause or memory pressure to reclaim the RAM. Concurrent requests for the
+  /// same key share one underlying fetch.
+  Future<Uint8List?> previewImage(String assetId, int maxEdge) {
+    final cached = _detailPreviewCache.get(assetId, maxEdge);
+    if (cached != null) {
+      _log.fine('previewImage($assetId, ${maxEdge}px) cache hit');
+      return Future.value(cached);
+    }
+
+    final key = '$assetId:$maxEdge';
+    final pending = _previewPending[key];
+    if (pending != null) {
+      _log.fine('previewImage($assetId, ${maxEdge}px) pending dedupe');
+      return pending;
+    }
+
+    final future = _fetchPreviewImage(assetId, maxEdge);
+    _previewPending[key] = future;
+    future.whenComplete(() => _previewPending.remove(key));
+    return future;
+  }
+
+  Future<Uint8List?> _fetchPreviewImage(String assetId, int maxEdge) async {
+    final total = Stopwatch()..start();
+    final entityTimer = Stopwatch()..start();
     final entity = await _entity(assetId);
-    if (entity == null) return null;
+    entityTimer.stop();
+    if (entity == null) {
+      total.stop();
+      _detailPreviewCache.put(assetId, maxEdge, null);
+      _log.fine(
+        'previewImage($assetId) entity unresolved after '
+        '${entityTimer.elapsedMilliseconds}ms',
+      );
+      return null;
+    }
     final size = ThumbnailSize.square(maxEdge);
     final option = (Platform.isIOS || Platform.isMacOS)
         ? ThumbnailOption.ios(
@@ -575,7 +614,27 @@ class PhotoLibraryService {
             resizeContentMode: ResizeContentMode.fit,
           )
         : ThumbnailOption(size: size, quality: 95);
-    return entity.thumbnailDataWithOption(option);
+    final thumbTimer = Stopwatch()..start();
+    final bytes = await entity.thumbnailDataWithOption(option);
+    thumbTimer.stop();
+    total.stop();
+    _detailPreviewCache.put(assetId, maxEdge, bytes);
+    _log.fine(
+      'previewImage($assetId, ${maxEdge}px) '
+      'entity=${entityTimer.elapsedMilliseconds}ms '
+      'thumb=${thumbTimer.elapsedMilliseconds}ms '
+      'total=${total.elapsedMilliseconds}ms '
+      'bytes=${bytes?.length ?? 0}',
+    );
+    return bytes;
+  }
+
+  /// Drops the in-memory detail preview cache and any in-flight dedupe futures.
+  /// Call from lifecycle pause and memory-pressure handlers to keep background
+  /// RAM low.
+  void clearDetailPreviewCache() {
+    _detailPreviewCache.clear();
+    _previewPending.clear();
   }
 
   // --- Video ---------------------------------------------------------------

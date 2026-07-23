@@ -79,6 +79,7 @@ class FakePhotoLibraryService extends PhotoLibraryService {
   int stopChangeNotifyCount = 0;
   final List<List<String>> deleteCalls = [];
   final List<List<String>> shareCalls = [];
+  final List<int> previewMaxEdges = [];
 
   /// The callback the indexer registered; invoke [fireLibraryChange] to
   /// simulate the device library changing (no plugin in host tests).
@@ -255,8 +256,10 @@ class FakePhotoLibraryService extends PhotoLibraryService {
   }
 
   @override
-  Future<Uint8List?> previewImage(String assetId, int maxEdge) async =>
-      previewBytes ?? thumbnailBytes;
+  Future<Uint8List?> previewImage(String assetId, int maxEdge) async {
+    previewMaxEdges.add(maxEdge);
+    return previewBytes ?? thumbnailBytes;
+  }
 
   @override
   Future<Duration?> videoDuration(String assetId) async =>

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' show Rect;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
 
 import '../../core/database/app_database.dart' show Album;
 import '../../core/database/database_provider.dart';
@@ -11,15 +12,32 @@ import '../../services/photo_library_service.dart' show AssetDetail;
 
 /// Longest-edge cap (px) for the detail preview — sharp on any phone screen,
 /// yet small enough to keep a 48MP HEIC from decoding at full size (OOM gotcha).
-const kDetailImageMaxEdge = 2048;
+const kDetailImageMaxEdge = 1440;
 
-/// Full screen-sized preview bytes for one asset, capped at [kDetailImageMaxEdge].
+/// Cap for the detail preview — large enough to be 1:1 on every phone screen,
+/// small enough to keep a 48MP HEIC from decoding at full size (OOM gotcha).
+final detailImageMaxEdgeProvider = Provider<int>((ref) => kDetailImageMaxEdge);
+
+/// Full screen-sized preview bytes for one asset, capped at the current
+/// [detailImageMaxEdgeProvider].
 /// `autoDispose` so swiped-away pages release their decoded image. Overridable
 /// with deterministic bytes in widget/golden tests.
+final _detailLog = Logger('SoloGallery.detailImage');
+
 final detailImageProvider = FutureProvider.autoDispose.family<Uint8List?, String>(
-  (ref, assetId) => ref
-      .read(photoLibraryServiceProvider)
-      .previewImage(assetId, kDetailImageMaxEdge),
+  (ref, assetId) async {
+    final maxEdge = ref.watch(detailImageMaxEdgeProvider);
+    final sw = Stopwatch()..start();
+    final bytes = await ref
+        .read(photoLibraryServiceProvider)
+        .previewImage(assetId, maxEdge);
+    sw.stop();
+    _detailLog.fine(
+      'detailImageProvider($assetId, ${maxEdge}px) provider→bytes '
+      '${sw.elapsedMilliseconds}ms',
+    );
+    return bytes;
+  },
 );
 
 /// Whether [assetId] is a video — selects the player vs. still-image page in

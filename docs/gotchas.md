@@ -709,6 +709,18 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   `Duration.zero`) isn't enough. Await a real turn
   (`await Future.delayed(const Duration(milliseconds: 10))`) before reading the
   recomputed value.
+- **Don't use `ProviderScope.overrideWithValue` inside `build` to feed a
+  `FutureProvider.family`.** We tried overriding `detailImageMaxEdgeProvider`
+  from `PhotoDetailScreen.build` so phone screens could request a smaller edge
+  than the 2048 px default. The override *looks* scoped correctly, but the
+  `FutureProvider.autoDispose.family` for the visible asset was created on its
+  first `ref.watch` with the **root-container default value**; it then rebuilt a
+  moment later with the overridden value, causing two platform round-trips and
+  a 2048 px fetch alongside the desired smaller one. The simpler fix is to
+  keep the cap as a constant provider (`kDetailImageMaxEdge = 1440`) and not
+  override it per screen. If a value truly must vary by screen, set it before
+  the family provider is first watched (e.g. a `StateProvider` in the route
+  argument parsing) rather than inside the family's own build path.
 
 ---
 
@@ -735,6 +747,12 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   and engine lines appear under the `flutter` tag). For app-side logs use
   `flutter run`/`flutter logs`/DevTools, or the on-device test output;
   use `adb logcat` for native/crash inspection.
+- **Keep the `Logger.root.onRecord` subscription alive.** `configureLogging()`
+  must hold the `StreamSubscription<LogRecord>` in a static variable. If the
+  subscription is created inside the function without a reference, the GC drops
+  it as soon as `configureLogging()` returns and debug logs stop appearing even
+  in `flutter run`. The subscription itself has no strong reference from
+  `Logger.root`.
 - **`build_runner` dropped `--delete-conflicting-outputs`** — removed and
   now the default; passing it only prints a warning. `tool/check.sh`
   runs plain `dart run build_runner build`.
