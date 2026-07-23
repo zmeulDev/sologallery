@@ -7,11 +7,9 @@ import 'package:sologallery/core/database/daos/albums_dao.dart'
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/albums/widgets/album_card.dart';
 import 'package:sologallery/services/permission_provider.dart';
-import 'package:sologallery/services/photo_library_service.dart';
 import 'package:sologallery/widgets/asset_grid.dart';
 import 'package:sologallery/widgets/asset_thumbnail.dart';
 import 'package:sologallery/widgets/cover_row.dart';
-import 'package:sologallery/widgets/folder_list.dart';
 
 import '../support/asset_fixtures.dart';
 import '../support/fake_photo_library_service.dart';
@@ -145,25 +143,4 @@ void main() {
     expectAllBr12(tester, count: 1);
   });
 
-  testWidgets('folder tiles clip to br12', (tester) async {
-    await pump(
-      tester,
-      // FolderList is a sliver, so it needs a viewport rather than a bare box.
-      const CustomScrollView(
-        slivers: [
-          FolderList(
-            folders: [
-              DeviceFolder(
-                id: 'cam',
-                name: 'Camera',
-                count: 12,
-                coverAssetId: 'a1',
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-    expectAllBr12(tester, count: 1);
-  });
 }

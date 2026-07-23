@@ -9,7 +9,6 @@ import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/services/permission_provider.dart';
 import 'package:sologallery/services/photo_library_service.dart';
-import 'package:sologallery/widgets/asset_thumbnail.dart';
 import 'package:sologallery/widgets/folder_list.dart';
 
 import '../support/fake_photo_library_service.dart';
@@ -33,8 +32,8 @@ void main() {
                 context,
               ).copyWith(textScaler: TextScaler.linear(textScale)),
               // FolderList is a sliver (it builds lazily so a 30-folder device
-              // does not decode and blur every cover up front), so it hosts in
-              // a CustomScrollView, matching how AlbumsScreen mounts it.
+              // does not build every chip up front), so it hosts in a
+              // CustomScrollView, matching how AlbumsScreen mounts it.
               child: CustomScrollView(
                 slivers: [FolderList(folders: folders)],
               ),
@@ -68,12 +67,21 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   }
 
-  /// The tile's own box — the rounded clip every folder row draws itself into.
-  Finder tileAt(int i) => find.byType(ClipRRect).at(i);
+  /// A folder chip: a `surface2` pill (StadiumBorder) with a folder icon, name,
+  /// and compact count.
+  bool isFolderTile(Widget w) {
+    if (w is! GestureDetector) return false;
+    final child = w.child;
+    if (child is! Container) return false;
+    final decoration = child.decoration;
+    return decoration is ShapeDecoration && decoration.shape is StadiumBorder;
+  }
+
+  Finder tileAt(int i) => find.byWidgetPredicate(isFolderTile).at(i);
 
   testWidgets('renders nothing at all for no folders', (tester) async {
     await pump(tester, const []);
-    expect(find.byType(ClipRRect), findsNothing);
+    expect(find.byWidgetPredicate(isFolderTile), findsNothing);
     // A sliver has no box size to measure, so assert the extent it contributes
     // to its viewport instead. It needs `skipOffstage: false` to be found at
     // all: a viewport reports a zero-extent sliver as offstage, which is itself
@@ -90,17 +98,22 @@ void main() {
     await settle(tester);
   });
 
-  testWidgets('gives each folder its own tile, with its count', (tester) async {
+  testWidgets('gives each folder its own chip, with a compact count', (
+    tester,
+  ) async {
     await pump(tester, const [
       DeviceFolder(id: 'cam', name: 'Camera', count: 1204),
       DeviceFolder(id: 'shots', name: 'Screenshots', count: 318),
       DeviceFolder(id: 'one', name: 'Scans', count: 1),
     ]);
-    expect(find.byType(ClipRRect), findsNWidgets(3));
+    expect(find.byWidgetPredicate(isFolderTile), findsNWidgets(3));
     expect(find.text('Camera'), findsOneWidget);
-    expect(find.text('1204 photos'), findsOneWidget);
-    expect(find.text('318 photos'), findsOneWidget);
-    expect(find.text('1 photo'), findsOneWidget); // singular, not "1 photos"
+    expect(find.text('Screenshots'), findsOneWidget);
+    expect(find.text('Scans'), findsOneWidget);
+    // compactCount: 1204 -> '1.2k', 318 -> '318', 1 -> '1'.
+    expect(find.text('1.2k'), findsOneWidget);
+    expect(find.text('318'), findsOneWidget);
+    expect(find.text('1'), findsOneWidget);
     await settle(tester);
   });
 
@@ -124,78 +137,59 @@ void main() {
     await settle(tester);
   });
 
-  testWidgets('a tile is a short row, not a tall card', (tester) async {
+  testWidgets('folder chip has no cover photo', (tester) async {
     await pump(tester, const [
       DeviceFolder(id: 'cam', name: 'Camera', count: 12, coverAssetId: 'a1'),
       DeviceFolder(id: 'shots', name: 'Screenshots', count: 8),
     ]);
 
-    final size = tester.getSize(tileAt(0));
-    expect(size.height, 96); // half the old cover-card tile
-    expect(size.width, greaterThan(size.height));
+    // The coverAssetId is deliberately ignored; no image widget appears.
+    expect(find.byType(Image), findsNothing);
     await settle(tester);
   });
 
-  testWidgets('the cover fills the tile as a blurred backdrop', (tester) async {
-    // The cover is no longer what the folder is recognized by — the glyph and
-    // the name are — so it runs edge to edge behind them, blurred.
+  testWidgets('folder chip draws a surface2 rounded rectangle', (tester) async {
     await pump(tester, const [
-      DeviceFolder(id: 'cam', name: 'Camera', count: 12, coverAssetId: 'a1'),
-    ]);
-
-    expect(find.byType(ImageFiltered), findsOneWidget);
-    expect(
-      tester.getRect(find.byType(AssetThumbnail)),
-      tester.getRect(tileAt(0)),
-    );
-    await settle(tester);
-  });
-
-  testWidgets('a coverless folder drops the backdrop, not the glyph', (
-    tester,
-  ) async {
-    await pump(tester, const [
-      DeviceFolder(id: 'shots', name: 'Screenshots', count: 8),
-    ]);
-    expect(find.byType(AssetThumbnail), findsNothing);
-    expect(find.byType(ImageFiltered), findsNothing);
-    expect(find.byIcon(Icons.folder_rounded), findsOneWidget);
-    await settle(tester);
-  });
-
-  testWidgets('the glyph leads the name and count, all inside the tile', (
-    tester,
-  ) async {
-    await pump(tester, const [
-      DeviceFolder(id: 'cam', name: 'Camera', count: 12, coverAssetId: 'a1'),
+      DeviceFolder(id: 'cam', name: 'Camera', count: 12),
     ]);
 
     final tile = tester.getRect(tileAt(0));
-    final glyph = tester.getRect(find.byIcon(Icons.folder_rounded));
+    final icon = tester.getRect(find.byIcon(Icons.folder_rounded));
     final name = tester.getRect(find.text('Camera'));
-    final count = tester.getRect(find.text('12 photos'));
+    final count = tester.getRect(find.text('12'));
 
-    // Icon on the left, labels to its right and stacked.
-    expect(glyph.right, lessThanOrEqualTo(name.left));
-    expect(count.top, greaterThanOrEqualTo(name.bottom));
-    // Labels live in the row now, not under it.
-    for (final r in [glyph, name, count]) {
+    // Icon on the left, name to its right, count at the end.
+    expect(icon.right, lessThanOrEqualTo(name.left));
+    expect(count.left, greaterThan(name.left));
+    // Everything stays inside the chip.
+    for (final r in [icon, name, count]) {
       expect(tile.contains(r.topLeft), isTrue);
       expect(tile.contains(r.bottomRight), isTrue);
     }
-    // Bigger than the 14px mark the old tall tile wore in its corner.
-    expect(glyph.height, greaterThanOrEqualTo(32));
     await settle(tester);
   });
 
-  testWidgets('a doubled text scale grows the row instead of squashing it', (
+  testWidgets('count stays on the same row as the folder name', (tester) async {
+    await pump(tester, const [
+      DeviceFolder(id: 'cam', name: 'Camera', count: 12),
+    ]);
+
+    final name = tester.getRect(find.text('Camera'));
+    final count = tester.getRect(find.text('12'));
+
+    expect(count.top, greaterThanOrEqualTo(name.top - 1));
+    expect(count.bottom, lessThanOrEqualTo(name.bottom + 1));
+    await settle(tester);
+  });
+
+  testWidgets('a large text scale grows the chip instead of squashing it', (
     tester,
   ) async {
     await pump(tester, const [
       DeviceFolder(id: 'cam', name: 'Camera', count: 12),
-    ], textScale: 2);
+    ], textScale: 3);
 
-    expect(tester.getSize(tileAt(0)).height, greaterThan(96));
+    expect(tester.getSize(tileAt(0)).height, greaterThan(40));
     expect(tester.takeException(), isNull); // no RenderFlex overflow
     await settle(tester);
   });

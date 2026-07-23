@@ -67,17 +67,27 @@ void main() {
         reason: 'The Device folders section never appeared on Albums.');
     expect(find.text('ALBUMS'), findsOneWidget,
         reason: 'The sectioned body should have replaced the empty state.');
-    expect(find.textContaining(' photo'), findsWidgets); // "N photos" counts
+    expect(
+      find.descendant(of: find.byType(FolderList), matching: find.byType(Text)),
+      findsWidgets,
+      reason: 'Each folder tile shows a name and a compact count.',
+    );
 
-    // Open the first folder row. The target is the row itself, not its cover:
-    // a folder tile draws the cover *blurred behind* the name (see
-    // [FolderList]), so the thumbnail is not hit-testable and
-    // `scrollUntilVisible` never resolves it. Scoped to the [FolderList] —
-    // each tile is a `ClipRRect` — because album cards come first and would
-    // otherwise match a looser finder.
+    // The folder tiles are compact chips: a tappable GestureDetector wrapping a
+    // surface2 pill (same StadiumBorder radius as the bottom nav capsule).
+    // Scoped to [FolderList] so album cards up the page don't match a looser
+    // finder.
+    bool isFolderTile(Widget w) {
+      if (w is! GestureDetector) return false;
+      final child = w.child;
+      if (child is! Container) return false;
+      final decoration = child.decoration;
+      return decoration is ShapeDecoration && decoration.shape is StadiumBorder;
+    }
+
     final firstFolderRow = find.descendant(
       of: find.byType(FolderList),
-      matching: find.byType(ClipRRect),
+      matching: find.byWidgetPredicate(isFolderTile),
     );
     expect(firstFolderRow, findsWidgets,
         reason: 'Folder rows should be tappable.');

@@ -74,7 +74,11 @@
       "Bash(awk '/^  drift:/{f=1} /^  drift_dev:/{f=2} f&&/version:/{print \\(f==1?\"drift \":\"drift_dev \"\\), $2; f=0}' pubspec.lock)",
       "Bash(~/Library/Android/sdk/platform-tools/adb shell *)",
       "Bash(cd *)",
-      "Bash(tool/check.sh)"
+      "Bash(tool/check.sh)",
+      "Bash(bash tool/check.sh)",
+      "Bash(PATH=\"$HOME/Library/Android/sdk/platform-tools:$HOME/.pub-cache/bin:$PATH\" patrol test *)",
+      "Bash(git checkout *)",
+      "Bash(PATH=\"$HOME/Library/Android/sdk/platform-tools:$PATH\" ~/.pub-cache/bin/patrol test *)"
     ]
   }
 }
