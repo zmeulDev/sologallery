@@ -20,10 +20,11 @@ import '../settings/consent_provider.dart';
 import 'albums_providers.dart';
 import 'widgets/album_card.dart';
 
-/// Albums: user-created collections as a grid of cover cards, with the device's
-/// People and Folders below them so the tab is the one place to browse
-/// collections. The "+" action creates an album; a long-press on a card offers
-/// to delete it. Tapping a card opens its full grid at `/album/:id`.
+/// Albums: user-created collections as a compact two-column grid of cover
+/// cards, with the device's People and Folders below them so the tab is the
+/// one place to browse collections. The "+" action creates an album; a
+/// long-press on a card offers to delete it. Tapping a card opens its full grid
+/// at `/album/:id`.
 class AlbumsScreen extends ConsumerWidget {
   const AlbumsScreen({super.key});
 
@@ -159,9 +160,9 @@ class _Sections extends StatelessWidget {
             sliver: SliverGrid(
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
-                mainAxisSpacing: AppSpace.s20,
-                crossAxisSpacing: AppSpace.s16,
-                childAspectRatio: 0.82, // square cover + two label lines
+                mainAxisSpacing: AppSpace.s8,
+                crossAxisSpacing: AppSpace.s8,
+                childAspectRatio: 2.5, // compact cards, two columns on phones
               ),
               delegate: SliverChildBuilderDelegate(
                 (context, i) => AlbumCard(
@@ -187,9 +188,15 @@ class _Sections extends StatelessWidget {
               child: SectionHeader(label: 'Device folders'),
             ),
           ),
-          SliverToBoxAdapter(child: FolderList(folders: folders)),
+          FolderList(folders: folders),
         ],
-        const SliverToBoxAdapter(child: SizedBox(height: AppSpace.s16)),
+        // The nav capsule floats over the body, so the Scaffold reports its
+        // height as the bottom inset — the last folder row has to clear it.
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: AppSpace.s16 + MediaQuery.paddingOf(context).bottom,
+          ),
+        ),
       ],
     );
   }

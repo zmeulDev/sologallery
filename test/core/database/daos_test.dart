@@ -97,17 +97,80 @@ void main() {
       expect(await db.albumsDao.watchAlbum(id).first, isNull);
     });
 
+    /// Caches capture dates so entry ordering has something to sort on.
+    Future<void> cache(Map<String, DateTime> taken) {
+      return db.indexDao.upsertMetadata([
+        for (final e in taken.entries)
+          (
+            id: e.key,
+            createdAt: e.value,
+            isVideo: false,
+            width: 100,
+            height: 100,
+            isDated: true,
+          ),
+      ]);
+    }
+
     test('watchAlbumSummaries counts entries and picks the newest as cover',
         () async {
+      await cache({'old': DateTime(2020, 1, 1), 'new': DateTime(2024, 1, 1)});
       final id = await db.albumsDao.createAlbum('Trip');
-      await db.albumsDao.addEntry(id, 'old', at: DateTime(2020, 1, 1));
-      await db.albumsDao.addEntry(id, 'new', at: DateTime(2024, 1, 1));
+      await db.albumsDao.addEntry(id, 'old');
+      await db.albumsDao.addEntry(id, 'new');
 
       final summaries = await db.albumsDao.watchAlbumSummaries().first;
       expect(summaries, hasLength(1));
       expect(summaries.single.entryCount, 2);
-      // Cover falls back to the most recently added entry.
+      // Cover falls back to the album's newest photo.
       expect(summaries.single.coverAssetId, 'new');
+    });
+
+    test('cover and entry order follow capture date, not insertion order',
+        () async {
+      // The newest photo is added *first*, so anything ordering by added_at
+      // would pick 'older' — the two rules disagree here on purpose.
+      await cache({
+        'newest': DateTime(2024, 6, 1),
+        'older': DateTime(2021, 6, 1),
+      });
+      final id = await db.albumsDao.createAlbum('Trip');
+      await db.albumsDao.addEntry(id, 'newest');
+      await db.albumsDao.addEntry(id, 'older');
+
+      final entries = await db.albumsDao.watchEntries(id).first;
+      expect(entries.map((e) => e.assetId), ['newest', 'older']);
+
+      final summaries = await db.albumsDao.watchAlbumSummaries().first;
+      expect(summaries.single.coverAssetId, 'newest');
+    });
+
+    test('an entry whose asset is not indexed yet sorts last', () async {
+      // Left join: no photo_assets row means no capture date. A NULL must not
+      // win the cover slot away from a real photo.
+      await cache({'known': DateTime(2020, 1, 1)});
+      final id = await db.albumsDao.createAlbum('Trip');
+      await db.albumsDao.addEntry(id, 'known');
+      await db.albumsDao.addEntry(id, 'unswept');
+
+      final entries = await db.albumsDao.watchEntries(id).first;
+      expect(entries.map((e) => e.assetId), ['known', 'unswept']);
+      final summaries = await db.albumsDao.watchAlbumSummaries().first;
+      expect(summaries.single.coverAssetId, 'known');
+    });
+
+    test('same-second additions still order deterministically', () async {
+      // added_at is stored at second granularity, so a multi-select add lands
+      // several rows on the same timestamp; with no capture dates either, the
+      // id tie-break is the only thing keeping the order stable.
+      final id = await db.albumsDao.createAlbum('Trip');
+      final at = DateTime(2024, 1, 1);
+      await db.albumsDao.addEntry(id, 'first', at: at);
+      await db.albumsDao.addEntry(id, 'second', at: at);
+      await db.albumsDao.addEntry(id, 'third', at: at);
+
+      final entries = await db.albumsDao.watchEntries(id).first;
+      expect(entries.map((e) => e.assetId), ['third', 'second', 'first']);
     });
 
     test('watchAlbumSummaries prefers an explicit coverAssetId', () async {

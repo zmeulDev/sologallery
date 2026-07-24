@@ -6,11 +6,13 @@ import 'dart:ui' show Rect, RootIsolateToken;
 
 import 'package:flutter/services.dart'
     show BackgroundIsolateBinaryMessenger, rootBundle;
+import 'package:meta/meta.dart' show visibleForTesting;
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image/image.dart' as img;
 import 'package:logging/logging.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 
 /// One image label: the ML Kit tag text and the model's confidence in `[0, 1]`.
@@ -44,25 +46,28 @@ const _faceModelAsset = 'assets/models/mobilefacenet.tflite';
 /// tests (CLAUDE.md fake-pairing rule — the real path is covered by an on-device
 /// integration test).
 abstract class MlWorker {
-  /// Analyzes the image at [jpegPath] (a downsized JPEG — never an original) for
-  /// labels and faces. When [ocrPath] is given, OCR runs on that (larger)
+  /// Analyzes [bytes] (a downsized JPEG thumbnail — never an original) for
+  /// labels and faces. When [ocrBytes] is given, OCR runs on that (larger)
   /// image instead, recovering small text the face/label thumbnail misses;
-  /// otherwise OCR uses [jpegPath].
+  /// otherwise OCR uses [bytes].
+  ///
+  /// The bytes cross the SendPort and the worker writes its own temp file from
+  /// them — the caller (UI isolate) does no file I/O per asset.
   ///
   /// [content] and [faces] are the user's consent flags (both opt-in, off by
   /// default). When one is false the corresponding model never runs and its
   /// result comes back empty — the caller must not have to filter it out
   /// afterwards. With both false there is nothing to do; callers should skip
-  /// the call entirely rather than pay the thumbnail write.
-  Future<ImageAnalysis> analyzeFile(
-    String jpegPath, {
-    String? ocrPath,
+  /// the call entirely rather than pay the thumbnail fetch.
+  Future<ImageAnalysis> analyze({
+    required Uint8List bytes,
+    Uint8List? ocrBytes,
     bool content = true,
     bool faces = true,
   });
 
   /// Tears down the worker isolate and its models.
-  void dispose();
+  Future<void> dispose();
 }
 
 /// [MlWorker] backed by a long-lived background isolate running ML Kit's
@@ -72,16 +77,35 @@ abstract class MlWorker {
 /// plugin binary messenger *before* any ML Kit call (the isolate-binding-hang
 /// gotcha); tflite is FFI and needs no messenger.
 class MlWorkerController implements MlWorker {
-  MlWorkerController();
+  MlWorkerController() : this._(null);
+
+  @visibleForTesting
+  MlWorkerController.withWorkerMain(
+    void Function(WorkerInit init) workerMain, {
+    String? tempDirectory,
+  }) : this._(workerMain, tempDirectory: tempDirectory);
+
+  MlWorkerController._(
+    this._workerMain, {
+    this._tempDirectory,
+  });
+
+  final void Function(WorkerInit init)? _workerMain;
+  final String? _tempDirectory;
 
   static final _log = Logger('SoloGallery.ml');
 
   Isolate? _isolate;
   SendPort? _commands;
   ReceivePort? _fromWorker;
+  ReceivePort? _onExit;
   Completer<void>? _starting;
+  Completer<void>? _disposing;
+  bool _disposed = false;
   final Map<int, Completer<ImageAnalysis>> _pending = {};
   int _seq = 0;
+  Timer? _shutdownAckTimer;
+  Timer? _shutdownExitTimer;
 
   Future<void> _start() {
     if (_commands != null) return Future.value();
@@ -107,27 +131,71 @@ class MlWorkerController implements MlWorker {
     RootIsolateToken token,
   ) async {
     try {
-      // Load the tflite model on the main isolate (rootBundle needs the root
-      // binding) and hand its bytes to the worker.
-      final model = await rootBundle.load(_faceModelAsset);
-      final modelBytes = model.buffer.asUint8List(
-        model.offsetInBytes,
-        model.lengthInBytes,
-      );
+      // A custom worker main supplied by tests does not need the bundled model
+      // or path_provider; skip those platform-channel calls so the test stays
+      // host-runnable.
+      Uint8List modelBytes;
+      String tempDirPath;
+      if (_workerMain != null) {
+        modelBytes = Uint8List(0);
+        tempDirPath = _tempDirectory ?? '.';
+      } else {
+        // Load the tflite model on the main isolate (rootBundle needs the root
+        // binding) and hand its bytes to the worker.
+        final model = await rootBundle.load(_faceModelAsset);
+        modelBytes = model.buffer.asUint8List(
+          model.offsetInBytes,
+          model.lengthInBytes,
+        );
+        // Resolve the temp dir on the main isolate (path_provider needs the root
+        // binding); the worker writes its own ML thumbnails there, off the UI
+        // isolate, so the caller never touches the filesystem per asset.
+        tempDirPath = _tempDirectory ?? (await getTemporaryDirectory()).path;
+      }
+      final onExit = _onExit = ReceivePort();
       _isolate = await Isolate.spawn(
-        _workerMain,
-        _WorkerInit(replyTo, token, modelBytes),
+        _workerMain ?? _workerMainImpl,
+        WorkerInit(replyTo, token, modelBytes, tempDirPath),
+        onExit: onExit.sendPort,
       );
+      onExit.listen((_) => _onWorkerExited());
     } catch (e, st) {
       _log.severe('Failed to spawn ML worker isolate', e, st);
       if (!starting.isCompleted) starting.completeError(e, st);
     }
   }
 
+  void _onWorkerExited() {
+    _isolate = null;
+    _onExit?.close();
+    _onExit = null;
+    _commands = null;
+    _starting = null;
+    if (!_disposed) {
+      _log.warning('ML worker isolate exited unexpectedly');
+      _disposed = true;
+    }
+    _completeDispose();
+  }
+
+  void _completeDispose() {
+    if (_disposing?.isCompleted ?? true) return;
+    _shutdownAckTimer?.cancel();
+    _shutdownAckTimer = null;
+    _shutdownExitTimer?.cancel();
+    _shutdownExitTimer = null;
+    _fromWorker?.close();
+    _fromWorker = null;
+    _disposing!.complete();
+  }
+
   void _onMessage(dynamic msg) {
     if (msg is SendPort) {
       _commands = msg;
       _starting?.complete();
+      // If dispose() raced ahead of isolate spawn, kick shutdown now that we can
+      // talk to the worker.
+      if (_disposed) _commands!.send(const _ShutdownJob());
       return;
     }
     if (msg is _AnalyzeResult) {
@@ -136,41 +204,106 @@ class MlWorkerController implements MlWorker {
           ?.complete((labels: msg.labels, text: msg.text, faces: msg.faces));
     } else if (msg is _AnalyzeError) {
       _pending.remove(msg.id)?.completeError(StateError(msg.error));
+    } else if (msg is _ShutdownAck) {
+      _log.info('ML worker acknowledged shutdown; waiting for isolate exit');
+      _onShutdownAck();
     }
   }
 
   @override
-  Future<ImageAnalysis> analyzeFile(
-    String jpegPath, {
-    String? ocrPath,
+  Future<ImageAnalysis> analyze({
+    required Uint8List bytes,
+    Uint8List? ocrBytes,
     bool content = true,
     bool faces = true,
   }) async {
+    if (_disposed) {
+      throw StateError('ML worker disposed');
+    }
     await _start();
+    if (_disposed) {
+      throw StateError('ML worker disposed');
+    }
     final id = _seq++;
     final completer = Completer<ImageAnalysis>();
     _pending[id] = completer;
-    _commands!.send(_AnalyzeJob(id, jpegPath, ocrPath, content, faces));
+    _commands!.send(_AnalyzeJob(id, bytes, ocrBytes, content, faces));
     return completer.future;
   }
 
   @override
-  void dispose() {
-    _isolate?.kill(priority: Isolate.immediate);
-    _fromWorker?.close();
-    _isolate = null;
-    _commands = null;
-    _starting = null;
+  Future<void> dispose() {
+    if (_disposing != null) return _disposing!.future;
+    if (_disposed) return Future.value();
+    _disposed = true;
+
+    final disposing = _disposing = Completer<void>();
+
+    // Fail every caller still waiting for a result.
     for (final c in _pending.values) {
       if (!c.isCompleted) c.completeError(StateError('ML worker disposed'));
     }
     _pending.clear();
+
+    // No isolate and none spawning? Clean up synchronously.
+    if (_isolate == null && _starting == null) {
+      _fromWorker?.close();
+      _fromWorker = null;
+      disposing.complete();
+      return disposing.future;
+    }
+
+    // Spawn is in flight; wait for it to finish before sending shutdown so we
+    // don't race the SendPort assignment.
+    if (_isolate == null) {
+      unawaited(
+        _starting!.future.then((_) {
+          _commands?.send(const _ShutdownJob());
+        }).catchError((Object e) {
+          _log.warning('ML worker spawn failed during dispose', e);
+          _completeDispose();
+        }),
+      );
+    } else if (_commands != null) {
+      // Ask the worker to shut down. The worker processes jobs sequentially, so
+      // it will finish any in-flight native ML call before handling this
+      // message.
+      _commands!.send(const _ShutdownJob());
+    }
+    // If _commands is null (spawn just finished but SendPort not yet received),
+    // _onMessage will send shutdown as soon as the SendPort arrives.
+
+    // Guard against a stuck worker. We never force-kill while a native ML call
+    // may be in flight. The ack proves all such calls have returned and models
+    // are closed; only then is killing safe.
+    _shutdownAckTimer = Timer(const Duration(seconds: 60), () {
+      if (!disposing.isCompleted) {
+        _log.warning('ML worker did not acknowledge shutdown; force-killing');
+        _isolate?.kill(priority: Isolate.immediate);
+      }
+    });
+
+    return disposing.future;
+  }
+
+  void _onShutdownAck() {
+    _shutdownAckTimer?.cancel();
+    _shutdownAckTimer = null;
+    // After ack, the worker should exit within moments. Give it a short grace
+    // period; if it is truly stuck, killing now is safe because no native call is
+    // outstanding.
+    _shutdownExitTimer ??= Timer(const Duration(seconds: 5), () {
+      if (!(_disposing?.isCompleted ?? true)) {
+        _log.warning('ML worker acknowledged shutdown but did not exit; force-killing');
+        _isolate?.kill(priority: Isolate.immediate);
+      }
+    });
   }
 }
 
 /// Worker-isolate entrypoint: bind the plugin messenger, build the models, then
 /// serve analysis jobs.
-void _workerMain(_WorkerInit init) {
+void _workerMainImpl(WorkerInit init) {
   // Must run before any plugin (ML Kit) call, or platform-channel calls hang.
   BackgroundIsolateBinaryMessenger.ensureInitialized(init.token);
 
@@ -186,9 +319,32 @@ void _workerMain(_WorkerInit init) {
   init.sendPort.send(commands.sendPort);
 
   commands.listen((dynamic msg) async {
+    if (msg is _ShutdownJob) {
+      // Stream events are delivered sequentially, so this message is only
+      // processed after any in-flight _AnalyzeJob handler has run to completion
+      // (all native ML calls have returned). It is therefore safe to close the
+      // models and exit without killing the isolate mid-platform-channel reply.
+      await labeler?.close();
+      await recognizer?.close();
+      await faceDetector?.close();
+      embedder?.close();
+      labeler = null;
+      recognizer = null;
+      faceDetector = null;
+      embedder = null;
+      init.sendPort.send(const _ShutdownAck());
+      commands.close();
+      return;
+    }
     if (msg is _AnalyzeJob) {
+      // The worker writes its own temp from the bytes handed over the SendPort,
+      // so the UI isolate does no file I/O per asset. No fsync — the file only
+      // needs to be readable by ML Kit in this same process, not durable.
+      final tempFile = File('${init.tempDir}/sg_${msg.id}.jpg');
+      File? ocrTempFile;
       try {
-        final input = InputImage.fromFilePath(msg.path);
+        tempFile.writeAsBytesSync(msg.bytes);
+        final input = InputImage.fromFilePath(tempFile.path);
 
         var labels = const <ImageLabel>[];
         var text = '';
@@ -199,9 +355,12 @@ void _workerMain(_WorkerInit init) {
           // OCR on the higher-res image when supplied (small-text recall);
           // labels and faces stay on the 512 thumbnail (bounded memory, stable
           // box space).
-          final ocrInput = msg.ocrPath != null
-              ? InputImage.fromFilePath(msg.ocrPath!)
-              : input;
+          InputImage ocrInput = input;
+          if (msg.ocrBytes != null) {
+            ocrTempFile = File('${init.tempDir}/sg_ocr_${msg.id}.jpg');
+            ocrTempFile.writeAsBytesSync(msg.ocrBytes!);
+            ocrInput = InputImage.fromFilePath(ocrTempFile.path);
+          }
           final recognized = await (recognizer ??= TextRecognizer(
             script: TextRecognitionScript.latin,
           )).processImage(ocrInput);
@@ -238,9 +397,11 @@ void _workerMain(_WorkerInit init) {
                 face,
           ];
           // Decoding the whole thumbnail is the expensive part, so it only
-          // happens when there is actually a face to crop out of it.
+          // happens when there is actually a face to crop out of it. Decode
+          // from the in-memory bytes — same bytes the temp file was written
+          // from, so dimensions and normalized boxes match exactly.
           if (detected.isNotEmpty) {
-            final decoded = img.decodeImage(File(msg.path).readAsBytesSync());
+            final decoded = img.decodeImage(msg.bytes);
             if (decoded != null) {
               for (final face in detected) {
                 final f = _embedFace(
@@ -265,6 +426,11 @@ void _workerMain(_WorkerInit init) {
         );
       } catch (e) {
         init.sendPort.send(_AnalyzeError(msg.id, e.toString()));
+      } finally {
+        if (tempFile.existsSync()) tempFile.deleteSync();
+        if (ocrTempFile != null && ocrTempFile.existsSync()) {
+          ocrTempFile.deleteSync();
+        }
       }
     }
   });
@@ -406,21 +572,33 @@ DetectedFace? _embedFace(
   );
 }
 
-/// Spawn payload: reply port, plugin-binding token, and the tflite model bytes.
-class _WorkerInit {
-  const _WorkerInit(this.sendPort, this.token, this.modelBytes);
+/// Spawn payload: reply port, plugin-binding token, the tflite model bytes,
+/// and the temp dir path the worker writes its own ML thumbnails into.
+@visibleForTesting
+class WorkerInit {
+  const WorkerInit(this.sendPort, this.token, this.modelBytes, this.tempDir);
   final SendPort sendPort;
   final RootIsolateToken token;
   final Uint8List modelBytes;
+  final String tempDir;
 }
 
 class _AnalyzeJob {
-  const _AnalyzeJob(this.id, this.path, this.ocrPath, this.content, this.faces);
+  const _AnalyzeJob(
+    this.id,
+    this.bytes,
+    this.ocrBytes,
+    this.content,
+    this.faces,
+  );
   final int id;
-  final String path;
 
-  /// Optional higher-res image for OCR only; null falls back to [path].
-  final String? ocrPath;
+  /// Downsized JPEG thumbnail (512) for labels + faces.
+  final Uint8List bytes;
+
+  /// Optional higher-res thumbnail (1024) for OCR only; null falls back to
+  /// [bytes].
+  final Uint8List? ocrBytes;
 
   /// Whether to run labeling + OCR for this job (user consent).
   final bool content;
@@ -441,4 +619,50 @@ class _AnalyzeError {
   const _AnalyzeError(this.id, this.error);
   final int id;
   final String error;
+}
+
+/// Controller-to-worker sentinel asking the worker to stop accepting jobs,
+/// close its models, and exit naturally.
+class _ShutdownJob {
+  const _ShutdownJob();
+}
+
+/// Worker-to-controller confirmation that shutdown cleanup is finished and the
+/// isolate is about to exit.
+class _ShutdownAck {
+  const _ShutdownAck();
+}
+
+/// Test-only worker entrypoint that mimics the real [_workerMainImpl] shutdown
+/// protocol without touching ML Kit. Lets host tests prove that
+/// [MlWorkerController.dispose] waits for in-flight work and never kills the
+/// isolate while a job is running.
+@visibleForTesting
+void Function(WorkerInit init) testWorkerMain({Duration jobDelay = Duration.zero}) {
+  return (init) {
+    final commands = ReceivePort();
+    init.sendPort.send(commands.sendPort);
+
+    var active = true;
+    commands.listen((dynamic msg) async {
+      if (!active) return;
+      if (msg is _ShutdownJob) {
+        active = false;
+        init.sendPort.send(const _ShutdownAck());
+        commands.close();
+        return;
+      }
+      if (msg is _AnalyzeJob) {
+        if (jobDelay > Duration.zero) await Future.delayed(jobDelay);
+        init.sendPort.send(
+          _AnalyzeResult(
+            msg.id,
+            const [('TestLabel', 0.9)],
+            'test ocr',
+            const [],
+          ),
+        );
+      }
+    });
+  };
 }

@@ -10,8 +10,9 @@ import '../library_providers.dart';
 /// filter surfaces read as one control rather than two dialects.
 ///
 /// Horizontally scrollable because the four labels can outrun a narrow screen
-/// at large text scales; it does not scroll with the timeline below it, which
-/// stays a fixed band under the app bar.
+/// at large text scales. It lives inside each Library filter's scrollable body
+/// so it sits immediately above the content it controls, and below the
+/// memories carousel on [LibraryFilter.all].
 class LibraryFilterBar extends ConsumerWidget {
   const LibraryFilterBar({super.key});
 

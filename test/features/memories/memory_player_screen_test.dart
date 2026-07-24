@@ -155,12 +155,10 @@ void main() {
     await pumpLoading(tester);
     await tester.pump(); // the very first frame, and nothing has resolved
 
-    // The route is opaque black with no fade of its own, so the carousel
-    // card's Hero has to have somewhere to land on frame one. Opening on a
-    // spinner would fly the cover into a black hole.
+    // The route is opaque black with no fade of its own, so the cover has to
+    // be on stage on frame one — opening on a spinner would be a black hole.
     expect(find.byType(AssetThumbnail), findsOneWidget);
     expect(find.text('Early June'), findsOneWidget);
-    expect(find.byType(Hero), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 

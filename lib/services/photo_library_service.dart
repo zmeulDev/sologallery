@@ -8,6 +8,9 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../features/search/domain/search_date.dart';
+import 'adjacent_thumbnail_cache.dart';
+import 'detail_preview_cache.dart';
+import 'thumbnail_gate.dart';
 
 /// Coarse photo-library access state, mapped from `photo_manager`'s
 /// [PermissionState]. This is the only permission vocabulary the domain/UI
@@ -114,6 +117,9 @@ class PhotoLibraryService {
   PhotoLibraryService();
 
   static final _log = Logger('SoloGallery.photos');
+  final _detailPreviewCache = DetailPreviewCache();
+  final _adjacentThumbnailCache = AdjacentThumbnailCache();
+  final Map<String, Future<Uint8List?>> _previewPending = {};
 
   /// Maps a raw plugin [PermissionState] onto our coarse [PhotoAccess].
   static PhotoAccess accessFromState(PermissionState state) {
@@ -130,10 +136,24 @@ class PhotoLibraryService {
     }
   }
 
+  /// Read access to images and video, **including each photo's EXIF location**.
+  ///
+  /// `mediaLocation` is what makes `ACCESS_MEDIA_LOCATION` actually get
+  /// requested: photo_manager skips it when the option is false (or when the
+  /// manifest omits the permission), and without it Android 10+ strips GPS out
+  /// of the bytes it hands us, so `latlngAsync()` reports nothing for every
+  /// photo and the detail viewer's Location chip is permanently empty.
+  static const _permissionOption = PermissionRequestOption(
+    androidPermission: AndroidPermission(
+      type: RequestType.common,
+      mediaLocation: true,
+    ),
+  );
+
   /// Current access without prompting the user.
   Future<PhotoAccess> currentAccess() async {
     final state = await PhotoManager.getPermissionState(
-      requestOption: const PermissionRequestOption(),
+      requestOption: _permissionOption,
     );
     _log.fine('Current photo access (no prompt): $state');
     return accessFromState(state);
@@ -141,7 +161,9 @@ class PhotoLibraryService {
 
   /// Prompts for photo access (native dialog). Returns the resulting access.
   Future<PhotoAccess> requestAccess() async {
-    final state = await PhotoManager.requestPermissionExtend();
+    final state = await PhotoManager.requestPermissionExtend(
+      requestOption: _permissionOption,
+    );
     _log.info('Requested photo access -> $state');
     return accessFromState(state);
   }
@@ -268,8 +290,24 @@ class PhotoLibraryService {
         DateColumnWhereCondition(column: col, operator: '<', value: max),
       );
     }
-    return filter..addOrderBy(column: col, isAsc: false);
+    return filter..addOrderBy(column: _androidCaptureOrder, isAsc: false);
   }
+
+  /// The date axis to order Android queries by: capture date where there is
+  /// one, date-added otherwise — in seconds, since `datetaken` is milliseconds
+  /// and `date_added` seconds (`NULLIF` because undated assets carry `0`, not
+  /// only `NULL`).
+  ///
+  /// This is deliberately the same expression `photo_manager` reports as
+  /// [AssetEntity.createDateTime], which falls back to `DATE_ADDED` the same
+  /// way. Ordering by bare `datetaken` instead puts undated assets last (SQLite
+  /// sorts NULLs last on `DESC`) while they still *report* a recent date, so a
+  /// folder grid trails photos dated newer than everything above them —
+  /// `device_folders_test` catches exactly that. Windowed queries are
+  /// unaffected: their `WHERE` already excludes undated assets, and for a dated
+  /// asset the expression is just `datetaken` in seconds.
+  static const _androidCaptureOrder =
+      'COALESCE(NULLIF(datetaken, 0) / 1000, date_added)';
 
   /// Android filter for undated assets (`DATE_TAKEN` null/0 — their reported
   /// `createDateTime` falls back to `DATE_ADDED`), newest-added first.
@@ -354,9 +392,10 @@ class PhotoLibraryService {
   ///
   /// Uses the same capture-date filter split as the grids ([_darwinFilter] /
   /// [_androidWindow] with no window), so each folder's cover is its newest
-  /// asset. On Android the unbounded window is just an ordering — assets with no
-  /// `DATE_TAKEN` still belong to the folder and sort last (SQLite orders NULLs
-  /// last on `DESC`), so they never become the cover.
+  /// asset. On Android the unbounded window is just an ordering — assets with
+  /// no `DATE_TAKEN` still belong to the folder and sort by their `DATE_ADDED`
+  /// instead (see [_androidCaptureOrder]), the same date they report, so the
+  /// cover is the newest by the date the grid actually shows.
   Future<List<DeviceFolder>> deviceFolders() async {
     final paths = await PhotoManager.getAssetPathList(
       hasAll: false, // Skip the synthetic "Recent"/all-photos album.
@@ -477,6 +516,19 @@ class PhotoLibraryService {
   /// bytes themselves natively.
   final Map<String, AssetEntity> _entityCache = {};
 
+  /// Caps concurrent grid-thumbnail decodes and discards ones whose cell has
+  /// scrolled away — see [ThumbnailGate]. [previewImage] deliberately does not
+  /// go through it: the detail viewer asks for one large image (plus its ±3
+  /// neighbours) and must not queue behind a grid fling's backlog.
+  final ThumbnailGate _thumbnailGate = ThumbnailGate();
+
+  /// A separate, smaller pool for indexing's own thumbnails. A pass requests
+  /// one 512 (and optionally one 1024 OCR) thumbnail per asset, sequentially,
+  /// so it never needs more than a slot or two — but sharing the grid's 6-slot
+  /// gate meant a pass starved scrolling to 5 during indexing. Its own pool
+  /// keeps the grid's slots reserved for the grid and the pass's for the pass.
+  final ThumbnailGate _indexingGate = ThumbnailGate(maxConcurrent: 3);
+
   /// Resolves (and caches) the [AssetEntity] for [assetId], or null if it can't
   /// be resolved (e.g. deleted).
   Future<AssetEntity?> _entity(String assetId) async {
@@ -488,13 +540,27 @@ class PhotoLibraryService {
   }
 
   /// A `width`×`height` thumbnail for [assetId], or null if the asset can't be
-  /// resolved (e.g. deleted). Never decodes the original at full size
+  /// resolved (e.g. deleted) or [cancelled] reported the caller gave up while
+  /// the request was queued. Never decodes the original at full size
   /// (Absolute rules) — the detail viewer requests a screen-capped size, the
   /// grid a cell-sized one.
-  Future<Uint8List?> thumbnail(String assetId, int width, int height) async {
-    final entity = await _entity(assetId);
-    if (entity == null) return null;
-    return entity.thumbnailDataWithSize(ThumbnailSize(width, height));
+  ///
+  /// Pass [indexing] true for the background indexer's own thumbnails so they
+  /// use a separate pool ([_indexingGate]) and don't take slots from the grid's
+  /// gate mid-fling.
+  Future<Uint8List?> thumbnail(
+    String assetId,
+    int width,
+    int height, {
+    bool Function()? cancelled,
+    bool indexing = false,
+  }) {
+    final gate = indexing ? _indexingGate : _thumbnailGate;
+    return gate.run(() async {
+      final entity = await _entity(assetId);
+      if (entity == null) return null;
+      return entity.thumbnailDataWithSize(ThumbnailSize(width, height));
+    }, cancelled: cancelled);
   }
 
   /// A high-quality, screen-sized preview for the detail viewer — the whole
@@ -503,9 +569,45 @@ class PhotoLibraryService {
   /// would crop); Android's scaler already fits within the box. The cap keeps a
   /// 48MP HEIC from decoding at full size (the OOM gotcha) while staying far
   /// sharper than a grid thumbnail. Never the full original (Absolute rules).
-  Future<Uint8List?> previewImage(String assetId, int maxEdge) async {
+  ///
+  /// Results are cached in a small in-memory LRU so revisiting the same photo
+  /// during a session is instant; call [clearDetailPreviewCache] on lifecycle
+  /// pause or memory pressure to reclaim the RAM. Concurrent requests for the
+  /// same key share one underlying fetch.
+  Future<Uint8List?> previewImage(String assetId, int maxEdge) {
+    final cached = _detailPreviewCache.get(assetId, maxEdge);
+    if (cached != null) {
+      _log.fine('previewImage($assetId, ${maxEdge}px) cache hit');
+      return Future.value(cached);
+    }
+
+    final key = '$assetId:$maxEdge';
+    final pending = _previewPending[key];
+    if (pending != null) {
+      _log.fine('previewImage($assetId, ${maxEdge}px) pending dedupe');
+      return pending;
+    }
+
+    final future = _fetchPreviewImage(assetId, maxEdge);
+    _previewPending[key] = future;
+    future.whenComplete(() => _previewPending.remove(key));
+    return future;
+  }
+
+  Future<Uint8List?> _fetchPreviewImage(String assetId, int maxEdge) async {
+    final total = Stopwatch()..start();
+    final entityTimer = Stopwatch()..start();
     final entity = await _entity(assetId);
-    if (entity == null) return null;
+    entityTimer.stop();
+    if (entity == null) {
+      total.stop();
+      _detailPreviewCache.put(assetId, maxEdge, null);
+      _log.fine(
+        'previewImage($assetId) entity unresolved after '
+        '${entityTimer.elapsedMilliseconds}ms',
+      );
+      return null;
+    }
     final size = ThumbnailSize.square(maxEdge);
     final option = (Platform.isIOS || Platform.isMacOS)
         ? ThumbnailOption.ios(
@@ -514,7 +616,77 @@ class PhotoLibraryService {
             resizeContentMode: ResizeContentMode.fit,
           )
         : ThumbnailOption(size: size, quality: 95);
+    final thumbTimer = Stopwatch()..start();
+    final bytes = await entity.thumbnailDataWithOption(option);
+    thumbTimer.stop();
+    total.stop();
+    _detailPreviewCache.put(assetId, maxEdge, bytes);
+    _log.fine(
+      'previewImage($assetId, ${maxEdge}px) '
+      'entity=${entityTimer.elapsedMilliseconds}ms '
+      'thumb=${thumbTimer.elapsedMilliseconds}ms '
+      'total=${total.elapsedMilliseconds}ms '
+      'bytes=${bytes?.length ?? 0}',
+    );
+    return bytes;
+  }
+
+  /// A small, fast thumbnail for the detail viewer's adjacent pages. Capped at
+  /// [maxEdge] px on its longest side, it is meant as an instant placeholder
+  /// while the larger [previewImage] decodes. Results are cached in a tiny LRU
+  /// so swiping back and forth between the same neighbours is instant.
+  ///
+  /// This deliberately does not go through [thumbnail] / [ThumbnailGate]: the
+  /// detail viewer issues a bounded number of these (≤15) and iOS needs
+  /// `ResizeContentMode.fit` to avoid square-cropping the placeholder.
+  Future<Uint8List?> adjacentThumbnail(String assetId, int maxEdge) async {
+    final cached = _adjacentThumbnailCache.get(assetId);
+    if (cached != null) {
+      _log.fine('adjacentThumbnail($assetId) cache hit');
+      return cached;
+    }
+    if (_adjacentThumbnailCache.contains(assetId)) {
+      _log.fine('adjacentThumbnail($assetId) cache hit (null)');
+      return null;
+    }
+
+    final sw = Stopwatch()..start();
+    final bytes = await _fetchAdjacentThumbnail(assetId, maxEdge);
+    sw.stop();
+    _adjacentThumbnailCache.put(assetId, bytes);
+    _log.fine(
+      'adjacentThumbnail($assetId, ${maxEdge}px) fetched in '
+      '${sw.elapsedMilliseconds}ms bytes=${bytes?.length ?? 0}',
+    );
+    return bytes;
+  }
+
+  Future<Uint8List?> _fetchAdjacentThumbnail(String assetId, int maxEdge) async {
+    final entity = await _entity(assetId);
+    if (entity == null) return null;
+    final size = ThumbnailSize.square(maxEdge);
+    final option = (Platform.isIOS || Platform.isMacOS)
+        ? ThumbnailOption.ios(
+            size: size,
+            quality: 90,
+            resizeContentMode: ResizeContentMode.fit,
+          )
+        : ThumbnailOption(size: size, quality: 90);
     return entity.thumbnailDataWithOption(option);
+  }
+
+  /// Drops the in-memory adjacent thumbnail cache. Call from lifecycle pause
+  /// and memory-pressure handlers to keep background RAM low.
+  void clearAdjacentThumbnailCache() {
+    _adjacentThumbnailCache.clear();
+  }
+
+  /// Drops the in-memory detail preview cache and any in-flight dedupe futures.
+  /// Call from lifecycle pause and memory-pressure handlers to keep background
+  /// RAM low.
+  void clearDetailPreviewCache() {
+    _detailPreviewCache.clear();
+    _previewPending.clear();
   }
 
   // --- Video ---------------------------------------------------------------

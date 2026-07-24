@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/app_space.dart';
 import '../../../widgets/app_dialog.dart';
 import '../../../widgets/section_header.dart';
 import '../memories_providers.dart';
@@ -26,7 +27,10 @@ class MemoriesCarousel extends ConsumerWidget {
     const cardHeight = MemoryCard.width / MemoryCard.aspectRatio;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      // Twice the timeline's own section rhythm: the break between the
+      // carousel and the grid marks a change of content type, not just the
+      // next section.
+      padding: const EdgeInsets.only(bottom: AppSpace.s20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -10,11 +10,11 @@ import 'package:sologallery/features/library/library_screen.dart';
 import 'package:sologallery/features/library/widgets/year_header.dart';
 import 'package:sologallery/features/memories/memories_providers.dart';
 import 'package:sologallery/features/memories/widgets/memories_carousel.dart';
-import 'package:sologallery/widgets/asset_grid.dart';
 import 'package:sologallery/services/indexing_service.dart';
 import 'package:sologallery/services/permission_provider.dart';
 import 'package:sologallery/services/photo_library_service.dart';
 import 'package:sologallery/widgets/asset_thumbnail.dart';
+import 'package:sologallery/features/library/widgets/library_skeleton.dart';
 import 'package:sologallery/widgets/limited_access_banner.dart';
 
 import '../../support/asset_fixtures.dart';
@@ -54,6 +54,17 @@ void main() {
         (year: year, count: byYear[year]!.length),
     ];
 
+    // Day grouping for the `This week` filter, derived from [weekAssets].
+    final byDay = <DateTime, List<AssetRef>>{};
+    for (final a in weekAssets) {
+      final d = a.createdAt;
+      (byDay[DateTime(d.year, d.month, d.day)] ??= []).add(a);
+    }
+    final dayCounts = [
+      for (final day in byDay.keys.toList()..sort((a, b) => b.compareTo(a)))
+        (day: day, count: byDay[day]!.length),
+    ];
+
     final fake = FakePhotoLibraryService(access: access);
     final router = GoRouter(
       routes: [
@@ -65,6 +76,14 @@ void main() {
         GoRoute(
           path: '/older',
           builder: (_, _) => const Scaffold(body: Text('older-grid')),
+        ),
+        GoRoute(
+          path: '/year/:year',
+          builder: (_, _) => const Scaffold(body: Text('year-grid')),
+        ),
+        GoRoute(
+          path: '/day/:date',
+          builder: (_, _) => const Scaffold(body: Text('day-grid')),
         ),
         GoRoute(
           path: '/settings',
@@ -101,7 +120,14 @@ void main() {
               ].take(6).toList(),
             ),
           ),
-          thisWeekAssetsProvider.overrideWithValue(AsyncData(weekAssets)),
+          thisWeekDayCountsProvider.overrideWithValue(AsyncData(dayCounts)),
+          dayPreviewsProvider.overrideWith(
+            (ref, day) => Stream.value(
+              [
+                for (final a in byDay[day] ?? const <AssetRef>[]) a.id,
+              ].take(6).toList(),
+            ),
+          ),
         ],
         child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
       ),
@@ -120,7 +146,7 @@ void main() {
     expect(find.text('No photos yet'), findsOneWidget);
   });
 
-  testWidgets('spinner while the cache is not yet ready', (tester) async {
+  testWidgets('skeleton while the cache is not yet ready', (tester) async {
     await pump(
       tester,
       access: PhotoAccess.granted,
@@ -128,7 +154,8 @@ void main() {
       settle: false,
     );
     expect(find.text('No photos yet'), findsNothing);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byType(LibrarySkeleton), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
   testWidgets('renders a month section with header, previews and count', (
@@ -140,12 +167,37 @@ void main() {
       assets: assetsInMonth(2026, 8, 7),
     );
 
-    expect(find.text('AUGUST 2026'), findsOneWidget);
+    expect(find.text('August 2026'), findsOneWidget);
     // A quiet tally, not a button: "items" because a month mixes stills and
     // video, and the grid below shows both.
     expect(find.text('7 items'), findsOneWidget);
     // Preview is capped at six thumbnails.
     expect(find.byType(AssetThumbnail), findsNWidgets(6));
+    // Each heavy timeline item is isolated so thumbnail decode completion does
+    // not repaint neighbours. The list plus Material/ListView internals add
+    // extra RepaintBoundaries; assert at least one per timeline item.
+    expect(find.byType(RepaintBoundary), findsAtLeastNWidgets(2));
+  });
+
+  // The floating nav capsule reaches the screen as a bottom inset; the timeline
+  // has to pad by it or its last month section hides behind the capsule. See
+  // lib/widgets/nav_pill_bar.dart.
+  testWidgets('the timeline clears the nav capsule', (tester) async {
+    tester.view.padding = const FakeViewPadding(bottom: 96);
+    addTearDown(tester.view.reset);
+    final inset = 96 / tester.view.devicePixelRatio;
+
+    await pump(
+      tester,
+      access: PhotoAccess.granted,
+      assets: assetsInMonth(2026, 8, 7),
+    );
+
+    final timeline = tester.widget<ListView>(find.byType(ListView).first);
+    expect(
+      timeline.padding?.resolve(TextDirection.ltr).bottom,
+      AppSpace.s24 + inset,
+    );
   });
 
   testWidgets('tapping the section header navigates to the month route', (
@@ -159,7 +211,7 @@ void main() {
 
     // The whole header row is the target — the label included, not just a
     // trailing control.
-    await tester.tap(find.text('AUGUST 2026'));
+    await tester.tap(find.text('August 2026'));
     await tester.pumpAndSettle();
     expect(find.text('month'), findsOneWidget);
   });
@@ -189,7 +241,7 @@ void main() {
       undatedAssets: assetsInMonth(2020, 1, 4),
     );
 
-    expect(find.text('AUGUST 2026'), findsOneWidget);
+    expect(find.text('August 2026'), findsOneWidget);
     expect(find.text('OLDER'), findsOneWidget);
     expect(find.text('4 items'), findsOneWidget);
   });
@@ -218,6 +270,60 @@ void main() {
     expect(find.text('older-grid'), findsOneWidget);
   });
 
+  testWidgets('tapping a year hero under Months navigates to the year route', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      access: PhotoAccess.granted,
+      assets: [
+        ...assetsInMonth(2026, 8, 3),
+        ...assetsInMonth(2025, 11, 4),
+      ],
+    );
+    await tester.tap(find.text(LibraryFilter.months.label));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('2026'));
+    await tester.pumpAndSettle();
+    expect(find.text('year-grid'), findsOneWidget);
+  });
+
+  testWidgets('tapping a year section under Year navigates to the year route', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      access: PhotoAccess.granted,
+      assets: [
+        ...assetsInMonth(2026, 8, 3),
+        ...assetsInMonth(2025, 11, 4),
+      ],
+    );
+    await tester.tap(find.text(LibraryFilter.year.label));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('2026'));
+    await tester.pumpAndSettle();
+    expect(find.text('year-grid'), findsOneWidget);
+  });
+
+  testWidgets('tapping a day header under This week navigates to the day route', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      access: PhotoAccess.granted,
+      weekAssets: assetsInMonth(2026, 8, 4),
+    );
+    await tester.tap(find.text(LibraryFilter.thisWeek.label));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('FRIDAY, AUG 28'));
+    await tester.pumpAndSettle();
+    expect(find.text('day-grid'), findsOneWidget);
+  });
+
   group('time filters', () {
     /// Two years of fixture assets, so year grouping has something to group.
     List<AssetRef> twoYears() => [
@@ -231,6 +337,14 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    /// The timeline is a lazy `ListView.builder`: on the default 800x600
+    /// surface only the first section or two are ever built, so any test that
+    /// counts sections across several years has to give it room first.
+    Future<void> tallSurface(WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 2400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+    }
+
     testWidgets('the bar offers every filter, All active by default', (
       tester,
     ) async {
@@ -240,8 +354,14 @@ void main() {
         expect(find.text(f.label), findsOneWidget, reason: f.name);
       }
       // All is the default, so the month sections and the carousel are up.
-      expect(find.text('AUGUST 2026'), findsOneWidget);
-      expect(find.byType(MemoriesCarousel), findsOneWidget);
+      expect(find.text('August 2026'), findsOneWidget);
+      // With no memories the carousel collapses to zero height, and a viewport
+      // reports a zero-extent child as offstage — so its presence in the
+      // timeline only shows with skipOffstage off.
+      expect(
+        find.byType(MemoriesCarousel, skipOffstage: false),
+        findsOneWidget,
+      );
     });
 
     testWidgets('All shows no year heroes', (tester) async {
@@ -252,18 +372,19 @@ void main() {
     testWidgets('Months keeps the month sections and adds a hero per year', (
       tester,
     ) async {
+      await tallSurface(tester);
       await pump(tester, access: PhotoAccess.granted, assets: twoYears());
       await selectFilter(tester, LibraryFilter.months);
 
-      expect(find.text('AUGUST 2026'), findsOneWidget);
-      expect(find.text('FEBRUARY 2026'), findsOneWidget);
-      expect(find.text('NOVEMBER 2025'), findsOneWidget);
+      expect(find.text('August 2026'), findsOneWidget);
+      expect(find.text('February 2026'), findsOneWidget);
+      expect(find.text('November 2025'), findsOneWidget);
       // One hero per year, not per month.
       expect(find.byType(YearHeader), findsNWidgets(2));
       expect(find.text('2026'), findsOneWidget);
       expect(find.text('2025'), findsOneWidget);
       // The 2026 hero carries that year's total across both its months.
-      expect(find.text('5 photos'), findsOneWidget);
+      expect(find.text('5 items'), findsOneWidget);
     });
 
     testWidgets('the time filters drop the memories carousel', (tester) async {
@@ -274,23 +395,28 @@ void main() {
         LibraryFilter.thisWeek,
       ]) {
         await selectFilter(tester, f);
-        expect(find.byType(MemoriesCarousel), findsNothing, reason: f.name);
+        expect(
+          find.byType(MemoriesCarousel, skipOffstage: false),
+          findsNothing,
+          reason: f.name,
+        );
       }
     });
 
     testWidgets('Year collapses to one section per year', (tester) async {
+      await tallSurface(tester);
       await pump(tester, access: PhotoAccess.granted, assets: twoYears());
       await selectFilter(tester, LibraryFilter.year);
 
       expect(find.byType(YearHeader), findsNWidgets(2));
-      expect(find.text('5 photos'), findsOneWidget); // 2026
-      expect(find.text('4 photos'), findsOneWidget); // 2025
+      expect(find.text('5 items'), findsOneWidget); // 2026
+      expect(find.text('4 items'), findsOneWidget); // 2025
       // The month axis is gone entirely.
-      expect(find.text('AUGUST 2026'), findsNothing);
+      expect(find.text('August 2026'), findsNothing);
       expect(find.text('FEBRUARY 2026'), findsNothing);
     });
 
-    testWidgets('This week shows the window as one flat grid', (tester) async {
+    testWidgets('This week groups by calendar day sections', (tester) async {
       await pump(
         tester,
         access: PhotoAccess.granted,
@@ -299,9 +425,11 @@ void main() {
       );
       await selectFilter(tester, LibraryFilter.thisWeek);
 
-      expect(find.byType(AssetGrid), findsOneWidget);
-      // No sections — a week doesn't need dividing.
-      expect(find.text('AUGUST 2026'), findsNothing);
+      // Four assets on a single calendar day become one section with a day
+      // header and up to six previews.
+      expect(find.text('FRIDAY, AUG 28'), findsOneWidget);
+      expect(find.text('4 items'), findsOneWidget);
+      expect(find.byType(AssetThumbnail), findsNWidgets(4));
       expect(find.byType(YearHeader), findsNothing);
     });
 
@@ -312,7 +440,6 @@ void main() {
       await selectFilter(tester, LibraryFilter.thisWeek);
 
       expect(find.text('No photos in the last 7 days.'), findsOneWidget);
-      expect(find.byType(AssetGrid), findsNothing);
     });
 
     testWidgets('switching back to All restores the full timeline', (
@@ -320,12 +447,15 @@ void main() {
     ) async {
       await pump(tester, access: PhotoAccess.granted, assets: twoYears());
       await selectFilter(tester, LibraryFilter.year);
-      expect(find.text('AUGUST 2026'), findsNothing);
+      expect(find.text('August 2026'), findsNothing);
 
       await selectFilter(tester, LibraryFilter.all);
-      expect(find.text('AUGUST 2026'), findsOneWidget);
+      expect(find.text('August 2026'), findsOneWidget);
       expect(find.byType(YearHeader), findsNothing);
-      expect(find.byType(MemoriesCarousel), findsOneWidget);
+      expect(
+        find.byType(MemoriesCarousel, skipOffstage: false),
+        findsOneWidget,
+      );
     });
 
     testWidgets('the filter bar stays up on an empty library', (tester) async {
@@ -353,5 +483,19 @@ void main() {
       assets: assetsInMonth(2026, 8, 2),
     );
     expect(find.byType(LimitedAccessBanner), findsNothing);
+  });
+
+  testWidgets('pull-to-refresh wraps the month timeline', (tester) async {
+    await pump(
+      tester,
+      access: PhotoAccess.granted,
+      assets: assetsInMonth(2026, 8, 3),
+    );
+    expect(find.byType(RefreshIndicator), findsOneWidget);
+  });
+
+  testWidgets('pull-to-refresh wraps the empty month state', (tester) async {
+    await pump(tester, access: PhotoAccess.granted);
+    expect(find.byType(RefreshIndicator), findsOneWidget);
   });
 }

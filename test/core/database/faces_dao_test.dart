@@ -368,4 +368,75 @@ void main() {
       expect(summaries.single.faceCount, 2);
     });
   });
+
+  // The incremental clustering batch: `_clusterNewFaces` decides every face's
+  // person in memory, then applies the whole plan in one transaction so the
+  // People strip's `watchPersonSummaries` emits once for the pass instead of
+  // once per face. This proves the emission collapse at the DAO layer.
+  test('applyIncrementalClusters mints new persons and assigns in one batch',
+      () async {
+    for (final id in const ['a', 'b', 'c']) {
+      await asset(id);
+      await db.facesDao.insertFaces(id, [face([1, 0])]);
+    }
+    final unclustered = await db.facesDao.unclusteredFaces();
+    expect(unclustered, hasLength(3));
+
+    final emits = <List<PersonSummary>>[];
+    final sub = db.facesDao.watchPersonSummaries().listen(emits.add);
+    await Future<void>.delayed(Duration.zero); // drain the initial empty emit
+
+    // Three new persons (no existing exemplars to reuse), one face each.
+    await db.facesDao.applyIncrementalClusters([
+      IncrementalClusterPlan(
+        faceIds: [unclustered[0].id],
+        coverAssetId: 'a',
+      ),
+      IncrementalClusterPlan(
+        faceIds: [unclustered[1].id],
+        coverAssetId: 'b',
+      ),
+      IncrementalClusterPlan(
+        faceIds: [unclustered[2].id],
+        coverAssetId: 'c',
+      ),
+    ]);
+    await Future<void>.delayed(const Duration(milliseconds: 50)); // drain
+
+    await sub.cancel();
+
+    // Exactly one non-empty emission: the whole batch landed in one
+    // transaction, so the summaries went from empty straight to three — not
+    // 1, then 2, then 3.
+    final nonEmpty = emits.where((l) => l.isNotEmpty).toList();
+    expect(nonEmpty, hasLength(1), reason: 'one batch → one summary emission');
+    expect(nonEmpty.single, hasLength(3));
+    // The unassigned faces are all gone.
+    expect(await db.facesDao.unclusteredFaces(), isEmpty);
+  });
+
+  test('applyIncrementalClusters reuses an existing person without touching it',
+      () async {
+    await asset('a');
+    await asset('b');
+    await db.facesDao.insertFaces('a', [face([1, 0])]);
+    await db.facesDao.insertFaces('b', [face([1, 0])]);
+    final existing = await db.facesDao.createPerson(coverAssetId: 'a');
+    await db.facesDao.renamePerson(existing, 'Alice');
+
+    final unclustered = await db.facesDao.unclusteredFaces();
+    await db.facesDao.applyIncrementalClusters([
+      IncrementalClusterPlan(
+        faceIds: unclustered.map((f) => f.id).toList(),
+        reusePersonId: existing,
+      ),
+    ]);
+
+    final persons = await db.select(db.persons).get();
+    expect(persons, hasLength(1), reason: 'no new person minted');
+    expect(persons.single.id, existing);
+    expect(persons.single.displayName, 'Alice', reason: 'name preserved');
+    expect(persons.single.coverAssetId, 'a', reason: 'cover preserved');
+    expect(await db.facesDao.unclusteredFaces(), isEmpty);
+  });
 }

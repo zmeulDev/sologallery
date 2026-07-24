@@ -5,7 +5,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sologallery/app.dart';
 import 'package:sologallery/core/database/app_database.dart';
 import 'package:sologallery/core/database/database_provider.dart';
+import 'package:sologallery/services/indexing_service.dart';
 import 'package:sologallery/services/permission_provider.dart';
+import 'package:sologallery/widgets/indexing_dial.dart';
+import 'package:sologallery/widgets/nav_pill_bar.dart';
 
 import '../support/fake_photo_library_service.dart';
 
@@ -15,7 +18,12 @@ void main() {
   setUp(() => db = AppDatabase(NativeDatabase.memory()));
   tearDown(() async => db.close());
 
-  Future<void> pumpApp(WidgetTester tester) async {
+  Future<void> pumpApp(
+    WidgetTester tester, {
+    AsyncValue<IndexingStatus> indexing = const AsyncData(
+      IndexingStatus.idle(),
+    ),
+  }) async {
     // Grant access *and* answer the analysis-consent prompt so the router
     // redirect lands on the Library, not onboarding. Seeded through the real
     // SettingsDao so these tests exercise the actual ConsentNotifier path.
@@ -26,6 +34,7 @@ void main() {
           databaseProvider.overrideWithValue(db),
           photoLibraryServiceProvider
               .overrideWithValue(FakePhotoLibraryService()),
+          indexingStatusProvider.overrideWithValue(indexing),
         ],
         child: const SoloGalleryApp(),
       ),
@@ -74,24 +83,79 @@ void main() {
     await disposeTree(tester);
   });
 
-  testWidgets('search field takes focus with the tab and releases it on leave',
+  // Analysis running is an app-wide condition — Search used to be the only
+  // screen that said so, which is why the rest of the app just looked
+  // incomplete while it ran.
+  testWidgets('says nothing about analysis while the indexer is idle',
       (tester) async {
     await pumpApp(tester);
-    // skipOffstage: false — once another tab is selected the Search branch
-    // stays in the tree (indexed shell) but goes offstage.
-    final field = find.byType(TextField, skipOffstage: false);
+    expect(find.byType(IndexingDial), findsOneWidget);
+    expect(find.textContaining('Analyzing'), findsNothing);
+    expect(
+      find.descendant(of: find.byType(IndexingDial), matching: find.byType(Text)),
+      findsNothing,
+    );
+    await disposeTree(tester);
+  });
 
-    await tester.tap(find.byTooltip('Search'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
-    expect(tester.widget<TextField>(field).focusNode?.hasFocus, isTrue);
+  testWidgets('the indexing dial rides beside the nav capsule on every tab', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      indexing: const AsyncData(IndexingStatus(remaining: 42, total: 100)),
+    );
 
-    // Leaving the tab releases focus so the keyboard doesn't linger.
-    await tester.tap(find.byTooltip('Saved'));
+    expect(
+      find.descendant(of: find.byType(IndexingDial), matching: find.text('42')),
+      findsOneWidget,
+    );
+    // Bottom chrome, not a band at the top: it sits below the active screen's
+    // app bar, down with the nav capsule.
+    final dial = tester.getRect(find.byType(IndexingDial));
+    final appBar = tester.getRect(find.byType(AppBar).first);
+    final capsule = tester.getRect(find.byType(NavPillBar));
+    expect(dial.top, greaterThan(appBar.bottom));
+    expect(capsule.contains(dial.center), isTrue);
+
+    // ...and it stays put when the user changes tab.
+    await tester.tap(find.byTooltip('Albums'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
-    expect(tester.widget<TextField>(field).focusNode?.hasFocus, isFalse);
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(tester.getRect(find.byType(IndexingDial)), dial);
+    expect(find.text('42'), findsOneWidget);
 
     await disposeTree(tester);
   });
+
+  testWidgets(
+    'search field does not auto-focus on Search tab entry and releases it on leave',
+    (tester) async {
+      await pumpApp(tester);
+      // skipOffstage: false — once another tab is selected the Search branch
+      // stays in the tree (indexed shell) but goes offstage.
+      final field = find.byType(TextField, skipOffstage: false);
+
+      // The redesigned Search screen keeps the keyboard hidden on entry so the
+      // recent-history ribbon is visible first.
+      await tester.tap(find.byTooltip('Search'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(tester.widget<TextField>(field).focusNode?.hasFocus, isFalse);
+
+      // Manually focusing the field then leaving the tab releases focus so the
+      // keyboard doesn't linger.
+      await tester.tap(field);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(tester.widget<TextField>(field).focusNode?.hasFocus, isTrue);
+
+      await tester.tap(find.byTooltip('Saved'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(tester.widget<TextField>(field).focusNode?.hasFocus, isFalse);
+
+      await disposeTree(tester);
+    },
+  );
 }

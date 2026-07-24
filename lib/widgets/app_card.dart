@@ -11,14 +11,23 @@ import '../core/theme/app_radius.dart';
 /// since a note and a row want different insets), while [AppCard.divided] stacks
 /// rows separated by hairlines and clips them to the corner radius.
 class AppCard extends StatelessWidget {
-  const AppCard({super.key, required Widget this.child}) : children = const [];
+  const AppCard({
+    super.key,
+    required Widget this.child,
+    this.borderRadius = AppRadius.br12,
+  }) : children = const [];
 
   /// A card of stacked rows, hairline-divided. Rows own their own padding; the
   /// card clips them so a row's ink never paints over the rounded corner.
-  const AppCard.divided({super.key, required this.children}) : child = null;
+  const AppCard.divided({
+    super.key,
+    required this.children,
+    this.borderRadius = AppRadius.br12,
+  }) : child = null;
 
   final Widget? child;
   final List<Widget> children;
+  final BorderRadius borderRadius;
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +36,7 @@ class AppCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: scheme.surface,
-        borderRadius: AppRadius.br12,
+        borderRadius: borderRadius,
         border: Border.all(color: colors.border),
       ),
       clipBehavior: Clip.antiAlias,

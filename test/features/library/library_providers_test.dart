@@ -115,4 +115,37 @@ void main() {
     await cache(assetsInMonth(2020, 1, 4, prefix: 'u'), dated: false);
     expect(await readData(container, olderCountProvider), 0);
   });
+
+  test('this week day counts are empty without library access', () async {
+    final container = await containerWith(access: PhotoAccess.denied);
+    await cache(assetsInMonth(2026, 8, 3));
+    expect(await readData(container, thisWeekDayCountsProvider), isEmpty);
+  });
+
+  test('this week groups dated assets into day counts, newest first', () async {
+    final container = await containerWith();
+    await cache([
+      AssetRef(id: 'today-1', createdAt: DateTime(2026, 8, 28, 14, 0)),
+      AssetRef(id: 'today-2', createdAt: DateTime(2026, 8, 28, 9, 0)),
+      AssetRef(id: 'today-3', createdAt: DateTime(2026, 8, 28, 3, 0)),
+      AssetRef(id: 'yesterday-1', createdAt: DateTime(2026, 8, 27, 18, 0)),
+      AssetRef(id: 'yesterday-2', createdAt: DateTime(2026, 8, 27, 10, 0)),
+    ]);
+
+    final counts = await readData(container, thisWeekDayCountsProvider);
+    expect(counts.map((e) => e.day).toList(), [
+      DateTime(2026, 8, 28),
+      DateTime(2026, 8, 27),
+    ]);
+    expect(counts.map((e) => e.count).toList(), [3, 2]);
+  });
+
+  test('dayPreviews caps at six newest ids', () async {
+    final container = await containerWith();
+    await cache(assetsInMonth(2026, 8, 7));
+
+    final previews =
+        await readData(container, dayPreviewsProvider(DateTime(2026, 8, 28)));
+    expect(previews, hasLength(6));
+  });
 }

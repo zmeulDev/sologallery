@@ -17,12 +17,21 @@ void main() {
   setUp(() => db = AppDatabase(NativeDatabase.memory()));
   tearDown(() => db.close());
 
+  final folders = [
+    DeviceFolder(id: 'camera-folder', name: 'Camera', count: 120),
+    DeviceFolder(id: 'screenshots-folder', name: 'Screenshots', count: 30),
+  ];
+
   Future<FakePhotoLibraryService> pump(
     WidgetTester tester, {
     required PhotoAccess access,
     PhotoAccess? grantResult,
   }) async {
-    final fake = FakePhotoLibraryService(access: access, grantResult: grantResult);
+    final fake = FakePhotoLibraryService(
+      access: access,
+      grantResult: grantResult,
+      folders: folders,
+    );
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -83,10 +92,7 @@ void main() {
     /// Pumps with [access] already sufficient to read, so the screen advances
     /// to step 2. `pumpAndSettle` — the consent step has no perpetually
     /// scheduling widget (no spinner, no focused TextField), so it's safe
-    /// here and, unlike a short bounded pump, reliably clears the staggered
-    /// EntranceFade reveal timers (up to 200ms + reveal duration) that back
-    /// the step's entrance choreography — a short pump leaves one pending at
-    /// teardown and trips the "Timer still pending" invariant.
+    /// here and reliably lets the step's providers resolve before asserting.
     Future<void> pumpConsentWith(
       WidgetTester tester,
       PhotoAccess access,
@@ -95,8 +101,12 @@ void main() {
         ProviderScope(
           overrides: [
             databaseProvider.overrideWithValue(db),
-            photoLibraryServiceProvider
-                .overrideWithValue(FakePhotoLibraryService(access: access)),
+            photoLibraryServiceProvider.overrideWithValue(
+              FakePhotoLibraryService(
+                access: access,
+                folders: folders,
+              ),
+            ),
           ],
           child: MaterialApp(
             theme: AppTheme.light,
@@ -124,7 +134,10 @@ void main() {
           overrides: [
             databaseProvider.overrideWithValue(db),
             photoLibraryServiceProvider.overrideWithValue(
-              FakePhotoLibraryService(access: PhotoAccess.granted),
+              FakePhotoLibraryService(
+                access: PhotoAccess.granted,
+                folders: folders,
+              ),
             ),
           ],
           child: MaterialApp(
@@ -137,8 +150,9 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('asks once access is granted, with every feature off',
-        (tester) async {
+    testWidgets('asks once access is granted, with every feature off', (
+      tester,
+    ) async {
       await pumpConsent(tester);
 
       expect(find.text('What should stay\non the shelf?'), findsOneWidget);
@@ -152,8 +166,9 @@ void main() {
       );
     });
 
-    testWidgets('Continue persists exactly what was switched on',
-        (tester) async {
+    testWidgets('Continue persists exactly what was switched on', (
+      tester,
+    ) async {
       await pumpConsent(tester);
 
       // Turn Content search on (first row), leave Memories and Faces off.
@@ -162,8 +177,7 @@ void main() {
       await tester.tap(find.text('Continue'));
       // pumpAndSettle: recording consent flips the screen back to step 1
       // (canReadLibrary stays true, consent no longer "needed"), which
-      // mounts a fresh AnimatedSwitcher cross-fade and that step's own
-      // EntranceFade timers — a short bounded pump leaves those pending.
+      // remounts the access step under a fresh KeyedSubtree.
       await tester.pumpAndSettle();
 
       expect(await db.settingsDao.readSearchEnabled(), isTrue);
@@ -172,8 +186,9 @@ void main() {
       expect(await db.settingsDao.readConsentRecorded(), isTrue);
     });
 
-    testWidgets('Continue with nothing on still records the answer',
-        (tester) async {
+    testWidgets('Continue with nothing on still records the answer', (
+      tester,
+    ) async {
       await pumpConsent(tester);
 
       await tester.tap(find.text('Continue'));
@@ -184,6 +199,100 @@ void main() {
       expect(await db.settingsDao.readSearchEnabled(), isFalse);
       expect(await db.settingsDao.readMemoriesEnabled(), isFalse);
       expect(await db.settingsDao.readFacesEnabled(), isFalse);
+    });
+
+    testWidgets('shows folder summary and selected photo count', (tester) async {
+      await pumpConsent(tester);
+
+      expect(find.text('Folders to analyze'), findsOneWidget);
+      expect(
+        find.text('All folders · 150 photos. This may take a while.'),
+        findsNothing,
+      );
+      // By default no ML features are on, so the caption says so.
+      expect(
+        find.text('All folders · No on-device analysis is turned on.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('caption switches to time estimate when analysis is enabled', (
+      tester,
+    ) async {
+      await pumpConsent(tester);
+
+      await tester.tap(find.byType(Switch).first);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('All folders · 150 photos. This may take a while.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a small selection drops the "a while" warning', (tester) async {
+      await pumpConsent(tester);
+
+      await tester.tap(find.byType(Switch).first);
+      await tester.pumpAndSettle();
+
+      // Exclude the 120-photo Camera folder, leaving 30 — well under the
+      // threshold where the warning is honest.
+      await tester.tap(find.text('Folders to analyze'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Camera'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('1 of 2 folders · 30 photos.'), findsOneWidget);
+      expect(find.textContaining('This may take a while'), findsNothing);
+    });
+
+    testWidgets('folder picker updates summary and persisted scope', (
+      tester,
+    ) async {
+      await pumpConsent(tester);
+
+      // The card starts with every folder included and no analysis enabled.
+      expect(
+        find.text('All folders · No on-device analysis is turned on.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Folders to analyze'));
+      await tester.pumpAndSettle();
+
+      // The folder picker sheet is open.
+      expect(find.text('FOLDERS TO ANALYZE'), findsOneWidget);
+
+      // Toggle the Screenshots folder off. The sheet shows All folders, Camera,
+      // Screenshots — tap the last checkbox.
+      final checkboxes = tester.widgetList<Checkbox>(find.byType(Checkbox)).toList();
+      expect(checkboxes, hasLength(3));
+      await tester.tap(find.byType(Checkbox).last);
+      await tester.pumpAndSettle();
+
+      // Tap Done in the sheet.
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+
+      // Summary now reflects one excluded folder; still no analysis on.
+      expect(
+        find.text('1 of 2 folders · No on-device analysis is turned on.'),
+        findsOneWidget,
+      );
+
+      // Turn content search on so analysis is enabled and Continue persists.
+      await tester.tap(find.byType(Switch).first);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      expect(
+        await db.settingsDao.readExcludedFolderIds(),
+        const {'screenshots-folder'},
+      );
     });
   });
 }

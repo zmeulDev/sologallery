@@ -1,11 +1,8 @@
 import 'dart:async';
-import 'dart:io' show Directory, File;
 import 'dart:isolate';
-import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../core/database/daos/faces_dao.dart';
 import '../core/database/daos/index_dao.dart';
@@ -55,7 +52,6 @@ class IndexingService {
     required this.settings,
     required this.photos,
     required this.worker,
-    this.tempDir,
     this.resweepDebounce = const Duration(seconds: 2),
     this.reclusterThreshold = 20,
     this.memoryRefreshThreshold = 50,
@@ -108,9 +104,6 @@ class IndexingService {
   /// mid-day. Small in tests.
   final int memoryRefreshThreshold;
 
-  /// Where transient ML thumbnails are written; resolved lazily on device.
-  Directory? tempDir;
-
   /// How long to coalesce a burst of library-change callbacks before
   /// re-sweeping. Small in tests; ~2s on device.
   final Duration resweepDebounce;
@@ -156,6 +149,30 @@ class IndexingService {
     if (!_controller.isClosed) _controller.add(status);
   }
 
+  /// Timestamp of the last progress emit, for [_emitProgress]'s throttle.
+  DateTime? _lastProgressEmit;
+
+  /// Emits indexing progress at most every [_progressThrottle] during a pass.
+  /// The dial and the Settings stats rebuild per emit, so an unthrottled
+  /// per-asset emit on a 1k-asset first run is a thousand rebuilds for a count
+  /// the eye can't read that fast. The caller emits the final state
+  /// (remaining 0) separately and unconditionally after the loop, so a
+  /// throttled mid-pass value can't linger through the cluster/memories work
+  /// that follows.
+  void _emitProgress(IndexingStatus status) {
+    final now = DateTime.now();
+    if (_lastProgressEmit == null ||
+        now.difference(_lastProgressEmit!) >= _progressThrottle) {
+      _lastProgressEmit = now;
+      _emit(status);
+    }
+  }
+
+  /// Coalesces progress emits during a pass. ~250 ms is faster than the dial's
+  /// number can usefully change to the eye, and slow enough that a 1k-asset
+  /// pass emits ~4 times mid-flight instead of 1k.
+  static const _progressThrottle = Duration(milliseconds: 250);
+
   void _markSwept() => _setSwept(true);
 
   void _setSwept(bool value) {
@@ -199,6 +216,19 @@ class IndexingService {
     if (!_running) unawaited(start());
   }
 
+  /// Blocks until the app is no longer paused, or the pass is cancelled. The
+  /// per-asset ML loop checks `_paused` inline; the metadata sweep, the periodic
+  /// cluster/memories helpers, and the section entries in [_run] call this so a
+  /// backgrounded app doesn't keep driving platform-channel round-trips, file
+  /// I/O, or DB work (Absolute rule: no work runs while the app isn't in use).
+  /// On cancel this returns promptly and the caller bails on its next
+  /// `_cancelled` check.
+  Future<void> _awaitNotPaused() async {
+    while (_paused && !_cancelled) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+  }
+
   bool _rebuilding = false;
 
   /// Wipes the ML index (cache + labels/OCR/faces + persons) and re-runs a full
@@ -237,8 +267,8 @@ class IndexingService {
   // delete the derived data, and enabling has to arrange for it to be derived —
   // and this service owns the baseline keys, the DAOs, and the pass lifecycle.
 
-  /// Applies all three consent answers at once — onboarding's single entry
-  /// point.
+  /// Applies all three consent answers and the folder scope at once —
+  /// onboarding's single entry point.
   ///
   /// Deliberately *not* three [setSearchEnabled] / [setMemoriesEnabled] /
   /// [setFacesEnabled] calls in a row. Each of those persists its own flag and
@@ -247,23 +277,30 @@ class IndexingService {
   /// the pass ran with `facesEnabled: false`, still stamped `indexed_at` on
   /// every asset, and since [IndexDao.pendingMlIds] only returns unstamped rows
   /// nothing ever revisited them — People stayed empty until the user toggled
-  /// face detection in Settings. Here the flags land in one transaction before
-  /// any pass can observe them, and exactly one pass is kicked at the end.
+  /// face detection in Settings. Here the flags and folder scope land in one
+  /// transaction before any pass can observe them, and exactly one pass is kicked
+  /// at the end.
   Future<void> applyConsent({
     required bool searchEnabled,
     required bool memoriesEnabled,
     required bool facesEnabled,
+    required Set<String> excludedFolderIds,
   }) async {
+    final previousExcluded = await settings.readExcludedFolderIds();
+
     await settings.setConsent(
       search: searchEnabled,
       memories: memoriesEnabled,
       faces: facesEnabled,
+      excludedFolderIds: excludedFolderIds,
     );
+
+    final needsMl = searchEnabled || facesEnabled;
 
     // Enabling either ML feature re-queues the whole cache: anything indexed
     // while it was off carries an `indexed_at` stamp that would otherwise hide
     // it from pendingMlIds forever.
-    if (searchEnabled || facesEnabled) await dao.resetMlPending();
+    if (needsMl) await dao.resetMlPending();
 
     // Declining deletes what was already derived. An upgrading user reaches
     // this step with labels, faces, persons and memories already on disk from
@@ -276,6 +313,18 @@ class IndexingService {
       await settings.put(_reclusterBaselineKey, '0');
     }
     if (!memoriesEnabled) await memories.clearMemories();
+
+    // If the folder scope changed while ML features remain on, derived data may
+    // now cover assets that should be excluded. Wipe it so the next pass
+    // re-analyzes only the included folders.
+    if (needsMl && previousExcluded != excludedFolderIds) {
+      await dao.clearContent();
+      await faces.clearFaces();
+      await faces.clearPersons();
+      await settings.put(_reclusterBaselineKey, '0');
+      await settings.put(_clusterAlgoKey, _clusterAlgoVersion);
+      await memories.clearMemories();
+    }
 
     // Memories are planned from labels and clusters, so every branch above
     // invalidates the current plan: clear the baselines and the pass replans
@@ -351,13 +400,41 @@ class IndexingService {
     }
   }
 
+  /// Applies a new set of folder ids excluded from analysis.
+  ///
+  /// Correctly identifying only the newly excluded/included assets requires the
+  /// same expensive folder paging the indexer already does, and the setting
+  /// changes rarely — so a full derived-data reset is the right trade-off.
+  Future<void> setExcludedFolderIds(Set<String> ids) async {
+    await settings.setExcludedFolderIds(ids);
+
+    // Wipe every inference that the new scope invalidates.
+    await dao.clearContent();
+    await faces.clearFaces();
+    await faces.clearPersons();
+    await settings.put(_reclusterBaselineKey, '0');
+    // The next pass should not treat this as an algorithm change; stamp the
+    // current version so the small post-reset face count doesn't force a global
+    // re-cluster immediately.
+    await settings.put(_clusterAlgoKey, _clusterAlgoVersion);
+    await memories.clearMemories();
+    await settings.put(_memoriesDateKey, '');
+    await settings.put(_memoriesCountKey, '0');
+
+    // Re-queue everything so the next pass re-analyzes only included folders.
+    await dao.resetMlPending();
+
+    _log.info('Excluded folder set changed — reset derived data');
+    unawaited(start());
+  }
+
   Future<void> dispose() async {
     _cancelled = true;
     _resweepTimer?.cancel();
     if (_changeNotifyStarted) await photos.stopLibraryChangeNotify();
     await _controller.close();
     await _sweptController.close();
-    worker.dispose();
+    await worker.dispose();
   }
 
   /// Registers the foreground library-change listener once. Wired from [start],
@@ -436,14 +513,39 @@ class IndexingService {
       // metadata sweep that fills the grid, and the worker never spawns.
       final needsMl = searchEnabled || facesEnabled;
 
+      // Build the excluded-asset set once per round. If the user changes the
+      // exclusion list mid-pass, the next round re-reads it via _dirty.
+      // Memories need it too — a date-window memory is derived content, and the
+      // folder sheet promises excluded photos are skipped — so this is not
+      // gated on `needsMl`.
+      Set<String> excludedAssetIds = const {};
+      if (needsMl || memoriesEnabled) {
+        final excludedFolderIds = await settings.readExcludedFolderIds();
+        if (excludedFolderIds.isNotEmpty) {
+          excludedAssetIds = await _excludedAssetIds(excludedFolderIds);
+        }
+      }
+      if (_cancelled) return;
+
       await _sweepMetadata();
       if (_cancelled) return;
 
       final todo = needsMl ? await dao.pendingMlIds() : const <String>[];
       if (todo.isNotEmpty) {
-        _log.info('Indexing ${todo.length} new asset(s)');
+        // Every pending asset is walked, but an excluded one is only stamped
+        // `indexed_at` — no thumbnail, no ML. Counting those in the dial makes
+        // it promise work it will never do: a library where one folder of 66 is
+        // analyzed would open on "891 left" and race through 825 of them,
+        // contradicting the "66 photos" the folder sheet just committed to. So
+        // progress is measured over the analyzable subset only.
+        final analyzable = todo
+            .where((id) => !excludedAssetIds.contains(id))
+            .length;
+        _log.info(
+          'Indexing ${todo.length} new asset(s); $analyzable to analyze',
+        );
         var done = 0;
-        _emit(IndexingStatus(remaining: todo.length, total: todo.length));
+        _emitProgress(IndexingStatus(remaining: analyzable, total: analyzable));
 
         for (final id in todo) {
           if (_cancelled) return;
@@ -452,17 +554,26 @@ class IndexingService {
           }
           if (_cancelled) return;
 
+          final excluded = excludedAssetIds.contains(id);
           await _indexOne(
             id,
             searchEnabled: searchEnabled,
             facesEnabled: facesEnabled,
+            excluded: excluded,
           );
-          done++;
-          _emit(
-            IndexingStatus(remaining: todo.length - done, total: todo.length),
-          );
+          if (!excluded) {
+            done++;
+            _emitProgress(
+              IndexingStatus(remaining: analyzable - done, total: analyzable),
+            );
+          }
           await Future<void>.delayed(Duration.zero); // keep the UI isolate smooth
         }
+        // The final progress state lands unconditionally so the dial doesn't
+        // linger on a throttled mid-pass value during the post-todo
+        // cluster/memories work that follows (a throttled emit may have skipped
+        // the last few updates).
+        _emit(IndexingStatus(remaining: 0, total: analyzable));
         _log.info('Indexing pass complete (${todo.length} asset(s))');
       }
 
@@ -484,6 +595,7 @@ class IndexingService {
         await _maybeRegenerateMemories(
           searchEnabled: searchEnabled,
           facesEnabled: facesEnabled,
+          excludedAssetIds: excludedAssetIds,
         );
         if (_cancelled) return;
       }
@@ -502,6 +614,8 @@ class IndexingService {
     for (final dated in const [true, false]) {
       var page = 0;
       while (!_cancelled) {
+        await _awaitNotPaused();
+        if (_cancelled) break;
         final rows = await photos.libraryMetadataPage(
           dated: dated,
           page: page,
@@ -544,18 +658,53 @@ class IndexingService {
   /// Assigns every not-yet-clustered face to a person — the nearest existing
   /// cluster above the similarity threshold, or a new person. Incremental and
   /// deterministic (faces come back in stable id order).
+  ///
+  /// Two phases: decide every face's person in memory (no DB writes), then
+  /// apply the whole plan in one transaction. The in-memory decision uses a
+  /// synthetic negative id for each new person so the clusterer can track it
+  /// before the DB mints a real id. Batching the writes collapses what was one
+  /// `watchPersonSummaries` emission per face into a single one, so the People
+  /// strip no longer rebuilds once per face during a pass.
   Future<void> _clusterNewFaces() async {
     final unclustered = await faces.unclusteredFaces();
     if (unclustered.isEmpty) return;
+    await _awaitNotPaused();
+    if (_cancelled) return;
     final clusterer =
         IncrementalClusterer(initial: await faces.clusteredExemplars());
+
+    // Phase 1 — decide in memory.
+    var nextSynthetic = -1;
+    final faceToPerson = <int, int>{}; // faceId -> personId (real or synthetic)
+    final syntheticCover = <int, String>{}; // syntheticId -> first face's asset
     for (final f in unclustered) {
+      await _awaitNotPaused();
       if (_cancelled) return;
       var personId = clusterer.nearest(f.embedding);
-      personId ??= await faces.createPerson(coverAssetId: f.assetId);
-      await faces.assignPersonToFace(f.id, personId);
+      if (personId == null) {
+        personId = nextSynthetic--;
+        syntheticCover[personId] = f.assetId;
+      }
+      faceToPerson[f.id] = personId;
       clusterer.add(personId, f.embedding);
     }
+
+    // Phase 2 — group faces by person and apply in one batch.
+    final byPerson = <int, List<int>>{};
+    for (final faceId in faceToPerson.keys) {
+      final personId = faceToPerson[faceId]!;
+      byPerson.putIfAbsent(personId, () => []).add(faceId);
+    }
+    final plan = [
+      for (final personId in byPerson.keys)
+        IncrementalClusterPlan(
+          faceIds: byPerson[personId]!,
+          reusePersonId: personId > 0 ? personId : null,
+          coverAssetId:
+              personId > 0 ? null : syntheticCover[personId],
+        ),
+    ];
+    await faces.applyIncrementalClusters(plan);
     _log.info('Clustered ${unclustered.length} new face(s)');
   }
 
@@ -567,6 +716,8 @@ class IndexingService {
   /// to a worker isolate, since it is quadratic in the face count and the UI
   /// isolate must never carry it.
   Future<void> _maybeGlobalRecluster() async {
+    await _awaitNotPaused();
+    if (_cancelled) return;
     final total = await faces.faceCount();
     final baselineRaw = await settings.read(_reclusterBaselineKey);
     final baseline = int.tryParse(baselineRaw ?? '') ?? 0;
@@ -610,7 +761,10 @@ class IndexingService {
   Future<void> _maybeRegenerateMemories({
     required bool searchEnabled,
     required bool facesEnabled,
+    required Set<String> excludedAssetIds,
   }) async {
+    await _awaitNotPaused();
+    if (_cancelled) return;
     final now = DateTime.now();
     final todayKey = '${now.year}-${now.month.toString().padLeft(2, '0')}-'
         '${now.day.toString().padLeft(2, '0')}';
@@ -629,6 +783,7 @@ class IndexingService {
       now,
       searchEnabled: searchEnabled,
       facesEnabled: facesEnabled,
+      excludedAssetIds: excludedAssetIds,
     );
     if (_cancelled) return;
 
@@ -646,9 +801,22 @@ class IndexingService {
     DateTime now, {
     required bool searchEnabled,
     required bool facesEnabled,
+    required Set<String> excludedAssetIds,
   }) async {
-    final onThisDay = await memories.onThisDay(now.month, now.day);
-    final recentDated = await memories.recentDatedProjection();
+    // On-this-day and trips are the only inputs drawn from raw metadata rather
+    // than from ML output, so they are the only ones the folder gate does not
+    // already cover. Without this filter a user who limited analysis to one
+    // folder still gets memories built entirely out of the folders they
+    // excluded — label and person memories stay inside the gate, date-window
+    // ones would not.
+    final onThisDay = _withoutExcluded(
+      await memories.onThisDay(now.month, now.day),
+      excludedAssetIds,
+    );
+    final recentDated = _withoutExcluded(
+      await memories.recentDatedProjection(),
+      excludedAssetIds,
+    );
 
     // Theme memories ("Dogs", "Food") are built from ML labels, so they only
     // exist when the user consented to content analysis.
@@ -700,6 +868,19 @@ class IndexingService {
     );
   }
 
+  /// Drops assets in analysis-excluded folders from a memory input. Returns
+  /// [assets] untouched when nothing is excluded, which is the common case.
+  static List<DatedAsset> _withoutExcluded(
+    List<DatedAsset> assets,
+    Set<String> excludedAssetIds,
+  ) {
+    if (excludedAssetIds.isEmpty) return assets;
+    return [
+      for (final a in assets)
+        if (!excludedAssetIds.contains(a.assetId)) a,
+    ];
+  }
+
   /// How many of the most-photographed people are even considered — bounds the
   /// per-person asset queries above.
   static const _personCandidateLimit = 10;
@@ -708,10 +889,36 @@ class IndexingService {
   /// trustworthy enough to headline a memory.
   static const _minPersonFaces = 15;
 
+  /// Collects every asset id contained in [folderIds] by paging each folder.
+  /// Checked once per indexing round; assets in the returned set get no ML work.
+  Future<Set<String>> _excludedAssetIds(Set<String> folderIds) async {
+    const pageSize = 500;
+    final excluded = <String>{};
+    for (final folderId in folderIds) {
+      var page = 0;
+      while (!_cancelled) {
+        await _awaitNotPaused();
+        if (_cancelled) break;
+        final refs = await photos.folderAssets(
+          folderId: folderId,
+          page: page,
+          pageSize: pageSize,
+        );
+        if (refs.isEmpty) break;
+        for (final r in refs) {
+          excluded.add(r.id);
+        }
+        page++;
+      }
+    }
+    return excluded;
+  }
+
   Future<void> _indexOne(
     String id, {
     required bool searchEnabled,
     required bool facesEnabled,
+    required bool excluded,
   }) async {
     try {
       final meta = await photos.assetIndexMeta(id);
@@ -720,32 +927,33 @@ class IndexingService {
       var labels = const <Label>[];
       var text = '';
       var detectedFaces = const <DetectedFace>[];
-      // No consented feature needs pixels, so don't even render a thumbnail.
-      final bytes = (searchEnabled || facesEnabled)
-          ? await photos.thumbnail(id, 512, 512)
-          : null;
-      if (bytes != null) {
-        final file = await _writeTemp('sg_idx', id, bytes);
-        // A larger thumbnail for OCR only — recovers small text the 512 misses.
-        // Labels/faces stay on the 512 file (bounded memory, stable box space).
-        final ocrBytes = searchEnabled
-            ? await photos.thumbnail(id, _ocrEdge, _ocrEdge)
+
+      // Assets in excluded folders are stamped as indexed but never analyzed:
+      // the setting is about analysis scope, not library visibility.
+      if (!excluded) {
+        // No consented feature needs pixels, so don't even render a thumbnail.
+        // `indexing: true` routes these through the separate pool so a pass
+        // doesn't take slots from the grid's gate mid-fling. The bytes go
+        // straight to the worker over the SendPort — no temp file on the UI
+        // isolate (the worker writes its own).
+        final bytes = (searchEnabled || facesEnabled)
+            ? await photos.thumbnail(id, 512, 512, indexing: true)
             : null;
-        final ocrFile =
-            ocrBytes != null ? await _writeTemp('sg_ocr', id, ocrBytes) : null;
-        try {
-          final analysis = await worker.analyzeFile(
-            file.path,
-            ocrPath: ocrFile?.path,
+        if (bytes != null) {
+          // A larger thumbnail for OCR only — recovers small text the 512 misses.
+          // Labels/faces stay on the 512 bytes (bounded memory, stable box space).
+          final ocrBytes = searchEnabled
+              ? await photos.thumbnail(id, _ocrEdge, _ocrEdge, indexing: true)
+              : null;
+          final analysis = await worker.analyze(
+            bytes: bytes,
+            ocrBytes: ocrBytes,
             content: searchEnabled,
             faces: facesEnabled,
           );
           labels = analysis.labels;
           text = analysis.text;
           detectedFaces = analysis.faces;
-        } finally {
-          if (await file.exists()) await file.delete();
-          if (ocrFile != null && await ocrFile.exists()) await ocrFile.delete();
         }
       }
 
@@ -760,7 +968,8 @@ class IndexingService {
       );
       // FaceRecord is structurally identical to DetectedFace. Nothing to insert
       // when face detection is off — the worker returns no faces either.
-      if (facesEnabled) {
+      // Excluded assets also skip faces: the worker never ran for them.
+      if (facesEnabled && !excluded) {
         await faces.insertFaces(id, [
           for (final f in detectedFaces)
             (
@@ -776,19 +985,12 @@ class IndexingService {
       _log.warning('Indexing failed for $id', e, st);
     }
   }
-
-  Future<File> _writeTemp(String prefix, String id, Uint8List bytes) async {
-    final dir = tempDir ??= await getTemporaryDirectory();
-    final file = File('${dir.path}/${prefix}_${id.hashCode}.jpg');
-    await file.writeAsBytes(bytes, flush: true);
-    return file;
-  }
 }
 
 /// App-wide ML worker, kept alive; disposed with the container.
 final mlWorkerProvider = Provider<MlWorker>((ref) {
   final worker = MlWorkerController();
-  ref.onDispose(worker.dispose);
+  ref.onDispose(() async => await worker.dispose());
   return worker;
 });
 

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:flutter/material.dart' show ThemeMode;
 
@@ -18,13 +20,14 @@ class SettingsDao extends DatabaseAccessor<AppDatabase> with _$SettingsDaoMixin 
   static const _memoriesEnabledKey = 'memories_enabled';
   static const _facesEnabledKey = 'faces_enabled';
   static const _consentKey = 'ml_consent';
+  static const _excludedFolderIdsKey = 'excluded_folder_ids';
 
   /// The consent prompt's version. **Bump this when the prompt's scope changes**
   /// — a new analysis feature, or an existing one starting to do materially
   /// more — and every user is asked again, because an answer given to the old
   /// question is not an answer to the new one. The stored value is compared
   /// exactly, so going backwards re-prompts too.
-  static const consentVersion = 1;
+  static const consentVersion = 2;
 
   /// The raw value for [key], reactive; null until it is first set.
   Stream<String?> watch(String key) {
@@ -104,24 +107,26 @@ class SettingsDao extends DatabaseAccessor<AppDatabase> with _$SettingsDaoMixin 
   Future<void> setFacesEnabled(bool enabled) =>
       put(_facesEnabledKey, enabled.toString());
 
-  /// Persists all three consent answers **and** the answered marker in one
-  /// transaction.
+  /// Persists all three consent answers, the folder scope, **and** the answered
+  /// marker in one transaction.
   ///
-  /// Atomicity is the point. `IndexingService` reads these three flags together
-  /// at the top of a pass, and enabling one of them is itself what kicks a pass
-  /// off — so written one at a time, the pass started by the first write can
-  /// read the later flags before they exist and run with the user's answer
-  /// inverted. Faces lost exactly that race on first run. One transaction means
-  /// a pass sees either all three answers or none of them.
+  /// Atomicity is the point. `IndexingService` reads these flags together at the
+  /// top of a pass, and enabling one of them is itself what kicks a pass off —
+  /// so written one at a time, the pass started by the first write can read the
+  /// later flags before they exist and run with the user's answer inverted.
+  /// Faces lost exactly that race on first run. One transaction means a pass
+  /// sees either all answers and the folder scope, or none of them.
   Future<void> setConsent({
     required bool search,
     required bool memories,
     required bool faces,
+    required Set<String> excludedFolderIds,
   }) {
     return transaction(() async {
       await setSearchEnabled(search);
       await setMemoriesEnabled(memories);
       await setFacesEnabled(faces);
+      await setExcludedFolderIds(excludedFolderIds);
       await recordConsent();
     });
   }
@@ -133,6 +138,37 @@ class SettingsDao extends DatabaseAccessor<AppDatabase> with _$SettingsDaoMixin 
 
   /// Marks the current consent prompt as answered (whatever the answers were).
   Future<void> recordConsent() => put(_consentKey, consentVersion.toString());
+
+  // --- Folder exclusions for indexing ----------------------------------------
+  //
+  // The user can exclude device folders from on-device analysis. Excluded
+  // folders remain visible in Library/Saved/Search; their assets just receive no
+  // labels, OCR text, or face embeddings. The set is stored as JSON; missing or
+  // malformed values default to empty.
+
+  /// Reactive set of folder ids excluded from analysis.
+  Stream<Set<String>> watchExcludedFolderIds() =>
+      watch(_excludedFolderIdsKey).map(_decodeFolderIds);
+
+  /// One-shot read of excluded folder ids.
+  Future<Set<String>> readExcludedFolderIds() async =>
+      _decodeFolderIds(await read(_excludedFolderIdsKey));
+
+  /// Persists the excluded folder ids as a JSON-encoded list.
+  Future<void> setExcludedFolderIds(Set<String> ids) => put(
+        _excludedFolderIdsKey,
+        jsonEncode(ids.toList()),
+      );
+
+  static Set<String> _decodeFolderIds(String? value) {
+    if (value == null || value.isEmpty) return const {};
+    try {
+      final list = jsonDecode(value) as List<dynamic>;
+      return list.whereType<String>().toSet();
+    } on FormatException {
+      return const {};
+    }
+  }
 
   static bool _isCurrent(String? value) =>
       int.tryParse(value ?? '') == consentVersion;

@@ -77,6 +77,46 @@ void main() {
     await teardownTree(tester);
   });
 
+  // The floating nav capsule reaches the screen as a bottom inset; without it
+  // in the masonry's padding the last row of favorites hides behind the
+  // capsule. See lib/widgets/nav_pill_bar.dart.
+  testWidgets('the masonry clears the nav capsule', (tester) async {
+    tester.view.padding = const FakeViewPadding(bottom: 96);
+    addTearDown(tester.view.reset);
+    final inset = 96 / tester.view.devicePixelRatio;
+
+    await db.indexDao.upsertMetadata([
+      (
+        id: 'a1',
+        createdAt: DateTime(2024),
+        isVideo: false,
+        width: 1,
+        height: 1,
+        isDated: true,
+      ),
+    ]);
+    await db.favoritesDao.add('a1', at: DateTime(2024, 1, 2));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          photoLibraryServiceProvider.overrideWithValue(
+            FakePhotoLibraryService(),
+          ),
+        ],
+        child: MaterialApp(theme: AppTheme.light, home: const SavedScreen()),
+      ),
+    );
+    await tester.pump();
+
+    final padding = tester.widget<SliverPadding>(find.byType(SliverPadding));
+    expect(
+      padding.padding.resolve(TextDirection.ltr).bottom,
+      AppSpace.s16 + inset,
+    );
+    await teardownTree(tester);
+  });
+
   testWidgets('lays favorites out in two columns keeping their shapes', (
     tester,
   ) async {

@@ -5,13 +5,12 @@ import 'package:go_router/go_router.dart';
 import '../../core/database/daos/faces_dao.dart' show PersonSummary;
 import '../../core/format/count_labels.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../widgets/app_button.dart';
+import '../../widgets/asset_grid.dart' show kPhotoGridCacheExtent;
 import '../../widgets/app_dialog.dart';
 import '../../widgets/empty_state.dart';
-import '../../widgets/pressable.dart';
 import '../settings/consent_provider.dart';
 import 'people_providers.dart';
 import 'widgets/face_avatar.dart';
@@ -35,7 +34,35 @@ class _PeopleScreenState extends ConsumerState<PeopleScreen> {
   /// selecting" stay distinguishable.
   Set<int>? _selected;
 
+  /// The merge confirmation lands on the root messenger (it sits above the
+  /// Navigator), so it outlives this route unless we take it down ourselves.
+  /// Resolved here because `dispose()` is too late to look up an ancestor.
+  ScaffoldMessengerState? _messenger;
+
   bool get _selecting => _selected != null;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _messenger = ScaffoldMessenger.of(context);
+  }
+
+  @override
+  void dispose() {
+    // An Undo for a merge made on this screen has no meaning once the screen
+    // is gone — it must not follow the user into the rest of the app.
+    _messenger?.hideCurrentSnackBar();
+    super.dispose();
+  }
+
+  /// Opens a person. The route is *pushed*, so this screen is not disposed and
+  /// `dispose`'s cleanup never runs — the merge confirmation has to be taken
+  /// down here too, or an Undo for a merge made behind the detail screen rides
+  /// along on top of it.
+  void _open(int id) {
+    _messenger?.hideCurrentSnackBar();
+    context.push('/person/$id');
+  }
 
   void _toggle(int id) {
     setState(() {
@@ -88,6 +115,7 @@ class _PeopleScreenState extends ConsumerState<PeopleScreen> {
                 'No people yet. Faces are grouped as your library is indexed.',
               )
             : GridView.builder(
+                scrollCacheExtent: kPhotoGridCacheExtent,
                 padding: const EdgeInsets.all(AppSpace.s16),
                 gridDelegate:
                     const SliverGridDelegateWithFixedCrossAxisCount(
@@ -102,6 +130,7 @@ class _PeopleScreenState extends ConsumerState<PeopleScreen> {
                   selecting: _selecting,
                   selected: chosen.contains(persons[i].id),
                   onToggle: () => _toggle(persons[i].id),
+                  onOpen: () => _open(persons[i].id),
                 ),
               ),
       ),
@@ -145,6 +174,12 @@ class _PeopleScreenState extends ConsumerState<PeopleScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: const Text('Merged'),
+        // `SnackBar.persist` defaults to `action != null`, and the messenger
+        // skips its timeout entirely when it is set — an Undo snackbar would
+        // otherwise never dismiss, on any screen. Long enough to reach for
+        // Undo, short enough to leave on its own.
+        persist: false,
+        duration: const Duration(seconds: 6),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () {
@@ -198,12 +233,14 @@ class _PersonCard extends StatelessWidget {
     required this.selecting,
     required this.selected,
     required this.onToggle,
+    required this.onOpen,
   });
 
   final PersonSummary person;
   final bool selecting;
   final bool selected;
   final VoidCallback onToggle;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -211,8 +248,9 @@ class _PersonCard extends StatelessWidget {
     final styles = Theme.of(context).extension<AppTextStyles>()!;
     final scheme = Theme.of(context).colorScheme;
     final name = person.displayName ?? 'Unnamed';
-    return Pressable(
-      onTap: selecting ? onToggle : () => context.push('/person/${person.id}'),
+    return GestureDetector(
+      onTap: selecting ? onToggle : onOpen,
+      behavior: HitTestBehavior.opaque,
       child: Column(
         children: [
           // The avatar takes the space left after the two text lines and sizes
@@ -234,10 +272,8 @@ class _PersonCard extends StatelessWidget {
                         // Always built, never conditional, so the tree shape is
                         // stable across selection changes.
                         Positioned.fill(
-                          child: AnimatedOpacity(
+                          child: Opacity(
                             opacity: selected ? 1 : 0,
-                            duration: AppMotion.of(context, AppMotion.short),
-                            curve: AppMotion.curve,
                             child: _SelectedRing(edge: edge),
                           ),
                         ),

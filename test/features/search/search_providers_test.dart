@@ -1,7 +1,8 @@
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sologallery/core/database/app_database.dart' show AppDatabase;
+import 'package:sologallery/core/database/app_database.dart'
+    show AppDatabase, RecentlyViewedData;
 import 'package:sologallery/core/database/daos/index_dao.dart'
     show FavoriteAsset;
 import 'package:sologallery/core/database/daos/albums_dao.dart'
@@ -333,6 +334,82 @@ void main() {
 
     test('is empty while nothing is labeled yet', () async {
       expect(await read(), isEmpty);
+    });
+  });
+
+  group('recentlyViewedProvider', () {
+    late AppDatabase db;
+
+    setUp(() => db = AppDatabase(NativeDatabase.memory()));
+    tearDown(() => db.close());
+
+    /// Seeds explicit view timestamps so ordering is deterministic without
+    /// racing [DateTime.now].
+    Future<void> seedViews(List<(String, DateTime)> entries) async {
+      for (final (id, at) in entries) {
+        await db.into(db.recentlyViewed).insert(
+          RecentlyViewedData(assetId: id, viewedAt: at),
+        );
+      }
+    }
+
+    /// Subscribes and returns the emitted id list.
+    Future<List<String>> read({int limit = 12}) async {
+      final container = ProviderContainer(
+        overrides: [databaseProvider.overrideWithValue(db)],
+      );
+      addTearDown(container.dispose);
+      container.listen(recentlyViewedProvider(limit), (_, _) {});
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      return container.read(recentlyViewedProvider(limit)).value ?? const [];
+    }
+
+    test('emits ids newest-first', () async {
+      await seedViews([
+        ('a', DateTime(2026, 1, 1)),
+        ('b', DateTime(2026, 1, 2)),
+        ('c', DateTime(2026, 1, 3)),
+      ]);
+      expect(await read(limit: 10), ['c', 'b', 'a']);
+    });
+
+    test('caps the list at the requested limit', () async {
+      await seedViews([
+        ('a', DateTime(2026, 1, 1)),
+        ('b', DateTime(2026, 1, 2)),
+        ('c', DateTime(2026, 1, 3)),
+      ]);
+      expect(await read(limit: 2), ['c', 'b']);
+      expect((await read(limit: 5)).length, 3);
+    });
+
+    test('is empty when nothing has been viewed', () async {
+      expect(await read(), isEmpty);
+    });
+
+    test('re-emits when a new view is recorded', () async {
+      await seedViews([
+        ('a', DateTime(2026, 1, 1)),
+        ('b', DateTime(2026, 1, 2)),
+      ]);
+
+      final container = ProviderContainer(
+        overrides: [databaseProvider.overrideWithValue(db)],
+      );
+      addTearDown(container.dispose);
+      final emissions = <List<String>>[];
+      container.listen(
+        recentlyViewedProvider(12),
+        (_, value) => emissions.add(value.value ?? const []),
+        fireImmediately: true,
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(emissions.last, ['b', 'a']);
+
+      await db.indexDao.recordView('c');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(emissions.last, ['c', 'b', 'a']);
     });
   });
 }

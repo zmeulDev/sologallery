@@ -24,11 +24,12 @@ void main() {
   test('the synthetic face fixture is detectable by the real detector',
       () async {
     final file = await fixtureFile('synthetic_face.jpg');
+    final bytes = await file.readAsBytes();
 
     final worker = MlWorkerController();
-    addTearDown(worker.dispose);
+    addTearDown(() async => await worker.dispose());
 
-    final analysis = await worker.analyzeFile(file.path);
+    final analysis = await worker.analyze(bytes: bytes);
 
     expect(
       analysis.faces,
@@ -48,16 +49,17 @@ void main() {
 
   test('declining consent suppresses the fixture face too', () async {
     final file = await fixtureFile('synthetic_face.jpg');
+    final bytes = await file.readAsBytes();
 
     final worker = MlWorkerController();
-    addTearDown(worker.dispose);
+    addTearDown(() async => await worker.dispose());
 
     // Same image the control above proves is detectable — so an empty result
     // here can only be the gate.
-    final declined = await worker.analyzeFile(file.path, faces: false);
+    final declined = await worker.analyze(bytes: bytes, faces: false);
     expect(declined.faces, isEmpty);
 
-    final noContent = await worker.analyzeFile(file.path, content: false);
+    final noContent = await worker.analyze(bytes: bytes, content: false);
     expect(noContent.labels, isEmpty);
     expect(noContent.text, isEmpty);
   }, timeout: const Timeout(Duration(minutes: 5)));

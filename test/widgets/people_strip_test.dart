@@ -9,6 +9,7 @@ import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/people/widgets/face_avatar.dart';
 import 'package:sologallery/services/permission_provider.dart';
+import 'package:sologallery/widgets/app_card.dart';
 import 'package:sologallery/widgets/people_strip.dart';
 
 import '../support/fake_photo_library_service.dart';
@@ -92,32 +93,88 @@ void main() {
     expect(text.overflow, TextOverflow.ellipsis);
   });
 
-  // Names live inside a fixed-size tile rather than on a caption line beneath
-  // it, so the row's height no longer depends on font metrics or text scale.
-  // The previous shape reserved `fontSize * 1.4` for a caption band and
-  // overflowed by 0.29px on a device whose font ran fractionally taller; this
-  // asserts the class of bug is gone rather than merely re-tuned.
-  for (final scale in const [1.0, 1.15, 1.6, 2.0]) {
-    testWidgets('row height is independent of names and text scale '
-        '(textScale $scale)', (tester) async {
-      await pump(tester, [person(1, null), person(2, null)], textScale: scale);
-      await tester.pump();
-      final bare = tester.getSize(find.byType(ListView)).height;
+  testWidgets('the strip sits in a card, and the faces are circles', (
+    tester,
+  ) async {
+    await pump(tester, [person(1, 'Ada')]);
+    await tester.pump();
+    expect(find.byType(AppCard), findsOneWidget);
+    // FaceAvatar switches between ClipOval and ClipRRect on `borderRadius`, and
+    // its placeholder does the same on `shape` — a null radius is the circle.
+    // Asserting the input, not the clip, because host tests never get past the
+    // placeholder (no decodable thumbnail), so no ClipOval is ever built here.
+    expect(tester.widget<FaceAvatar>(find.byType(FaceAvatar)).borderRadius, isNull);
+    final placeholder = tester.widget<Container>(
+      find.descendant(of: find.byType(FaceAvatar), matching: find.byType(Container)),
+    );
+    expect(
+      (placeholder.decoration! as BoxDecoration).shape,
+      BoxShape.circle,
+    );
+  });
 
+  testWidgets('the photo count stays on the People screen, not in the strip', (
+    tester,
+  ) async {
+    await pump(tester, [person(1, 'Ada')]);
+    await tester.pump();
+    expect(find.text('Ada'), findsOneWidget);
+    expect(find.text('3 photos'), findsNothing);
+  });
+
+  // A horizontal ListView gives its children a *tight* height, so a caption
+  // that doesn't fit squashes the circle into an oval instead of overflowing —
+  // no red stripe, no exception, it just looks subtly wrong. The circle staying
+  // circular at every text scale is therefore the invariant, not the row's
+  // overall height (which legitimately grows with the caption).
+  for (final scale in const [1.0, 1.15, 1.6, 2.0]) {
+    testWidgets('the face stays circular at textScale $scale', (tester) async {
       await pump(tester, [person(1, 'Ada'), person(2, null)], textScale: scale);
       await tester.pump();
-      final named = tester.getSize(find.byType(ListView)).height;
-
-      expect(named, bare);
+      final avatar = tester.getSize(find.byType(FaceAvatar).first);
+      expect(avatar.width, avatar.height);
+      expect(avatar.width, 64);
       expect(tester.takeException(), isNull);
     });
   }
 
-  testWidgets('a named tile carries the name and count over the face',
-      (tester) async {
-    await pump(tester, [person(1, 'Ada')]);
+  testWidgets('the caption band is reserved only when someone is named', (
+    tester,
+  ) async {
+    await pump(tester, [person(1, null), person(2, null)]);
     await tester.pump();
-    expect(find.text('Ada'), findsOneWidget);
-    expect(find.text('3 photos'), findsOneWidget);
+    final bare = tester.getSize(find.byType(ListView)).height;
+
+    await pump(tester, [person(1, 'Ada'), person(2, null)]);
+    await tester.pump();
+    final named = tester.getSize(find.byType(ListView)).height;
+
+    // The all-unnamed row — the common case — carries no dead space under it.
+    expect(bare, 64);
+    expect(named, greaterThan(bare));
+  });
+
+  testWidgets('every face is its own labelled target', (tester) async {
+    final semantics = tester.ensureSemantics();
+
+    await pump(tester, [person(1, 'Ada'), person(2, null)]);
+    await tester.pump();
+
+    // Without a label per tile the whole strip collapses into the section
+    // header's node, and no individual person can be reached or named.
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Ada')),
+      matchesSemantics(label: 'Ada', isButton: true, hasTapAction: true),
+    );
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Unnamed person')),
+      matchesSemantics(
+        label: 'Unnamed person',
+        isButton: true,
+        hasTapAction: true,
+      ),
+    );
+
+    semantics.dispose();
   });
 }

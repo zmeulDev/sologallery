@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -350,6 +352,45 @@ void main() {
     );
     expect(find.byType(VideoPage), findsOneWidget);
     expect(find.byType(PhotoPage), findsNothing);
+    await settleTeardown(tester);
+  });
+
+  testWidgets('still preview fetch starts before isVideo resolves', (
+    tester,
+  ) async {
+    final previewBytes = File('test_assets/small_png.png').readAsBytesSync();
+    final fake = FakePhotoLibraryService(
+      previewBytes: previewBytes,
+      details: {
+        'a1': AssetDetail(
+          id: 'a1',
+          width: 4000,
+          height: 3000,
+          createdAt: DateTime(2026, 7, 12, 14, 33),
+          orientationDegrees: 0,
+          isVideo: false,
+          mimeType: 'image/jpeg',
+        ),
+      },
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          photoLibraryServiceProvider.overrideWithValue(fake),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light,
+          home: PhotoDetailScreen(args: const PhotoViewerArgs(['a1'], 0)),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // The detail viewer starts the still-image fetch in parallel with the
+    // video-kind check, so previewImage is called immediately.
+    expect(fake.previewMaxEdges, isNotEmpty);
+    expect(fake.previewMaxEdges.first, lessThanOrEqualTo(2048));
     await settleTeardown(tester);
   });
 }

@@ -18,9 +18,16 @@ final peopleCountProvider = StreamProvider.autoDispose<int>((ref) {
       .map((people) => people.length);
 });
 
+/// Device folders excluded from on-device analysis, reactive.
+final excludedFolderIdsProvider = StreamProvider.autoDispose<Set<String>>((ref) {
+  return ref.watch(settingsDaoProvider).watchExcludedFolderIds();
+});
+
 /// The app version + build number for the About section (e.g. "1.0.0 (1)").
-/// Overridden in widget tests (no platform channel on the host).
-final appVersionProvider = FutureProvider.autoDispose<String>((ref) async {
+/// Overridden in widget tests (no platform channel on the host). Kept alive
+/// app-wide: the version never changes across a session, so autoDispose would
+/// just re-run `PackageInfo.fromPlatform()` every time Settings re-opens.
+final appVersionProvider = FutureProvider<String>((ref) async {
   final info = await PackageInfo.fromPlatform();
   return '${info.version} (${info.buildNumber})';
 });

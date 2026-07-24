@@ -773,4 +773,73 @@ void main() {
     expect(emissions.first, isEmpty);
     expect(emissions.last, ['Dog']);
   });
+
+  // --- Recently viewed -------------------------------------------------------
+
+  group('recordView + watchRecentlyViewed', () {
+    test('orders views newest first', () async {
+      // Seed two older explicit views, then record a fresh one through the DAO.
+      await db.into(db.recentlyViewed).insert(
+        RecentlyViewedData(assetId: 'a', viewedAt: DateTime(2026, 1, 1)),
+      );
+      await db.into(db.recentlyViewed).insert(
+        RecentlyViewedData(assetId: 'b', viewedAt: DateTime(2026, 1, 2)),
+      );
+      await db.indexDao.recordView('c');
+
+      expect(
+        await db.indexDao.watchRecentlyViewed(limit: 10).first,
+        ['c', 'b', 'a'],
+      );
+    });
+
+    test('caps at the limit', () async {
+      for (final (i, id) in ['a', 'b', 'c'].indexed) {
+        await db.into(db.recentlyViewed).insert(
+          RecentlyViewedData(
+            assetId: id,
+            viewedAt: DateTime(2026, 1, 1).add(Duration(days: i)),
+          ),
+        );
+      }
+
+      expect(await db.indexDao.watchRecentlyViewed(limit: 2).first, [
+        'c',
+        'b',
+      ]);
+    });
+
+    test('upserts: re-viewing moves an asset to the top', () async {
+      final first = DateTime(2026, 1, 1, 12);
+      final second = DateTime(2026, 1, 2, 12);
+      final third = DateTime(2026, 1, 3, 12);
+
+      // Use the DAO's public API, but travel the timestamps so the ordering is
+      // deterministic without racing DateTime.now().
+      await db.into(db.recentlyViewed).insert(
+        RecentlyViewedData(assetId: 'a', viewedAt: first),
+      );
+      await db.into(db.recentlyViewed).insert(
+        RecentlyViewedData(assetId: 'b', viewedAt: second),
+      );
+      await db.into(db.recentlyViewed).insert(
+        RecentlyViewedData(assetId: 'c', viewedAt: third),
+      );
+
+      expect(
+        await db.indexDao.watchRecentlyViewed(limit: 10).first,
+        ['c', 'b', 'a'],
+      );
+
+      // Re-view 'a' via the DAO; it should now be newest.
+      await db.indexDao.recordView('a');
+      final ids = await db.indexDao.watchRecentlyViewed(limit: 10).first;
+      expect(ids.first, 'a');
+      expect(ids, hasLength(3));
+    });
+
+    test('is empty when nothing has been viewed', () async {
+      expect(await db.indexDao.watchRecentlyViewed().first, isEmpty);
+    });
+  });
 }

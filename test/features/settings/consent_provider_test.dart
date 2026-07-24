@@ -79,12 +79,18 @@ void main() {
 
     await container
         .read(consentProvider.notifier)
-        .record(search: true, memories: true, faces: false);
+        .record(
+          search: true,
+          memories: true,
+          faces: false,
+          excludedFolderIds: const {},
+        );
 
     expect(container.read(consentProvider), ConsentState.recorded);
     expect(await db.settingsDao.readSearchEnabled(), isTrue);
     expect(await db.settingsDao.readMemoriesEnabled(), isTrue);
     expect(await db.settingsDao.readFacesEnabled(), isFalse);
+    expect(await db.settingsDao.readExcludedFolderIds(), isEmpty);
   });
 
   test('declining everything still counts as answered', () async {
@@ -92,7 +98,12 @@ void main() {
 
     await container
         .read(consentProvider.notifier)
-        .record(search: false, memories: false, faces: false);
+        .record(
+          search: false,
+          memories: false,
+          faces: false,
+          excludedFolderIds: const {},
+        );
 
     // The whole point of the separate consent key: "no to everything" must not
     // re-prompt on the next launch.
@@ -131,7 +142,12 @@ void main() {
 
       await container
           .read(consentProvider.notifier)
-          .record(search: false, memories: false, faces: false);
+          .record(
+          search: false,
+          memories: false,
+          faces: false,
+          excludedFolderIds: const {},
+        );
 
       // The whole point of consent: refusing must remove the inferences, not
       // merely stop making new ones.
@@ -149,7 +165,12 @@ void main() {
 
       await container
           .read(consentProvider.notifier)
-          .record(search: true, memories: false, faces: false);
+          .record(
+            search: true,
+            memories: false,
+            faces: false,
+            excludedFolderIds: const {},
+          );
 
       // Accepting re-queues the library, so the labels are present again —
       // never deleted out from under an accepted feature.
@@ -157,6 +178,28 @@ void main() {
       expect(await db.select(db.photoLabels).get(), isNotEmpty);
       // Still declined, so the face data goes.
       expect(await db.select(db.faceEmbeddings).get(), isEmpty);
+    });
+
+    test('excluded folder ids are persisted with consent', () async {
+      await seedPreExistingDerivedData();
+      await settle();
+
+      await container
+          .read(consentProvider.notifier)
+          .record(
+            search: false,
+            memories: false,
+            faces: false,
+            excludedFolderIds: const {'excluded-folder'},
+          );
+
+      expect(
+        await db.settingsDao.readExcludedFolderIds(),
+        const {'excluded-folder'},
+      );
+      // Even with all features off, the consent marker is recorded so the user
+      // is not re-prompted.
+      expect(await db.settingsDao.readConsentRecorded(), isTrue);
     });
   });
 

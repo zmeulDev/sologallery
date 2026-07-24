@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/database/database_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../widgets/app_card.dart';
-import '../../widgets/app_dialog.dart';
 import '../../services/indexing_service.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
-import '../../widgets/consent_switch.dart';
 import 'consent_provider.dart';
 import 'settings_providers.dart';
 import 'theme_mode_provider.dart';
+import 'widgets/settings_rows.dart';
 import 'widgets/theme_mode_picker.dart';
 
 /// The Settings tab: photo access, library stats, index rebuild, appearance,
@@ -46,8 +46,7 @@ class SettingsScreen extends ConsumerWidget {
         children: const [
           _PhotoAccessGroup(),
           _LibraryGroup(),
-          _OnDeviceGroup(),
-          _IndexGroup(),
+          _AnalysisGroup(),
           _AppearanceGroup(),
           _AboutGroup(),
         ],
@@ -65,19 +64,19 @@ class _PhotoAccessGroup extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final access = ref.watch(permissionProvider);
     final controller = ref.read(permissionProvider.notifier);
-    return _Group(
+    return SettingsGroup(
       label: 'Photo access',
       child: AppCard.divided(
         children: [
-          _InfoRow(label: _accessTitle(access), value: null),
-          _CaptionRow(_accessCaption(access)),
+          SettingsInfoRow(label: _accessTitle(access), value: null),
+          SettingsCaptionRow(_accessCaption(access)),
           if (access == PhotoAccess.limited)
-            _ActionRow(
+            SettingsActionRow(
               label: 'Select more photos',
               onTap: controller.presentLimited,
             ),
           if (access != PhotoAccess.granted)
-            _ActionRow(
+            SettingsActionRow(
               label: 'Open system settings',
               onTap: controller.openSettings,
             ),
@@ -130,122 +129,42 @@ class _LibraryGroup extends ConsumerWidget {
                 s.isIndexing ? 'Analyzing… ${s.remaining} left' : 'Up to date',
           );
 
-    return _Group(
+    return SettingsGroup(
       label: 'Library',
       child: AppCard.divided(
         children: [
-          _InfoRow(label: 'Photos', value: images ?? '—'),
-          _InfoRow(label: 'Videos', value: videos ?? '—'),
-          if (facesOn) _InfoRow(label: 'People', value: peopleCount ?? '—'),
-          _InfoRow(label: 'Analysis', value: analysis ?? '—'),
+          SettingsInfoRow(label: 'Photos', value: images ?? '—'),
+          SettingsInfoRow(label: 'Videos', value: videos ?? '—'),
+          if (facesOn) SettingsInfoRow(label: 'People', value: peopleCount ?? '—'),
+          SettingsInfoRow(label: 'Status', value: analysis ?? '—'),
         ],
       ),
     );
   }
 }
 
-// --- On-device analysis ----------------------------------------------------
+// --- Analysis --------------------------------------------------------------
 
-/// The consent toggles, mirroring what onboarding asked. Turning one off
-/// deletes what it derived; the side effects live on [IndexingService] so both
-/// entry points share one implementation.
-class _OnDeviceGroup extends ConsumerWidget {
-  const _OnDeviceGroup();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final search = ref.watch(searchEnabledProvider).value ?? false;
-    final memories = ref.watch(memoriesEnabledProvider).value ?? false;
-    final faces = ref.watch(facesEnabledProvider).value ?? false;
-    final indexing = ref.read(indexingServiceProvider);
-
-    // One card per toggle, unlike every other group on this screen. These three
-    // are independent grants, not facets of one setting, and a divided stack
-    // reads as a single block the user accepts or refuses wholesale — exactly
-    // the impression a consent surface must not give.
-    return _Group(
-      label: 'On-device analysis',
-      child: Column(
-        children: [
-          AppCard(
-            child: _SwitchRow(
-              label: 'Content search',
-              caption:
-                  'Find photos by what is in them, and by text they '
-                  'contain. Turning this off deletes what was found.',
-              value: search,
-              onChanged: indexing.setSearchEnabled,
-            ),
-          ),
-          const SizedBox(height: AppSpace.s8),
-          AppCard(
-            child: _SwitchRow(
-              label: 'Memories',
-              caption:
-                  'Occasional highlights built from photos you already have.',
-              value: memories,
-              onChanged: indexing.setMemoriesEnabled,
-            ),
-          ),
-          const SizedBox(height: AppSpace.s8),
-          AppCard(
-            child: _SwitchRow(
-              label: 'Face detection',
-              caption:
-                  "Groups photos by who's in them. Turning this off deletes "
-                  'the faces already found.',
-              value: faces,
-              onChanged: indexing.setFacesEnabled,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// --- Rebuild index ---------------------------------------------------------
-
-class _IndexGroup extends ConsumerWidget {
-  const _IndexGroup();
+/// Entry point to the dedicated Analysis settings sub-screen, where the
+/// on-device analysis consents, index rebuild, and folder scope all live.
+class _AnalysisGroup extends ConsumerWidget {
+  const _AnalysisGroup();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return _Group(
-      label: 'Index',
+    return SettingsGroup(
+      label: 'Analysis',
       child: AppCard.divided(
         children: [
-          _ActionRow(
-            label: 'Rebuild index',
-            caption: 'Re-scan the library and re-run on-device analysis.',
-            onTap: () => _confirmRebuild(context, ref),
+          SettingsActionRow(
+            label: 'Analysis',
+            caption:
+                'On-device analysis, index rebuild, and folders to analyze.',
+            onTap: () => context.push('/settings/analysis'),
           ),
         ],
       ),
     );
-  }
-
-  Future<void> _confirmRebuild(BuildContext context, WidgetRef ref) async {
-    // Name only what is actually switched on — promising to re-run "labels,
-    // text, and people" when the user declined them describes work that will
-    // not happen.
-    final enabled = [
-      if (ref.read(searchEnabledProvider).value ?? false) 'labels and text',
-      if (ref.read(facesEnabledProvider).value ?? false) 'people',
-    ];
-    final confirmed = await showAppConfirmDialog(
-      context,
-      title: 'Rebuild index?',
-      message: enabled.isEmpty
-          ? 'Re-scans your whole library. No on-device analysis is turned '
-                'on, so nothing is analyzed. Your photos are never changed.'
-          : 'Re-scans your whole library and re-runs on-device analysis — '
-                '${enabled.join(' and ')}. Your photos are never changed.',
-      confirmLabel: 'Rebuild',
-    );
-    if (confirmed) {
-      await ref.read(indexingServiceProvider).rebuild();
-    }
   }
 }
 
@@ -259,7 +178,7 @@ class _AppearanceGroup extends ConsumerWidget {
     final mode = ref.watch(themeModeProvider).value ?? ThemeMode.system;
     // No card around this one: the segmented control brings its own recessed
     // track, and a card would be a container inside a container.
-    return _Group(
+    return SettingsGroup(
       label: 'Appearance',
       child: ThemeModePicker(
         mode: mode,
@@ -277,12 +196,12 @@ class _AboutGroup extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final version = ref.watch(appVersionProvider).whenOrNull(data: (v) => v);
-    return _Group(
+    return SettingsGroup(
       label: 'About',
       child: AppCard.divided(
         children: [
-          _InfoRow(label: 'SoloGallery', value: version ?? '—'),
-          _CaptionRow(
+          SettingsInfoRow(label: 'SoloGallery', value: version ?? '—'),
+          SettingsCaptionRow(
             '100% on-device. Zero network. Your photos never leave this device.',
           ),
         ],
@@ -291,201 +210,3 @@ class _AboutGroup extends ConsumerWidget {
   }
 }
 
-// --- Shared building blocks ------------------------------------------------
-
-/// A titled settings group: the tracked-uppercase section label (the design
-/// system's typographic signature) above a surface card.
-class _Group extends StatelessWidget {
-  const _Group({required this.label, required this.child});
-
-  final String label;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final styles = Theme.of(context).extension<AppTextStyles>()!;
-    final colors = Theme.of(context).extension<AppColors>()!;
-    return Padding(
-      padding: const EdgeInsets.only(top: AppSpace.s20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: AppSpace.s4, bottom: 10),
-            child: Text(
-              label.toUpperCase(),
-              // Quieter than a Library section header: these label a settings
-              // group the reader is scanning past, not content they came for.
-              style: styles.sectionLabel.copyWith(color: colors.textSecondary),
-            ),
-          ),
-          child,
-        ],
-      ),
-    );
-  }
-}
-
-/// A label + optional trailing value row.
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
-
-  final String label;
-  final String? value;
-
-  @override
-  Widget build(BuildContext context) {
-    final styles = Theme.of(context).extension<AppTextStyles>()!;
-    final colors = Theme.of(context).extension<AppColors>()!;
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpace.s16,
-        vertical: 14,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: styles.body.copyWith(color: scheme.onSurface),
-            ),
-          ),
-          if (value != null)
-            Text(
-              value!,
-              style: styles.exifValue.copyWith(color: colors.textSecondary),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// A supporting caption row under an info row.
-class _CaptionRow extends StatelessWidget {
-  const _CaptionRow(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final styles = Theme.of(context).extension<AppTextStyles>()!;
-    final colors = Theme.of(context).extension<AppColors>()!;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(AppSpace.s16, 0, AppSpace.s16, 14),
-      child: Text(
-        text,
-        style: styles.caption.copyWith(color: colors.textMuted),
-      ),
-    );
-  }
-}
-
-/// A toggle row: [_ActionRow]'s anatomy with a switch where the chevron sits,
-/// so the trailing element always says what the row does — chevron navigates,
-/// switch toggles.
-class _SwitchRow extends StatelessWidget {
-  const _SwitchRow({
-    required this.label,
-    required this.caption,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final String label;
-  final String caption;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final styles = Theme.of(context).extension<AppTextStyles>()!;
-    final colors = Theme.of(context).extension<AppColors>()!;
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpace.s16,
-        vertical: 14,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: styles.body.copyWith(color: scheme.onSurface),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  caption,
-                  style: styles.caption.copyWith(color: colors.textMuted),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: AppSpace.s16),
-          ConsentSwitch(
-            value: value,
-            onChanged: onChanged,
-            semanticLabel: label,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// A tappable action row (label + optional caption + chevron).
-class _ActionRow extends StatelessWidget {
-  const _ActionRow({required this.label, this.caption, required this.onTap});
-
-  final String label;
-  final String? caption;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final styles = Theme.of(context).extension<AppTextStyles>()!;
-    final colors = Theme.of(context).extension<AppColors>()!;
-    final scheme = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpace.s16,
-          vertical: 14,
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: styles.body.copyWith(color: scheme.onSurface),
-                  ),
-                  if (caption != null) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      caption!,
-                      style: styles.caption.copyWith(color: colors.textMuted),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            Icon(
-              Icons.chevron_right_rounded,
-              size: 20,
-              color: colors.textMuted,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

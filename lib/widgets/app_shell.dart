@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/search/search_providers.dart';
-import 'dot_nav_bar.dart';
+import 'indexing_dial.dart';
+import 'nav_pill_bar.dart';
 
 /// Index of the Search branch in the nav bar / the router's branch list.
 const _searchBranchIndex = 1;
@@ -27,8 +28,17 @@ class AppShell extends ConsumerWidget {
     });
 
     return Scaffold(
+      // The nav capsule floats over the page. Scrollers in each branch pad
+      // their bottom by `MediaQuery.paddingOf(context).bottom`, which the
+      // Scaffold sets to the capsule's height for the body.
+      extendBody: true,
       body: navigationShell,
-      bottomNavigationBar: DotNavBar(
+      bottomNavigationBar: NavPillBar(
+        // The indexing dial rides beside the capsule, so it is over every
+        // branch — and over anything pushed inside a branch — and no screen
+        // silently looks incomplete while analysis is still running. It shows
+        // nothing when idle.
+        trailing: const IndexingDial(),
         currentIndex: navigationShell.currentIndex,
         onTap: (index) => navigationShell.goBranch(
           index,

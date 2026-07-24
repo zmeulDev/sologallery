@@ -1,9 +1,6 @@
-import 'dart:io' show File;
-
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:sologallery/core/database/app_database.dart';
 import 'package:sologallery/features/search/domain/search_date.dart';
 import 'package:sologallery/services/ml_service.dart';
@@ -43,35 +40,28 @@ void main() {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
     final worker = MlWorkerController();
-    addTearDown(worker.dispose);
-    final tempDir = await getTemporaryDirectory();
+    addTearDown(() async => await worker.dispose());
 
     var anyLabel = <String, double>{};
     var labeledAssetId = '';
     var anyFace = false;
 
-    // Index a bounded handful end-to-end through the *real* isolate.
+    // Index a bounded handful end-to-end through the *real* isolate. The bytes
+    // go straight to the worker over the SendPort — the worker writes its own
+    // temps, so this test mirrors the production path (no UI-isolate file I/O).
     for (final id in ids.take(5)) {
       final meta = await photos.assetIndexMeta(id);
       if (meta == null) continue;
       final bytes = await photos.thumbnail(id, 512, 512);
       if (bytes == null) continue;
 
-      final file = File('${tempDir.path}/ml_test_${id.hashCode}.jpg');
-      await file.writeAsBytes(bytes, flush: true);
       // Higher-res OCR image (matches IndexingService): OCR on 1024, labels/
-      // faces on the 512 file. Exercises the real analyzeFile(ocrPath:) path.
+      // faces on the 512 bytes. Exercises the real analyze(ocrBytes:) path.
       final ocrBytes = await photos.thumbnail(id, 1024, 1024);
-      final ocrFile = ocrBytes != null
-          ? (File('${tempDir.path}/ml_test_ocr_${id.hashCode}.jpg')
-            ..writeAsBytesSync(ocrBytes))
-          : null;
-      final analysis = await worker.analyzeFile(
-        file.path,
-        ocrPath: ocrFile?.path,
+      final analysis = await worker.analyze(
+        bytes: bytes,
+        ocrBytes: ocrBytes,
       ); // real ML Kit + higher-res OCR
-      if (await file.exists()) await file.delete();
-      if (ocrFile != null && await ocrFile.exists()) await ocrFile.delete();
 
       await db.indexDao.upsertIndexed(
         assetId: id,

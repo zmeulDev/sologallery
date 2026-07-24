@@ -91,12 +91,13 @@ void main() {
     // `test_fixtures_test.dart` separately proves this image *is* detectable,
     // which is what stops the empty expectations below from being vacuous.
     final file = await fixtureFile('synthetic_face.jpg');
+    final bytes = await file.readAsBytes();
 
     final worker = MlWorkerController();
-    addTearDown(worker.dispose);
+    addTearDown(() async => await worker.dispose());
 
     // The positive control, in this same run.
-    final accepted = await worker.analyzeFile(file.path);
+    final accepted = await worker.analyze(bytes: bytes);
     expect(
       accepted.faces,
       isNotEmpty,
@@ -105,12 +106,12 @@ void main() {
     );
 
     // faces: false must skip detection *and* the thumbnail decode entirely.
-    final declined = await worker.analyzeFile(file.path, faces: false);
+    final declined = await worker.analyze(bytes: bytes, faces: false);
     expect(declined.faces, isEmpty);
 
     // Declining content must likewise yield no labels and no OCR text,
     // independently of the face flag.
-    final noContent = await worker.analyzeFile(file.path, content: false);
+    final noContent = await worker.analyze(bytes: bytes, content: false);
     expect(noContent.labels, isEmpty);
     expect(noContent.text, isEmpty);
   }, timeout: const Timeout(Duration(minutes: 10)));

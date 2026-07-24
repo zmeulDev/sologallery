@@ -55,6 +55,7 @@ dependencies:
   # build a Matrix4 without importing Flutter (pure-Dart domain rule). Pure
   # Dart, no platform artifacts — adds nothing to the merged manifest.
   vector_math: ^2.2.0
+  meta: ^1.15.0
 
 dev_dependencies:
   flutter_test:

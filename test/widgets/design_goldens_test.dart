@@ -7,10 +7,20 @@ import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/core/database/daos/memories_dao.dart'
     show MemorySummary;
 import 'package:sologallery/features/albums/widgets/album_card.dart';
+import 'package:sologallery/core/database/daos/faces_dao.dart'
+    show PersonSummary;
+import 'package:sologallery/features/library/domain/year_month.dart';
+import 'package:sologallery/features/library/widgets/library_skeleton.dart';
+import 'package:sologallery/features/library/widgets/month_header.dart';
+import 'package:sologallery/features/library/widgets/section_count_pill.dart';
 import 'package:sologallery/features/library/widgets/year_header.dart';
+import 'package:sologallery/features/people/people_providers.dart';
 import 'package:sologallery/features/memories/widgets/memory_card.dart';
+import 'package:sologallery/features/search/widgets/recently_viewed_row.dart';
 import 'package:sologallery/features/settings/widgets/theme_mode_picker.dart';
+import 'package:sologallery/services/indexing_service.dart';
 import 'package:sologallery/services/permission_provider.dart';
+import 'package:sologallery/widgets/indexing_dial.dart';
 import 'package:sologallery/widgets/app_button.dart';
 import 'package:sologallery/widgets/app_card.dart';
 import 'package:sologallery/widgets/app_sheet.dart';
@@ -18,7 +28,8 @@ import 'package:sologallery/widgets/asset_thumbnail.dart';
 import 'package:sologallery/widgets/circle_icon_button.dart';
 import 'package:sologallery/widgets/consent_switch.dart';
 import 'package:sologallery/widgets/cover_row.dart';
-import 'package:sologallery/widgets/dot_nav_bar.dart';
+import 'package:sologallery/widgets/nav_pill_bar.dart';
+import 'package:sologallery/widgets/people_strip.dart';
 import 'package:sologallery/widgets/empty_state.dart';
 import 'package:sologallery/widgets/filter_pill.dart';
 import 'package:sologallery/widgets/limited_access_banner.dart';
@@ -87,18 +98,75 @@ void main() {
   // relationship, which is the whole hierarchy — there is no rule or fill
   // behind it to carry the header on its own.
   goldenTest(
-    'YearHeader over a month section label',
-    fileName: 'year_header',
+    'LibrarySkeleton — static loading preview of memories + months',
+    fileName: 'library_skeleton',
+    builder: () => themedGroup(
+      const SizedBox(
+        width: 360,
+        child: LibrarySkeleton(),
+      ),
+    ),
+  );
+
+  goldenTest(
+    'MonthHeader — sentence-case label with count',
+    fileName: 'month_header',
     builder: () => themedGroup(
       const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          YearHeader(year: 2026, count: 412),
-          SizedBox(height: 8),
-          SectionHeader(label: 'July 2026'),
+          MonthHeader(month: YearMonth(2026, 7), count: 128),
           SizedBox(height: 16),
-          YearHeader(year: 2025, count: 1),
+          MonthHeader(month: YearMonth(2026, 6), count: 1),
         ],
+      ),
+    ),
+  );
+
+  goldenTest(
+    'SectionCountPill — tappable and non-tappable variants',
+    fileName: 'section_count_pill',
+    builder: () => themedGroup(
+      const Row(
+        children: [
+          SectionCountPill(count: 128),
+          SizedBox(width: 12),
+          SectionCountPill(count: 1, showChevron: false),
+        ],
+      ),
+    ),
+  );
+
+  goldenTest(
+    'YearHeader over a month section label',
+    fileName: 'year_header',
+    builder: () => themedGroup(
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const YearHeader(year: 2026, count: 412),
+          const SizedBox(height: 8),
+          MonthHeader(month: const YearMonth(2026, 7), count: 128, onTap: () {}),
+          const SizedBox(height: 16),
+          const YearHeader(year: 2025, count: 1),
+        ],
+      ),
+    ),
+  );
+
+  // The null-bytes fake renders the placeholder cells deterministically; the
+  // golden pins the section label, the r12 square cells, and the s4 gutter.
+  goldenTest(
+    'RecentlyViewedRow — label and square thumbnail cells',
+    fileName: 'recently_viewed_row',
+    builder: () => themedGroup(
+      ProviderScope(
+        overrides: [
+          photoLibraryServiceProvider.overrideWithValue(
+            FakePhotoLibraryService(),
+          ),
+        ],
+        child: const RecentlyViewedRow(assetIds: ['a', 'b', 'c']),
       ),
     ),
   );
@@ -123,12 +191,13 @@ void main() {
     builder: () => themedGroup(LimitedAccessBanner(onSelectMore: () {})),
   );
 
-  // The nav bar's dot sits under the active destination; Search (index 1) is
-  // selected so the golden pins both the destination order and the dot offset.
+  // The nav capsule's knob sits under the active destination; Search (index 1)
+  // is selected so the golden pins the destination order, the knob offset and
+  // the capsule's inverted-ink fill in both themes.
   goldenTest(
-    'DotNavBar — Search selected',
-    fileName: 'dot_nav_bar',
-    builder: () => themedGroup(DotNavBar(currentIndex: 1, onTap: (_) {})),
+    'NavPillBar — Search selected',
+    fileName: 'nav_pill_bar',
+    builder: () => themedGroup(NavPillBar(currentIndex: 1, onTap: (_) {})),
   );
 
   goldenTest(
@@ -167,31 +236,23 @@ void main() {
             FakePhotoLibraryService(),
           ),
         ],
-        child: const Row(
+        child: const Column(
           children: [
-            SizedBox(
-              width: 150,
-              height: 190,
-              child: AlbumCard(
-                summary: AlbumSummary(
-                  id: 1,
-                  name: 'Iceland 2026',
-                  entryCount: 128,
-                  coverAssetId: 'x',
-                ),
+            AlbumCard(
+              summary: AlbumSummary(
+                id: 1,
+                name: 'Iceland 2026',
+                entryCount: 128,
+                coverAssetId: 'x',
               ),
             ),
-            SizedBox(width: 16),
-            SizedBox(
-              width: 150,
-              height: 190,
-              child: AlbumCard(
-                summary: AlbumSummary(
-                  id: 2,
-                  name: 'Empty',
-                  entryCount: 0,
-                  coverAssetId: null,
-                ),
+            SizedBox(height: 16),
+            AlbumCard(
+              summary: AlbumSummary(
+                id: 2,
+                name: 'Empty',
+                entryCount: 0,
+                coverAssetId: null,
               ),
             ),
           ],
@@ -493,6 +554,70 @@ void main() {
             const SizedBox(height: 12),
           ],
         ],
+      ),
+    ),
+  );
+
+  // The app-wide analysis dial: the capsule's own inverted ink, the count, and
+  // the ring three quarters round. Pinned in both themes because it floats over
+  // every screen, so a contrast slip would show everywhere.
+  goldenTest(
+    'IndexingDial — a pass three quarters done',
+    fileName: 'indexing_dial',
+    builder: () => themedGroup(
+      ProviderScope(
+        overrides: [
+          indexingStatusProvider.overrideWithValue(
+            const AsyncData(IndexingStatus(remaining: 250, total: 1000)),
+          ),
+        ],
+        child: const Align(child: IndexingDial()),
+      ),
+    ),
+  );
+
+  // The People strip as it appears on Search idle and Albums: a card, circular
+  // faces, and a caption band that only exists because someone is named. Every
+  // cover resolves to null here (as it does in any host test — no decodable
+  // thumbnail), so the golden pins the placeholder circles, the card and the
+  // spacing rather than image content.
+  goldenTest(
+    'PeopleStrip — carded row of circular faces, one named',
+    fileName: 'people_strip',
+    builder: () => themedGroup(
+      ProviderScope(
+        overrides: [
+          for (final id in [1, 2, 3, 4])
+            personCoverProvider(id).overrideWith((ref) async => null),
+        ],
+        child: PeopleStrip(
+          people: const [
+            PersonSummary(
+              id: 1,
+              displayName: 'Ada',
+              coverAssetId: 'a',
+              faceCount: 12,
+            ),
+            PersonSummary(
+              id: 2,
+              displayName: null,
+              coverAssetId: 'b',
+              faceCount: 4,
+            ),
+            PersonSummary(
+              id: 3,
+              displayName: null,
+              coverAssetId: 'c',
+              faceCount: 3,
+            ),
+            PersonSummary(
+              id: 4,
+              displayName: null,
+              coverAssetId: 'd',
+              faceCount: 1,
+            ),
+          ],
+        ),
       ),
     ),
   );

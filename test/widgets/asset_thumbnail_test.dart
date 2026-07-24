@@ -33,8 +33,8 @@ void main() {
     );
   }
 
-  // Bounded pumps, not pumpAndSettle: once the thumbnail future resolves, the
-  // AnimatedSwitcher fade (180ms token) must be given time to run out before
+  // Bounded pumps, not pumpAndSettle: the thumbnail future resolves on the
+  // pump after subscribe, so give it one frame and a little headroom before
   // asserting on the resolved content.
   Future<void> settle(WidgetTester tester) async {
     await tester.pump();

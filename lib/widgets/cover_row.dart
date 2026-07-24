@@ -53,7 +53,7 @@ class CoverRow extends StatelessWidget {
         child: Row(
           children: [
             ClipRRect(
-              borderRadius: AppRadius.br4,
+              borderRadius: AppRadius.br12,
               child: SizedBox(
                 width: 44,
                 height: 44,

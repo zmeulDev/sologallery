@@ -1,5 +1,4 @@
 import 'dart:async' show Completer;
-import 'dart:io' show Directory;
 import 'dart:typed_data';
 
 import 'package:drift/native.dart';
@@ -33,7 +32,6 @@ void main() {
         settings: db.settingsDao,
         photos: photos,
         worker: worker,
-        tempDir: Directory.systemTemp,
         resweepDebounce: debounce,
         reclusterThreshold: reclusterThreshold,
         memoryRefreshThreshold: memoryRefreshThreshold,
@@ -74,7 +72,88 @@ void main() {
     expect(texts.first.content, 'Hello world');
   });
 
-  test('OCR runs on a distinct higher-res image path', () async {
+  test('pausing mid-pass halts the ML loop until resume', () async {
+    final photos = FakePhotoLibraryService(
+      assets: assetsInMonth(2026, 8, 5),
+      thumbnailBytes: Uint8List.fromList([1]),
+    );
+    // Pause the pass exactly when asset 0's worker call begins, and hold that
+    // call open. That puts the pass genuinely in flight (sweep done, ML loop
+    // started) with `_paused` set, so releasing the call labels asset 0 and
+    // the loop's next iteration blocks on its inline `_paused` check.
+    final firstCall = Completer<void>();
+    late final IndexingService service;
+    final worker = FakeMlWorker(
+      labels: const [('Dog', 0.9)],
+      beforeAnalyze: (i) {
+        if (i == 0) {
+          service.pause();
+          return firstCall.future;
+        }
+        return Future<void>.value();
+      },
+    );
+    await consentTo(search: true);
+    service = serviceFor(photos, worker);
+    final done = service.start();
+
+    // Release asset 0's call: it is labelled, then the loop blocks before
+    // asset 1. Poll until exactly one label lands.
+    firstCall.complete();
+    var labelled = 0;
+    for (var i = 0; i < 50 && labelled == 0; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      labelled = (await db.select(db.photoLabels).get()).length;
+    }
+    expect(labelled, 1, reason: 'asset 0 labelled before the pause takes hold');
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(
+      (await db.select(db.photoLabels).get()).length,
+      1,
+      reason: 'no further assets labelled while paused',
+    );
+
+    service.resume();
+    await done;
+    expect(await db.select(db.photoLabels).get(), hasLength(5)); // ML ran
+  });
+
+  test('progress emits are throttled, not one per asset', () async {
+    // A 60-asset first run with a fast (fake) worker: without throttling the
+    // dial would rebuild 60 times mid-pass. With the ~250 ms throttle the
+    // whole pass completes inside one throttle window, so only the initial
+    // emit + the unconditional final remaining:0 land — far fewer than assets.
+    final photos = FakePhotoLibraryService(
+      assets: assetsInMonth(2026, 8, 60),
+      thumbnailBytes: Uint8List.fromList([1]),
+    );
+    final worker = FakeMlWorker(labels: const [('Dog', 0.9)]);
+    await consentTo(search: true);
+    final service = serviceFor(photos, worker);
+
+    final emits = <IndexingStatus>[];
+    final sub = service.watchStatus().listen(emits.add);
+    // Let the stream's initial yield (idle) land before starting.
+    await Future<void>.delayed(Duration.zero);
+    await service.start();
+    // The broadcast controller delivers events on microtasks; let the final
+    // (post-loop, unconditional) emits drain before reading.
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    await sub.cancel();
+
+    // The throttle guarantee: strictly fewer emits than assets. (Even on a
+    // slow host where the pass spills past one window, a handful of emits
+    // is still << 60.)
+    expect(emits.length, lessThan(60),
+        reason: 'progress should be throttled, not emitted per asset');
+    // The unconditional final emit ensures the dial reaches zero rather than
+    // lingering on a throttled mid-pass value.
+    expect(emits, contains(const IndexingStatus(remaining: 0, total: 60)));
+    // The pass ends idle.
+    expect(emits.last, const IndexingStatus.idle());
+  });
+
+  test('OCR runs on a distinct higher-res image', () async {
     final photos = FakePhotoLibraryService(
       assets: assetsInMonth(2026, 8, 1),
       thumbnailBytes: Uint8List.fromList([1, 2, 3]),
@@ -85,7 +164,7 @@ void main() {
     await serviceFor(photos, worker).start();
 
     expect(worker.calls, hasLength(1));
-    // OCR got its own (larger) temp, separate from the label/face 512 image.
+    // OCR got its own (larger) bytes, separate from the label/face 512 bytes.
     expect(worker.ocrCalls.single, isNotNull);
     expect(worker.ocrCalls.single, isNot(worker.calls.single));
     final texts = await db.select(db.photoTexts).get();
@@ -331,6 +410,7 @@ void main() {
         searchEnabled: true,
         memoriesEnabled: true,
         facesEnabled: true,
+        excludedFolderIds: const {},
       );
 
       gate.complete();
@@ -353,12 +433,14 @@ void main() {
         searchEnabled: true,
         memoriesEnabled: false,
         facesEnabled: true,
+        excludedFolderIds: const {},
       );
 
       expect(await db.settingsDao.readSearchEnabled(), isTrue);
       expect(await db.settingsDao.readMemoriesEnabled(), isFalse);
       expect(await db.settingsDao.readFacesEnabled(), isTrue);
       expect(await db.settingsDao.readConsentRecorded(), isTrue);
+      expect(await db.settingsDao.readExcludedFolderIds(), isEmpty);
     });
 
     test('applyConsent deletes what an upgrading user declines', () async {
@@ -374,6 +456,7 @@ void main() {
         searchEnabled: false,
         memoriesEnabled: false,
         facesEnabled: false,
+        excludedFolderIds: const {},
       );
 
       expect(await db.select(db.faceEmbeddings).get(), isEmpty);
@@ -695,5 +778,282 @@ void main() {
     );
     await service.dispose();
     expect(worker.disposed, isTrue);
+  });
+
+  group('folder exclusions', () {
+    /// Two assets: one in the Camera folder, one in Screenshots.
+    FakePhotoLibraryService twoFolderPhotos() => FakePhotoLibraryService(
+          assets: [
+            AssetRef(id: 'camera', createdAt: DateTime(2026, 8, 2)),
+            AssetRef(id: 'screenshot', createdAt: DateTime(2026, 8, 1)),
+          ],
+          thumbnailBytes: Uint8List.fromList([1, 2, 3]),
+          folders: [
+            const DeviceFolder(id: 'camera-folder', name: 'Camera', count: 1),
+            const DeviceFolder(
+              id: 'screenshots-folder',
+              name: 'Screenshots',
+              count: 1,
+            ),
+          ],
+          folderAssetsById: {
+            'camera-folder': [
+              AssetRef(id: 'camera', createdAt: DateTime(2026, 8, 2)),
+            ],
+            'screenshots-folder': [
+              AssetRef(id: 'screenshot', createdAt: DateTime(2026, 8, 1)),
+            ],
+          },
+        );
+
+    test('excluded folder assets are stamped but not analyzed', () async {
+      await db.settingsDao.setExcludedFolderIds({'camera-folder'});
+      await consentTo(search: true);
+      final worker = FakeMlWorker(labels: const [('Dog', 0.9)]);
+      final service = serviceFor(twoFolderPhotos(), worker);
+      addTearDown(service.dispose);
+
+      await service.start();
+
+      // Both assets are cached, but only the screenshot got labels.
+      expect(await db.indexDao.allCachedIds(), hasLength(2));
+      expect(await db.indexDao.pendingMlIds(), isEmpty);
+      expect(worker.calls, hasLength(1));
+
+      final labels = await db.select(db.photoLabels).get();
+      expect(labels, hasLength(1));
+      expect(labels.single.assetId, 'screenshot');
+    });
+
+    test('progress counts only the assets that will be analyzed', () async {
+      // The dial promises work. An excluded asset is walked but only stamped,
+      // so counting it makes the dial contradict the folder picker's own
+      // "1 of 2 folders · 1 photo" summary.
+      await db.settingsDao.setExcludedFolderIds({'camera-folder'});
+      await consentTo(search: true);
+      final service = serviceFor(
+        twoFolderPhotos(),
+        FakeMlWorker(labels: const [('Dog', 0.9)]),
+      );
+      addTearDown(service.dispose);
+
+      final emits = <IndexingStatus>[];
+      final sub = service.watchStatus().listen(emits.add);
+      await Future<void>.delayed(Duration.zero);
+      await service.start();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await sub.cancel();
+
+      expect(emits, contains(const IndexingStatus(remaining: 0, total: 1)));
+      expect(
+        emits.map((e) => e.total),
+        isNot(contains(2)),
+        reason: 'the excluded asset is stamped, never analyzed',
+      );
+    });
+
+    test('memories are not built out of excluded folders', () async {
+      // A burst big enough for a trip memory, entirely inside one folder.
+      final burst = assetsInMonth(2026, 5, 25);
+      FakePhotoLibraryService photos() => FakePhotoLibraryService(
+            assets: burst,
+            thumbnailBytes: Uint8List.fromList([1, 2, 3]),
+            folders: [
+              DeviceFolder(id: 'bulk-folder', name: 'Bulk', count: burst.length),
+            ],
+            folderAssetsById: {'bulk-folder': burst},
+          );
+
+      // Control: included, the trip memory exists. Memories alone — no search,
+      // no faces — so this is the date-window path, the one the folder gate
+      // used to miss entirely.
+      await consentTo(memories: true);
+      final included = serviceFor(photos(), FakeMlWorker());
+      addTearDown(included.dispose);
+      await included.start();
+      expect(
+        (await db.memoriesDao.watchActive().first).map((c) => c.kind),
+        contains('trip'),
+      );
+
+      // Same library, that folder excluded: nothing left to build from.
+      await db.memoriesDao.clearMemories();
+      await db.settingsDao.setExcludedFolderIds({'bulk-folder'});
+      await db.settingsDao.put('memories_generated_on', '');
+      final excluded = serviceFor(photos(), FakeMlWorker());
+      addTearDown(excluded.dispose);
+      await excluded.start();
+
+      expect(await db.memoriesDao.watchActive().first, isEmpty);
+    });
+
+    test('excluded folder assets get no faces', () async {
+      await db.settingsDao.setExcludedFolderIds({'camera-folder'});
+      await consentTo(faces: true);
+      final worker = FakeMlWorker(
+        faces: [
+          (
+            left: 0,
+            top: 0,
+            right: 10,
+            bottom: 10,
+            embedding: Float32List.fromList(List.filled(192, 0.1)),
+          ),
+        ],
+      );
+      final service = serviceFor(twoFolderPhotos(), worker);
+      addTearDown(service.dispose);
+
+      await service.start();
+
+      final faceRows = await db.select(db.faceEmbeddings).get();
+      expect(faceRows, hasLength(1));
+      expect(faceRows.single.assetId, 'screenshot');
+    });
+
+    test('changing exclusions resets derived data and re-analyzes only included folders',
+        () async {
+      final photos = twoFolderPhotos();
+      await consentTo(search: true, faces: true);
+      final worker = FakeMlWorker(
+        labels: const [('Dog', 0.9)],
+        faces: [
+          (
+            left: 0,
+            top: 0,
+            right: 10,
+            bottom: 10,
+            embedding: Float32List.fromList(List.filled(192, 0.1)),
+          ),
+        ],
+      );
+      final service = serviceFor(photos, worker);
+      addTearDown(service.dispose);
+
+      await service.start();
+      expect(await db.select(db.photoLabels).get(), isNotEmpty);
+      expect(await db.select(db.faceEmbeddings).get(), isNotEmpty);
+
+      await service.setExcludedFolderIds({'camera-folder'});
+      // Wait for the re-analysis pass to finish.
+      for (var i = 0; i < 100; i++) {
+        if ((await db.indexDao.pendingMlIds()).isEmpty) break;
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+
+      // Reset happened: only the included folder's asset still has derived data.
+      expect(await db.indexDao.pendingMlIds(), isEmpty);
+      final labels = await db.select(db.photoLabels).get();
+      expect(labels, hasLength(1));
+      expect(labels.single.assetId, 'screenshot');
+      final faces = await db.select(db.faceEmbeddings).get();
+      expect(faces, hasLength(1));
+      expect(faces.single.assetId, 'screenshot');
+      // The re-cluster baseline was reset too.
+      expect(await db.settingsDao.read('faces_at_last_recluster'), '0');
+    });
+
+    test('applyConsent with excluded folders skips them during first analysis',
+        () async {
+      final worker = FakeMlWorker(
+        labels: const [('Dog', 0.9)],
+        faces: [
+          (
+            left: 0,
+            top: 0,
+            right: 10,
+            bottom: 10,
+            embedding: Float32List.fromList(List.filled(192, 0.1)),
+          ),
+        ],
+      );
+      final service = serviceFor(twoFolderPhotos(), worker);
+      addTearDown(service.dispose);
+
+      await service.applyConsent(
+        searchEnabled: true,
+        memoriesEnabled: false,
+        facesEnabled: true,
+        excludedFolderIds: const {'camera-folder'},
+      );
+      // Wait for the pass kicked by applyConsent: both the metadata sweep and the
+      // ML loop must finish.
+      for (var i = 0; i < 200; i++) {
+        final cached = await db.indexDao.allCachedIds();
+        if (cached.length == 2 && (await db.indexDao.pendingMlIds()).isEmpty) {
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+
+      // Both assets are cached, but only the non-excluded one was analyzed.
+      expect(await db.indexDao.allCachedIds(), hasLength(2));
+      expect(await db.indexDao.pendingMlIds(), isEmpty);
+
+      final labels = await db.select(db.photoLabels).get();
+      expect(labels, hasLength(1));
+      expect(labels.single.assetId, 'screenshot');
+
+      final faces = await db.select(db.faceEmbeddings).get();
+      expect(faces, hasLength(1));
+      expect(faces.single.assetId, 'screenshot');
+    });
+
+    test('applyConsent clears derived data when folder scope narrows', () async {
+      // First run with everything included.
+      final photos = twoFolderPhotos();
+      final worker = FakeMlWorker(
+        labels: const [('Dog', 0.9)],
+        faces: [
+          (
+            left: 0,
+            top: 0,
+            right: 10,
+            bottom: 10,
+            embedding: Float32List.fromList(List.filled(192, 0.1)),
+          ),
+        ],
+      );
+      final service = serviceFor(photos, worker);
+      addTearDown(service.dispose);
+
+      await service.applyConsent(
+        searchEnabled: true,
+        memoriesEnabled: false,
+        facesEnabled: true,
+        excludedFolderIds: const {},
+      );
+      // Wait for the initial pass to finish.
+      for (var i = 0; i < 200; i++) {
+        final cached = await db.indexDao.allCachedIds();
+        if (cached.length == 2 && (await db.indexDao.pendingMlIds()).isEmpty) {
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(await db.select(db.photoLabels).get(), hasLength(2));
+      expect(await db.select(db.faceEmbeddings).get(), hasLength(2));
+
+      // Re-run consent with one folder excluded. The previously derived data
+      // for that folder must be removed.
+      await service.applyConsent(
+        searchEnabled: true,
+        memoriesEnabled: false,
+        facesEnabled: true,
+        excludedFolderIds: const {'camera-folder'},
+      );
+      // Wait for the re-analysis pass to finish.
+      for (var i = 0; i < 200; i++) {
+        if ((await db.indexDao.pendingMlIds()).isEmpty) break;
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+
+      final labels = await db.select(db.photoLabels).get();
+      expect(labels, hasLength(1));
+      expect(labels.single.assetId, 'screenshot');
+      final faces = await db.select(db.faceEmbeddings).get();
+      expect(faces, hasLength(1));
+      expect(faces.single.assetId, 'screenshot');
+    });
   });
 }

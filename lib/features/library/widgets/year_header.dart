@@ -1,28 +1,32 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/format/count_labels.dart';
 import '../../../core/theme/app_space.dart';
 import '../../../core/theme/app_text_styles.dart';
+import 'section_count_pill.dart';
 
 /// Announces a year in the grouped timeline: the year set in the display face,
-/// with its photo count trailing in the quiet caption voice.
+/// with the photo count in a quiet pill at the trailing end.
 ///
-/// The whole design system speaks at 11sp uppercase; this is the one place it
-/// raises its voice, and the scale jump alone (34sp against the month labels'
-/// 11sp) is what establishes the hierarchy — so there is no rule, no chip, and
-/// no color behind it. The count earns its place by being information the
-/// header would otherwise make the reader go and count for themselves.
+/// When [onTap] is provided the whole row becomes tappable and the pill shows a
+/// chevron, so the year hero opens its full grid the same way a month section
+/// header does.
 class YearHeader extends StatelessWidget {
-  const YearHeader({super.key, required this.year, required this.count});
+  const YearHeader({
+    super.key,
+    required this.year,
+    required this.count,
+    this.onTap,
+  });
 
   final int year;
   final int count;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).extension<AppTextStyles>()!;
     final scheme = Theme.of(context).colorScheme;
-    return Padding(
+    final row = Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpace.s16,
         AppSpace.s24,
@@ -30,18 +34,23 @@ class YearHeader extends StatelessWidget {
         AppSpace.s4,
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text('$year', style: text.display.copyWith(color: scheme.onSurface)),
           const SizedBox(width: AppSpace.s12),
-          Expanded(
-            child: Text(
-              photoCountLabel(count),
-              style: text.caption.copyWith(color: scheme.onSurfaceVariant),
-            ),
-          ),
+          const Spacer(),
+          SectionCountPill(count: count, showChevron: onTap != null),
         ],
+      ),
+    );
+
+    if (onTap == null) return row;
+    return Semantics(
+      button: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: row,
       ),
     );
   }

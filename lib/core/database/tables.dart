@@ -87,6 +87,7 @@ class AppSettings extends Table {
 /// ids from the library to find remaining work. Kept lean: only the fields
 /// indexing and label search consume today (GPS/modified/duration deferred until
 /// a consumer needs them). Keyed by `photo_manager` asset id.
+@TableIndex(name: 'photo_asset_dated_created', columns: {#isDated, #createdAt})
 class PhotoAssets extends Table {
   /// `photo_manager` asset id.
   TextColumn get assetId => text()();
@@ -257,6 +258,21 @@ class MemoryEntries extends Table {
   List<Set<Column>> get uniqueKeys => [
         {memoryId, assetId},
       ];
+}
+
+/// Recently viewed assets for the Search screen's "recently viewed" row.
+/// Independent of [PhotoAssets] so it works before ML indexing: opening a photo
+/// records a view by asset id, and Search reads the most recent ids. The
+/// `upsert` semantics on [assetId] mean re-viewing the same photo moves it to
+/// the top by refreshing [viewedAt].
+class RecentlyViewed extends Table {
+  /// `photo_manager` asset id.
+  TextColumn get assetId => text()();
+
+  DateTimeColumn get viewedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {assetId};
 }
 
 /// One detected face: its on-device embedding vector plus the bounding box.

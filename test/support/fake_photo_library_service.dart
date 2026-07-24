@@ -25,12 +25,12 @@ class FakePhotoLibraryService extends PhotoLibraryService {
     this.deleteResultOverride,
     List<DeviceFolder>? folders,
     Map<String, List<AssetRef>>? folderAssetsById,
-  })  : assets = List.of(assets ?? const []),
-        undatedAssets = List.of(undatedAssets ?? const []),
-        details = details ?? const {},
-        videoDurations = videoDurations ?? const {},
-        folders = List.of(folders ?? const []),
-        folderAssetsById = folderAssetsById ?? const {} {
+  }) : assets = List.of(assets ?? const []),
+       undatedAssets = List.of(undatedAssets ?? const []),
+       details = details ?? const {},
+       videoDurations = videoDurations ?? const {},
+       folders = List.of(folders ?? const []),
+       folderAssetsById = folderAssetsById ?? const {} {
     // Keep the newest-first ordering the real service guarantees.
     this.assets.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     this.undatedAssets.sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -79,6 +79,8 @@ class FakePhotoLibraryService extends PhotoLibraryService {
   int stopChangeNotifyCount = 0;
   final List<List<String>> deleteCalls = [];
   final List<List<String>> shareCalls = [];
+  final List<int> previewMaxEdges = [];
+  final List<int> adjacentThumbnailMaxEdges = [];
 
   /// The callback the indexer registered; invoke [fireLibraryChange] to
   /// simulate the device library changing (no plugin in host tests).
@@ -123,7 +125,9 @@ class FakePhotoLibraryService extends PhotoLibraryService {
     final source = dated ? assets : undatedAssets;
     final start = page * pageSize;
     if (start >= source.length) return const [];
-    final end = start + pageSize > source.length ? source.length : start + pageSize;
+    final end = start + pageSize > source.length
+        ? source.length
+        : start + pageSize;
     return [
       for (final a in source.sublist(start, end))
         (
@@ -179,7 +183,9 @@ class FakePhotoLibraryService extends PhotoLibraryService {
     DateTime? max,
     required MediaTypeFilter type,
   }) async {
-    final byId = {for (final a in [...assets, ...undatedAssets]) a.id: a};
+    final byId = {
+      for (final a in [...assets, ...undatedAssets]) a.id: a,
+    };
     final matches = <AssetRef>[
       for (final id in ids)
         if (byId[id] case final a?)
@@ -191,13 +197,14 @@ class FakePhotoLibraryService extends PhotoLibraryService {
 
   @override
   Future<List<DeviceFolder>> deviceFolders() async {
-    final visible = [
-      for (final f in folders)
-        if (f.count > 0) f,
-    ]..sort((a, b) {
-        final byCount = b.count.compareTo(a.count);
-        return byCount != 0 ? byCount : a.name.compareTo(b.name);
-      });
+    final visible =
+        [
+          for (final f in folders)
+            if (f.count > 0) f,
+        ]..sort((a, b) {
+          final byCount = b.count.compareTo(a.count);
+          return byCount != 0 ? byCount : a.name.compareTo(b.name);
+        });
     return visible;
   }
 
@@ -216,9 +223,8 @@ class FakePhotoLibraryService extends PhotoLibraryService {
 
   @override
   Future<({DateTime createdAt, bool isVideo, int width, int height})?>
-      assetIndexMeta(String assetId) async {
-    final matches =
-        [...assets, ...undatedAssets].where((a) => a.id == assetId);
+  assetIndexMeta(String assetId) async {
+    final matches = [...assets, ...undatedAssets].where((a) => a.id == assetId);
     if (matches.isEmpty) return null;
     final match = matches.first;
     return (
@@ -230,12 +236,37 @@ class FakePhotoLibraryService extends PhotoLibraryService {
   }
 
   @override
-  Future<Uint8List?> thumbnail(String assetId, int width, int height) async =>
-      thumbnailBytes;
+  Future<Uint8List?> thumbnail(
+    String assetId,
+    int width,
+    int height, {
+    bool Function()? cancelled,
+    bool indexing = false,
+  }) async {
+    final tb = thumbnailBytes;
+    if (tb == null) return null;
+    // A real thumbnail of a different size is a different image — model that
+    // so a test can tell the 512 label/face pass from the 1024 OCR pass apart
+    // (the bytes differ, not just the request). Returns a fresh buffer each
+    // call.
+    final sized = Uint8List(tb.length + 2)
+      ..setRange(0, tb.length, tb)
+      ..[tb.length] = (width >> 8) & 0xFF
+      ..[tb.length + 1] = width & 0xFF;
+    return sized;
+  }
 
   @override
-  Future<Uint8List?> previewImage(String assetId, int maxEdge) async =>
-      previewBytes ?? thumbnailBytes;
+  Future<Uint8List?> previewImage(String assetId, int maxEdge) async {
+    previewMaxEdges.add(maxEdge);
+    return previewBytes ?? thumbnailBytes;
+  }
+
+  @override
+  Future<Uint8List?> adjacentThumbnail(String assetId, int maxEdge) async {
+    adjacentThumbnailMaxEdges.add(maxEdge);
+    return previewBytes ?? thumbnailBytes;
+  }
 
   @override
   Future<Duration?> videoDuration(String assetId) async =>
@@ -261,7 +292,10 @@ class FakePhotoLibraryService extends PhotoLibraryService {
   }
 
   @override
-  Future<void> shareAssets(List<String> ids, {Rect? sharePositionOrigin}) async {
+  Future<void> shareAssets(
+    List<String> ids, {
+    Rect? sharePositionOrigin,
+  }) async {
     shareCalls.add(ids);
   }
 }

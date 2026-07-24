@@ -6,7 +6,7 @@ import '../tables.dart';
 part 'albums_dao.g.dart';
 
 /// Data-access for [Albums] and their [AlbumEntries]. Pure data layer.
-@DriftAccessor(tables: [Albums, AlbumEntries])
+@DriftAccessor(tables: [Albums, AlbumEntries, PhotoAssets])
 class AlbumsDao extends DatabaseAccessor<AppDatabase> with _$AlbumsDaoMixin {
   AlbumsDao(super.db);
 
@@ -28,19 +28,25 @@ class AlbumsDao extends DatabaseAccessor<AppDatabase> with _$AlbumsDaoMixin {
   }
 
   /// Albums with their entry count and a representative cover asset id — the
-  /// explicit [Albums.coverAssetId] if set, else the most recently added entry.
+  /// explicit [Albums.coverAssetId] if set, else the album's **newest photo**.
   /// Ordered like [watchAllAlbums]. Backs the Albums list grid.
+  ///
+  /// The cover sub-select mirrors [watchEntries] exactly — same join, same
+  /// ordering — so the card in the Albums grid and the hero on the album screen
+  /// can never disagree about which photo represents the album.
   Stream<List<AlbumSummary>> watchAlbumSummaries() {
     final query = customSelect(
       'SELECT a.id AS id, a.name AS name, a.cover_asset_id AS cover_asset_id, '
       'COUNT(e.id) AS entry_count, '
-      '(SELECT e2.asset_id FROM album_entries e2 WHERE e2.album_id = a.id '
-      'ORDER BY e2.added_at DESC LIMIT 1) AS latest_asset_id '
+      '(SELECT e2.asset_id FROM album_entries e2 '
+      'LEFT JOIN photo_assets p2 ON p2.asset_id = e2.asset_id '
+      'WHERE e2.album_id = a.id '
+      'ORDER BY p2.created_at DESC, e2.id DESC LIMIT 1) AS latest_asset_id '
       'FROM albums a '
       'LEFT JOIN album_entries e ON e.album_id = a.id '
       'GROUP BY a.id '
       'ORDER BY a.sort_index ASC, a.created_at ASC',
-      readsFrom: {albums, albumEntries},
+      readsFrom: {albums, albumEntries, photoAssets},
     );
     return query.watch().map(
           (rows) => rows
@@ -71,12 +77,31 @@ class AlbumsDao extends DatabaseAccessor<AppDatabase> with _$AlbumsDaoMixin {
     return (delete(albums)..where((a) => a.id.equals(albumId))).go();
   }
 
-  /// Entries of [albumId], most recently added first.
+  /// Entries of [albumId], **newest photo first** — ordered by when the photo
+  /// was taken, not when it was added to the album, so an album reads the same
+  /// way as the Library and Search grids and its cover is its first cell.
+  ///
+  /// Left join: an entry whose asset has not been swept into `photo_assets`
+  /// yet has no capture date, and a NULL sorts last under `DESC` in SQLite —
+  /// un-indexed entries collect at the end rather than jumping to the front.
+  /// `id DESC` breaks ties, which matters because `added_at` is stored at
+  /// second granularity and a multi-select add lands several rows in the same
+  /// second.
   Stream<List<AlbumEntry>> watchEntries(int albumId) {
-    return (select(albumEntries)
-          ..where((e) => e.albumId.equals(albumId))
-          ..orderBy([(e) => OrderingTerm.desc(e.addedAt)]))
-        .watch();
+    final query = select(albumEntries).join([
+      leftOuterJoin(
+        photoAssets,
+        photoAssets.assetId.equalsExp(albumEntries.assetId),
+      ),
+    ])
+      ..where(albumEntries.albumId.equals(albumId))
+      ..orderBy([
+        OrderingTerm(expression: photoAssets.createdAt, mode: OrderingMode.desc),
+        OrderingTerm(expression: albumEntries.id, mode: OrderingMode.desc),
+      ]);
+    return query
+        .watch()
+        .map((rows) => rows.map((r) => r.readTable(albumEntries)).toList());
   }
 
   /// Adds a photo to an album (idempotent via the UNIQUE(album, asset) key).

@@ -49,4 +49,18 @@ void main() {
     expect(decoration.border, isNotNull);
     expect(container.clipBehavior, Clip.antiAlias);
   });
+
+  testWidgets('custom borderRadius is applied', (tester) async {
+    await tester.pumpWidget(
+      host(const AppCard(borderRadius: AppRadius.br30, child: Text('note'))),
+    );
+    final container = tester.widget<Container>(
+      find.descendant(
+        of: find.byType(AppCard),
+        matching: find.byType(Container),
+      ),
+    );
+    final decoration = container.decoration! as BoxDecoration;
+    expect(decoration.borderRadius, AppRadius.br30);
+  });
 }

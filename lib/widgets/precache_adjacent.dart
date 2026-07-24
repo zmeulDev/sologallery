@@ -3,9 +3,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/detail/detail_providers.dart';
 import '../features/detail/domain/adjacent_ids.dart';
+import '../services/thumbnail_provider.dart';
 
-/// Warms [detailImageProvider] for the pages either side of [index] so a swipe
-/// lands on already-decoded bytes instead of a spinner.
+/// Warms detail-viewer bytes for the pages either side of [index] so a swipe
+/// lands on already-fetched content instead of a spinner.
+///
+/// Two independent windows are supported:
+///
+/// * [ahead]/[behind] drive the full-size [detailImageProvider] (capped at
+///   [kDetailImageMaxEdge]). This is the image the page will finally show.
+/// * [thumbnailAhead]/[thumbnailBehind] drive the tiny
+///   [adjacentThumbnailProvider] (capped at [kAdjacentThumbnailMaxEdge]). The
+///   thumbnail is shown as a placeholder while the full preview decodes, so
+///   even a fast swipe sees a photo immediately.
+///
+/// Callers that don't need the placeholder stream (the memory player) leave
+/// the thumbnail window at zero.
 ///
 /// This is a *provider* warm-up, not a `precacheImage` call: the detail stage
 /// renders `Image.memory` over bytes fetched by [detailImageProvider], so the
@@ -34,23 +47,37 @@ class PrecacheAdjacent extends ConsumerWidget {
     required this.index,
     this.ahead = 1,
     this.behind = 1,
+    this.thumbnailAhead = 0,
+    this.thumbnailBehind = 0,
   });
 
   final List<String> assetIds;
   final int index;
 
-  /// How many pages forward and back to warm — see [adjacentIds] on why the
-  /// two differ. One each way is the default, for callers that advance a page
-  /// at a time on their own schedule (the memory player): each extra step is
-  /// another screen-capped preview held for a page that may never be reached.
-  /// The detail viewer overrides both to 3, because a free swipe can outrun a
-  /// one-deep window in a second and the payload is encoded bytes rather than
-  /// decoded bitmaps.
+  /// How many pages forward and back to warm at full resolution — see
+  /// [adjacentIds] on why the two directions differ. One each way is the
+  /// default, for callers that advance a page at a time on their own schedule
+  /// (the memory player): each extra step is another screen-capped preview held
+  /// for a page that may never be reached. The detail viewer overrides both to
+  /// 5, because a free swipe can outrun a one-deep window in a second and the
+  /// payload is encoded bytes rather than decoded bitmaps.
   final int ahead;
+
+  /// How many pages back to warm at full resolution.
   final int behind;
+
+  /// How many pages forward and back to warm at low resolution for use as
+  /// instant placeholders. The detail viewer sets this slightly larger than
+  /// [ahead]/[behind] because the small thumbnails are cheap and cover a long
+  /// swipe.
+  final int thumbnailAhead;
+
+  /// How many pages back to warm at low resolution.
+  final int thumbnailBehind;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // High-res window.
     for (final id in adjacentIds(assetIds, index, ahead: ahead, behind: behind)) {
       // `!= true`, not `== false`: waiting for isVideoProvider to answer before
       // starting the fetch would serialize two platform round-trips on the one
@@ -62,6 +89,20 @@ class PrecacheAdjacent extends ConsumerWidget {
         ref.watch(detailImageProvider(id));
       }
     }
+
+    // Low-res placeholder window. Same video-drop strategy: start the cheap
+    // thumbnail immediately, abandon it once the kind resolves to video.
+    for (final id in adjacentIds(
+      assetIds,
+      index,
+      ahead: thumbnailAhead,
+      behind: thumbnailBehind,
+    )) {
+      if (ref.watch(isVideoProvider(id)).value != true) {
+        ref.watch(adjacentThumbnailProvider(id));
+      }
+    }
+
     return const SizedBox.shrink();
   }
 }

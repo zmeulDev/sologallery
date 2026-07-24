@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:sologallery/services/ml_service.dart';
 
 /// In-memory [MlWorker] for host tests — returns canned analysis without
@@ -13,27 +15,27 @@ class FakeMlWorker implements MlWorker {
     this.beforeAnalyze,
   });
 
-  /// Awaited at the start of every [analyzeFile], with the 0-based call index.
+  /// Awaited at the start of every [analyze], with the 0-based call index.
   /// Lets a test hold a pass open mid-flight — the window in which consent
   /// changes used to be lost.
   final Future<void> Function(int callIndex)? beforeAnalyze;
 
-  /// Labels returned for every [analyzeFile] call.
+  /// Labels returned for every [analyze] call.
   final List<Label> labels;
 
-  /// OCR text returned for every [analyzeFile] call.
+  /// OCR text returned for every [analyze] call.
   final String text;
 
-  /// Faces returned for every [analyzeFile] call.
+  /// Faces returned for every [analyze] call.
   final List<DetectedFace> faces;
 
-  /// Label/face image paths passed to [analyzeFile], in order (call count =
+  /// The 512 thumbnail bytes passed to [analyze], in order (call count =
   /// length).
-  final List<String> calls = [];
+  final List<Uint8List> calls = [];
 
-  /// The `ocrPath` passed alongside each call (null when OCR fell back to the
+  /// The `ocrBytes` passed alongside each call (null when OCR fell back to the
   /// 512 image) — lets tests assert the higher-res OCR pass was wired up.
-  final List<String?> ocrCalls = [];
+  final List<Uint8List?> ocrCalls = [];
 
   /// The consent flags passed with each call — let tests assert the user's
   /// choices actually reach the worker.
@@ -43,15 +45,15 @@ class FakeMlWorker implements MlWorker {
   var disposed = false;
 
   @override
-  Future<ImageAnalysis> analyzeFile(
-    String jpegPath, {
-    String? ocrPath,
+  Future<ImageAnalysis> analyze({
+    required Uint8List bytes,
+    Uint8List? ocrBytes,
     bool content = true,
     bool faces = true,
   }) async {
     await beforeAnalyze?.call(calls.length);
-    calls.add(jpegPath);
-    ocrCalls.add(ocrPath);
+    calls.add(bytes);
+    ocrCalls.add(ocrBytes);
     faceRequests.add(faces);
     contentRequests.add(content);
     // Mirrors the real worker's contract: no consent, no result — so a caller
@@ -64,5 +66,5 @@ class FakeMlWorker implements MlWorker {
   }
 
   @override
-  void dispose() => disposed = true;
+  Future<void> dispose() async => disposed = true;
 }

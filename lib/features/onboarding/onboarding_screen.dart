@@ -2,15 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_motion.dart';
 import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
 import '../../widgets/app_button.dart';
+import '../../widgets/app_card.dart';
 import '../../widgets/consent_switch.dart';
-import '../../widgets/entrance_fade.dart';
+import '../folders/folders_providers.dart';
 import '../settings/consent_provider.dart';
+import '../settings/widgets/folder_picker_sheet.dart';
+import '../settings/widgets/settings_rows.dart';
 
 /// First-run gate, in two steps. The router sends the user here whenever the app
 /// lacks library access *or* still owes the analysis-consent question (see
@@ -53,6 +55,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   bool _memories = false;
   bool _faces = false;
 
+  /// Folder ids excluded from on-device analysis. Empty means every folder is
+  /// included, which is the default until the user opens the picker.
+  Set<String> _excludedFolderIds = const {};
+
   Future<void> _requestAccess() async {
     await ref.read(permissionProvider.notifier).request();
     if (mounted) setState(() => _attempted = true);
@@ -63,33 +69,35 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           search: _search,
           memories: _memories,
           faces: _faces,
+          excludedFolderIds: _excludedFolderIds,
         );
+  }
+
+  Future<void> _openFolderPicker() async {
+    final result = await FolderPickerSheet.show(
+      context,
+      initialExcluded: _excludedFolderIds,
+    );
+    if (result != null && mounted) {
+      setState(() => _excludedFolderIds = result);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final access = ref.watch(permissionProvider);
     final showConsent =
-        access.canReadLibrary && ref.watch(consentProvider) == ConsentState.needed;
-    // A plain cross-fade between the two steps — each is its own full
-    // Scaffold, so AnimatedSwitcher briefly stacks both during the
-    // transition rather than hard-cutting between them. Keying by step
-    // means arriving at a step always mounts it fresh, replaying its own
-    // entrance choreography (built with EntranceFade below) every time,
-    // including the second time consent is reached after access is revoked
-    // and re-granted.
-    return AnimatedSwitcher(
-      duration: AppMotion.of(context, AppMotion.medium),
-      switchInCurve: AppMotion.curve,
-      switchOutCurve: AppMotion.curve,
-      transitionBuilder: (child, animation) =>
-          FadeTransition(opacity: animation, child: child),
-      child: KeyedSubtree(
-        key: ValueKey(showConsent ? 'consent' : 'access'),
-        child: showConsent
-            ? _buildConsentStep(context)
-            : _buildAccessStep(context, access),
-      ),
+        access.canReadLibrary &&
+        ref.watch(consentProvider) == ConsentState.needed;
+    // A hard cut between the two steps. Keying by step means arriving at a
+    // step always mounts it fresh every time — including the second time
+    // consent is reached after access is revoked and re-granted — so each
+    // step's state resets rather than carrying over.
+    return KeyedSubtree(
+      key: ValueKey(showConsent ? 'consent' : 'access'),
+      child: showConsent
+          ? _buildConsentStep(context)
+          : _buildAccessStep(context, access),
     );
   }
 
@@ -121,86 +129,71 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 style: text.sectionLabel.copyWith(color: colors.textSecondary),
               ),
               const Spacer(),
-              EntranceFade(
-                index: 1,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      denied
-                          ? 'Photo access is\nturned off.'
-                          : 'Your photos\nstay yours.',
-                      style: text.display.copyWith(color: scheme.onSurface),
-                    ),
-                    const SizedBox(height: 18),
-                    Text(
-                      denied
-                          ? 'SoloGallery needs access to your library to show '
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    denied
+                        ? 'Photo access is\nturned off.'
+                        : 'Your photos\nstay yours.',
+                    style: text.display.copyWith(color: scheme.onSurface),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    denied
+                        ? 'SoloGallery needs access to your library to show '
                               'your photos. Turn it on in Settings — nothing '
                               'is uploaded, ever.'
-                          : 'SoloGallery organizes everything right here on '
+                        : 'SoloGallery organizes everything right here on '
                               'this device. No cloud, no account, no network '
                               '— your library never leaves your phone.',
-                      style: text.body.copyWith(color: colors.textSecondary),
-                    ),
-                  ],
-                ),
+                    style: text.body.copyWith(color: colors.textSecondary),
+                  ),
+                ],
               ),
               const SizedBox(height: AppSpace.s32),
-              EntranceFade(
-                index: 2,
-                child: const _Assurance(
-                  label: 'LOCAL ONLY',
-                  detail: 'Nothing is uploaded or synced',
-                ),
+              const _Assurance(
+                label: 'LOCAL ONLY',
+                detail: 'Nothing is uploaded or synced',
               ),
-              EntranceFade(
-                index: 3,
-                child: _Assurance(
-                  label: 'ON DEVICE',
-                  detail: 'Search and organizing run on your phone',
-                  color: colors,
-                ),
+              _Assurance(
+                label: 'ON DEVICE',
+                detail: 'Search and organizing run on your phone',
+                color: colors,
               ),
-              EntranceFade(
-                index: 4,
-                child: const _Assurance(
-                  label: 'NON-DESTRUCTIVE',
-                  detail: 'Your original photos are never altered',
-                ),
+              const _Assurance(
+                label: 'NON-DESTRUCTIVE',
+                detail: 'Your original photos are never altered',
               ),
               const Spacer(),
-              EntranceFade(
-                index: 5,
-                child: Column(
-                  children: [
-                    AppButton.primary(
-                      label: denied ? 'Open Settings' : 'Allow photo access',
-                      busy: _busy,
-                      expand: true,
-                      onPressed: _busy
-                          ? null
-                          : () => _run(
-                                denied
-                                    ? ref
-                                        .read(permissionProvider.notifier)
-                                        .openSettings
-                                    : _requestAccess,
-                              ),
-                    ),
-                    const SizedBox(height: 14),
-                    Center(
-                      child: Text(
-                        denied
-                            ? 'We\'ll open the library the moment access is on.'
-                            : 'You choose what to share — all photos or only '
+              Column(
+                children: [
+                  AppButton.primary(
+                    label: denied ? 'Open Settings' : 'Allow photo access',
+                    busy: _busy,
+                    expand: true,
+                    onPressed: _busy
+                        ? null
+                        : () => _run(
+                            denied
+                                ? ref
+                                      .read(permissionProvider.notifier)
+                                      .openSettings
+                                : _requestAccess,
+                          ),
+                  ),
+                  const SizedBox(height: 14),
+                  Center(
+                    child: Text(
+                      denied
+                          ? 'We\'ll open the library the moment access is on.'
+                          : 'You choose what to share — all photos or only '
                                 'some.',
-                        textAlign: TextAlign.center,
-                        style: text.caption.copyWith(color: colors.textMuted),
-                      ),
+                      textAlign: TextAlign.center,
+                      style: text.caption.copyWith(color: colors.textMuted),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -241,20 +234,25 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               // the headline overflow a short screen at large font scales, and
               // a RenderFlex overflow is a hard failure on device.
               Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: AppSpace.s32),
-                      EntranceFade(
-                        index: 1,
-                        child: Column(
+                child: _InheritedConsentScope(
+                  search: _search,
+                  memories: _memories,
+                  faces: _faces,
+                  excludedFolderIds: _excludedFolderIds,
+                  onOpenFolderPicker: _openFolderPicker,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: AppSpace.s32),
+                        Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               'What should stay\non the shelf?',
-                              style: text.display
-                                  .copyWith(color: scheme.onSurface),
+                              style: text.display.copyWith(
+                                color: scheme.onSurface,
+                              ),
                             ),
                             const SizedBox(height: 18),
                             Text(
@@ -262,74 +260,163 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                               'make them easier to find. It all happens on '
                               'this device — and none of it starts until you '
                               'say so.',
-                              style: text.body
-                                  .copyWith(color: colors.textSecondary),
+                              style: text.body.copyWith(
+                                color: colors.textSecondary,
+                              ),
                             ),
                           ],
                         ),
-                      ),
-                      const SizedBox(height: AppSpace.s32),
-                      EntranceFade(
-                        index: 2,
-                        child: _ConsentToggle(
+                        const SizedBox(height: AppSpace.s32),
+                        _ConsentToggle(
                           label: 'CONTENT SEARCH',
-                          detail: 'Find photos by what is in them, and by '
+                          detail:
+                              'Find photos by what is in them, and by '
                               'text they contain',
                           value: _search,
                           onChanged: (v) => setState(() => _search = v),
                         ),
-                      ),
-                      EntranceFade(
-                        index: 3,
-                        child: _ConsentToggle(
+                        _ConsentToggle(
                           label: 'MEMORIES',
-                          detail: 'Occasional highlights built from photos '
+                          detail:
+                              'Occasional highlights built from photos '
                               'you already have',
                           value: _memories,
                           onChanged: (v) => setState(() => _memories = v),
                         ),
-                      ),
-                      EntranceFade(
-                        index: 4,
-                        child: _ConsentToggle(
+                        _ConsentToggle(
                           label: 'FACE DETECTION',
-                          detail: "Groups photos by who's in them. Faces "
+                          detail:
+                              "Groups photos by who's in them. Faces "
                               'never leave this device.',
                           value: _faces,
                           onChanged: (v) => setState(() => _faces = v),
                         ),
-                      ),
-                      const SizedBox(height: AppSpace.s8),
-                    ],
+                        const SizedBox(height: AppSpace.s24),
+                        const _FolderScopeCard(),
+                        const SizedBox(height: AppSpace.s8),
+                      ],
+                    ),
                   ),
                 ),
               ),
-              EntranceFade(
-                index: 5,
-                child: Column(
-                  children: [
-                    AppButton.primary(
-                      label: 'Continue',
-                      busy: _busy,
-                      expand: true,
-                      onPressed: _busy ? null : () => _run(_recordConsent),
+              Column(
+                children: [
+                  AppButton.primary(
+                    label: 'Continue',
+                    busy: _busy,
+                    expand: true,
+                    onPressed: _busy ? null : () => _run(_recordConsent),
+                  ),
+                  const SizedBox(height: 14),
+                  Center(
+                    child: Text(
+                      'Your photos open next either way.',
+                      textAlign: TextAlign.center,
+                      style: text.caption.copyWith(color: colors.textMuted),
                     ),
-                    const SizedBox(height: 14),
-                    Center(
-                      child: Text(
-                        'Your photos open next either way.',
-                        textAlign: TextAlign.center,
-                        style: text.caption.copyWith(color: colors.textMuted),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ],
           ),
         ),
       ),
     );
+  }
+}
+
+/// The folder-scope card on the consent step. Watches the device folders so
+/// the summary and selected-photo count update as the user opens/closes the
+/// picker. The picker itself is shared with Settings → Analysis.
+class _FolderScopeCard extends ConsumerWidget {
+  const _FolderScopeCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = _InheritedConsentScope.of(context);
+    final foldersAsync = ref.watch(deviceFoldersProvider);
+    final folders = foldersAsync.whenOrNull(data: (v) => v) ?? const [];
+
+    final includedFolders = [
+      for (final f in folders) if (!state.excludedFolderIds.contains(f.id)) f,
+    ];
+    final selectedCount = includedFolders.fold(0, (sum, f) => sum + f.count);
+    final totalFolders = folders.length;
+    final includedFoldersCount = includedFolders.length;
+
+    final summary = state.excludedFolderIds.isEmpty || totalFolders == 0
+        ? 'All folders'
+        : '$includedFoldersCount of $totalFolders folders';
+
+    final analysisEnabled = state.search || state.memories || state.faces;
+    final photos =
+        '$selectedCount ${_pluralize(selectedCount, 'photo', 'photos')}';
+    // The "a while" warning is only honest at a size where it is true. Shown
+    // unconditionally it read the same for 66 photos as for 892, which turns it
+    // into noise on exactly the selections the folder picker exists to make.
+    final caption = !analysisEnabled
+        ? 'No on-device analysis is turned on.'
+        : selectedCount == 0
+            ? 'No photos selected to analyze.'
+            : selectedCount >= _slowAnalysisThreshold
+                ? '$photos. This may take a while.'
+                : '$photos.';
+
+    return AppCard.divided(
+      children: [
+        SettingsActionRow(
+          label: 'Folders to analyze',
+          caption: 'Excluded folders stay visible; their photos are skipped.',
+          onTap: state.onOpenFolderPicker,
+        ),
+        SettingsCaptionRow(
+          '$summary · $caption',
+        ),
+      ],
+    );
+  }
+
+  /// Above this many photos the first analysis pass is long enough to be worth
+  /// warning about; below it the warning is just noise. Measured on a Pixel 9
+  /// Pro XL with search + faces on, a pass runs at roughly one photo a second,
+  /// so this is about the point where it stops finishing inside a minute.
+  static const _slowAnalysisThreshold = 100;
+
+  static String _pluralize(int count, String singular, String plural) =>
+      count == 1 ? singular : plural;
+}
+
+/// Scoped access from the card to the enclosing onboarding state without passing
+/// four fields through every constructor.
+class _InheritedConsentScope extends InheritedWidget {
+  const _InheritedConsentScope({
+    required super.child,
+    required this.search,
+    required this.memories,
+    required this.faces,
+    required this.excludedFolderIds,
+    required this.onOpenFolderPicker,
+  });
+
+  final bool search;
+  final bool memories;
+  final bool faces;
+  final Set<String> excludedFolderIds;
+  final VoidCallback onOpenFolderPicker;
+
+  @override
+  bool updateShouldNotify(_InheritedConsentScope old) =>
+      search != old.search ||
+      memories != old.memories ||
+      faces != old.faces ||
+      excludedFolderIds != old.excludedFolderIds ||
+      onOpenFolderPicker != old.onOpenFolderPicker;
+
+  static _InheritedConsentScope of(BuildContext context) {
+    final result = context.dependOnInheritedWidgetOfExactType<
+        _InheritedConsentScope>();
+    assert(result != null, '_InheritedConsentScope not found');
+    return result!;
   }
 }
 
