@@ -27,7 +27,7 @@ void main() {
     final bytes = await file.readAsBytes();
 
     final worker = MlWorkerController();
-    addTearDown(worker.dispose);
+    addTearDown(() async => await worker.dispose());
 
     final analysis = await worker.analyze(bytes: bytes);
 
@@ -52,7 +52,7 @@ void main() {
     final bytes = await file.readAsBytes();
 
     final worker = MlWorkerController();
-    addTearDown(worker.dispose);
+    addTearDown(() async => await worker.dispose());
 
     // Same image the control above proves is detectable — so an empty result
     // here can only be the gate.

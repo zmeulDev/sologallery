@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_space.dart';
 import '../../widgets/app_dialog.dart';
 import '../../widgets/circle_icon_button.dart';
+import '../../services/thumbnail_provider.dart';
 import '../../widgets/precache_adjacent.dart';
 import 'detail_providers.dart';
 import 'photo_viewer_args.dart';
@@ -147,10 +148,18 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
             ),
             // Zero-size; warms the neighbouring pages' bytes. Sits in the Stack
             // so it rebuilds with _index, without the stage rebuilding with it.
-            // Three each way: the payload is encoded bytes capped at
-            // kDetailImageMaxEdge, not decoded bitmaps, so six neighbours cost
-            // ~10-15MB resident and buy a run of spinner-free swipes.
-            PrecacheAdjacent(assetIds: _ids, index: _index, ahead: 3, behind: 3),
+            // Full-res window = ±5 (the payload is encoded bytes capped at
+            // kDetailImageMaxEdge, not decoded bitmaps); low-res placeholder
+            // window = ±7 because the small thumbnails are cheap and cover a
+            // long swipe.
+            PrecacheAdjacent(
+              assetIds: _ids,
+              index: _index,
+              ahead: 5,
+              behind: 5,
+              thumbnailAhead: 7,
+              thumbnailBehind: 7,
+            ),
             _Chrome(
               visible: _chromeVisible,
               alignment: Alignment.topCenter,
@@ -210,10 +219,14 @@ class _DetailPage extends ConsumerWidget {
     // this removes the serial stall; for videos the provider is auto-disposed
     // once the video branch replaces this page.
     ref.watch(detailImageProvider(assetId));
+    // The grid thumbnail for the tapped photo is best; for neighbours fall back
+    // to the small pre-warmed placeholder so the swipe lands on a photo.
+    final cached = ref.watch(adjacentThumbnailProvider(assetId)).value;
+    final effectiveBytes = placeholderBytes ?? cached;
     return DismissiblePhoto(
       assetId: assetId,
       isVideo: isVideo,
-      placeholderBytes: placeholderBytes,
+      placeholderBytes: effectiveBytes,
       onDismissed: onDismissed,
       onSwipeUp: onSwipeUp,
       onTap: onTap,

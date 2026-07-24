@@ -17,6 +17,11 @@ void main() {
   setUp(() => db = AppDatabase(NativeDatabase.memory()));
   tearDown(() => db.close());
 
+  final folders = [
+    DeviceFolder(id: 'camera-folder', name: 'Camera', count: 120),
+    DeviceFolder(id: 'screenshots-folder', name: 'Screenshots', count: 30),
+  ];
+
   Future<FakePhotoLibraryService> pump(
     WidgetTester tester, {
     required PhotoAccess access,
@@ -25,6 +30,7 @@ void main() {
     final fake = FakePhotoLibraryService(
       access: access,
       grantResult: grantResult,
+      folders: folders,
     );
     await tester.pumpWidget(
       ProviderScope(
@@ -96,7 +102,10 @@ void main() {
           overrides: [
             databaseProvider.overrideWithValue(db),
             photoLibraryServiceProvider.overrideWithValue(
-              FakePhotoLibraryService(access: access),
+              FakePhotoLibraryService(
+                access: access,
+                folders: folders,
+              ),
             ),
           ],
           child: MaterialApp(
@@ -125,7 +134,10 @@ void main() {
           overrides: [
             databaseProvider.overrideWithValue(db),
             photoLibraryServiceProvider.overrideWithValue(
-              FakePhotoLibraryService(access: PhotoAccess.granted),
+              FakePhotoLibraryService(
+                access: PhotoAccess.granted,
+                folders: folders,
+              ),
             ),
           ],
           child: MaterialApp(
@@ -187,6 +199,81 @@ void main() {
       expect(await db.settingsDao.readSearchEnabled(), isFalse);
       expect(await db.settingsDao.readMemoriesEnabled(), isFalse);
       expect(await db.settingsDao.readFacesEnabled(), isFalse);
+    });
+
+    testWidgets('shows folder summary and selected photo count', (tester) async {
+      await pumpConsent(tester);
+
+      expect(find.text('Folders to analyze'), findsOneWidget);
+      expect(
+        find.text('All folders · 150 photos. This may take a while.'),
+        findsNothing,
+      );
+      // By default no ML features are on, so the caption says so.
+      expect(
+        find.text('All folders · No on-device analysis is turned on.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('caption switches to time estimate when analysis is enabled', (
+      tester,
+    ) async {
+      await pumpConsent(tester);
+
+      await tester.tap(find.byType(Switch).first);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('All folders · 150 photos. This may take a while.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('folder picker updates summary and persisted scope', (
+      tester,
+    ) async {
+      await pumpConsent(tester);
+
+      // The card starts with every folder included and no analysis enabled.
+      expect(
+        find.text('All folders · No on-device analysis is turned on.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Folders to analyze'));
+      await tester.pumpAndSettle();
+
+      // The folder picker sheet is open.
+      expect(find.text('FOLDERS TO ANALYZE'), findsOneWidget);
+
+      // Toggle the Screenshots folder off. The sheet shows All folders, Camera,
+      // Screenshots — tap the last checkbox.
+      final checkboxes = tester.widgetList<Checkbox>(find.byType(Checkbox)).toList();
+      expect(checkboxes, hasLength(3));
+      await tester.tap(find.byType(Checkbox).last);
+      await tester.pumpAndSettle();
+
+      // Tap Done in the sheet.
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+
+      // Summary now reflects one excluded folder; still no analysis on.
+      expect(
+        find.text('1 of 2 folders · No on-device analysis is turned on.'),
+        findsOneWidget,
+      );
+
+      // Turn content search on so analysis is enabled and Continue persists.
+      await tester.tap(find.byType(Switch).first);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      expect(
+        await db.settingsDao.readExcludedFolderIds(),
+        const {'screenshots-folder'},
+      );
     });
   });
 }

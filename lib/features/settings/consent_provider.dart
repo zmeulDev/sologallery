@@ -45,8 +45,9 @@ class ConsentNotifier extends Notifier<ConsentState> {
     state = recorded ? ConsentState.recorded : ConsentState.needed;
   }
 
-  /// Records the user's answers to the consent prompt and marks it answered, so
-  /// declining everything doesn't re-prompt on every launch.
+  /// Records the user's answers to the consent prompt, the folder scope, and
+  /// marks it answered, so declining everything doesn't re-prompt on every
+  /// launch.
   ///
   /// Routed through [IndexingService] rather than writing the flags directly:
   /// an **upgrading** user reaches this step with labels, faces, persons, and
@@ -54,22 +55,25 @@ class ConsentNotifier extends Notifier<ConsentState> {
   /// delete them. Writing the settings straight to the DAO would leave exactly
   /// the data the user just refused sitting on disk.
   ///
-  /// All three answers go through a single [IndexingService.applyConsent] —
-  /// setting them one at a time let an indexing pass start on a half-written
-  /// answer (see that method).
+  /// All three answers and the folder scope go through a single
+  /// [IndexingService.applyConsent] — setting them one at a time let an indexing
+  /// pass start on a half-written answer (see that method).
   Future<void> record({
     required bool search,
     required bool memories,
     required bool faces,
+    required Set<String> excludedFolderIds,
   }) async {
     await ref.read(indexingServiceProvider).applyConsent(
           searchEnabled: search,
           memoriesEnabled: memories,
           facesEnabled: faces,
+          excludedFolderIds: excludedFolderIds,
         );
     _log.info(
       'Analysis consent recorded '
-      '(search: $search, memories: $memories, faces: $faces)',
+      '(search: $search, memories: $memories, faces: $faces, '
+      'excluded folders: ${excludedFolderIds.length})',
     );
     state = ConsentState.recorded;
   }

@@ -410,6 +410,7 @@ void main() {
         searchEnabled: true,
         memoriesEnabled: true,
         facesEnabled: true,
+        excludedFolderIds: const {},
       );
 
       gate.complete();
@@ -432,12 +433,14 @@ void main() {
         searchEnabled: true,
         memoriesEnabled: false,
         facesEnabled: true,
+        excludedFolderIds: const {},
       );
 
       expect(await db.settingsDao.readSearchEnabled(), isTrue);
       expect(await db.settingsDao.readMemoriesEnabled(), isFalse);
       expect(await db.settingsDao.readFacesEnabled(), isTrue);
       expect(await db.settingsDao.readConsentRecorded(), isTrue);
+      expect(await db.settingsDao.readExcludedFolderIds(), isEmpty);
     });
 
     test('applyConsent deletes what an upgrading user declines', () async {
@@ -453,6 +456,7 @@ void main() {
         searchEnabled: false,
         memoriesEnabled: false,
         facesEnabled: false,
+        excludedFolderIds: const {},
       );
 
       expect(await db.select(db.faceEmbeddings).get(), isEmpty);
@@ -885,6 +889,109 @@ void main() {
       expect(faces.single.assetId, 'screenshot');
       // The re-cluster baseline was reset too.
       expect(await db.settingsDao.read('faces_at_last_recluster'), '0');
+    });
+
+    test('applyConsent with excluded folders skips them during first analysis',
+        () async {
+      final worker = FakeMlWorker(
+        labels: const [('Dog', 0.9)],
+        faces: [
+          (
+            left: 0,
+            top: 0,
+            right: 10,
+            bottom: 10,
+            embedding: Float32List.fromList(List.filled(192, 0.1)),
+          ),
+        ],
+      );
+      final service = serviceFor(twoFolderPhotos(), worker);
+      addTearDown(service.dispose);
+
+      await service.applyConsent(
+        searchEnabled: true,
+        memoriesEnabled: false,
+        facesEnabled: true,
+        excludedFolderIds: const {'camera-folder'},
+      );
+      // Wait for the pass kicked by applyConsent: both the metadata sweep and the
+      // ML loop must finish.
+      for (var i = 0; i < 200; i++) {
+        final cached = await db.indexDao.allCachedIds();
+        if (cached.length == 2 && (await db.indexDao.pendingMlIds()).isEmpty) {
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+
+      // Both assets are cached, but only the non-excluded one was analyzed.
+      expect(await db.indexDao.allCachedIds(), hasLength(2));
+      expect(await db.indexDao.pendingMlIds(), isEmpty);
+
+      final labels = await db.select(db.photoLabels).get();
+      expect(labels, hasLength(1));
+      expect(labels.single.assetId, 'screenshot');
+
+      final faces = await db.select(db.faceEmbeddings).get();
+      expect(faces, hasLength(1));
+      expect(faces.single.assetId, 'screenshot');
+    });
+
+    test('applyConsent clears derived data when folder scope narrows', () async {
+      // First run with everything included.
+      final photos = twoFolderPhotos();
+      final worker = FakeMlWorker(
+        labels: const [('Dog', 0.9)],
+        faces: [
+          (
+            left: 0,
+            top: 0,
+            right: 10,
+            bottom: 10,
+            embedding: Float32List.fromList(List.filled(192, 0.1)),
+          ),
+        ],
+      );
+      final service = serviceFor(photos, worker);
+      addTearDown(service.dispose);
+
+      await service.applyConsent(
+        searchEnabled: true,
+        memoriesEnabled: false,
+        facesEnabled: true,
+        excludedFolderIds: const {},
+      );
+      // Wait for the initial pass to finish.
+      for (var i = 0; i < 200; i++) {
+        final cached = await db.indexDao.allCachedIds();
+        if (cached.length == 2 && (await db.indexDao.pendingMlIds()).isEmpty) {
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(await db.select(db.photoLabels).get(), hasLength(2));
+      expect(await db.select(db.faceEmbeddings).get(), hasLength(2));
+
+      // Re-run consent with one folder excluded. The previously derived data
+      // for that folder must be removed.
+      await service.applyConsent(
+        searchEnabled: true,
+        memoriesEnabled: false,
+        facesEnabled: true,
+        excludedFolderIds: const {'camera-folder'},
+      );
+      // Wait for the re-analysis pass to finish.
+      for (var i = 0; i < 200; i++) {
+        if ((await db.indexDao.pendingMlIds()).isEmpty) break;
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+
+      final labels = await db.select(db.photoLabels).get();
+      expect(labels, hasLength(1));
+      expect(labels.single.assetId, 'screenshot');
+      final faces = await db.select(db.faceEmbeddings).get();
+      expect(faces, hasLength(1));
+      expect(faces.single.assetId, 'screenshot');
     });
   });
 }

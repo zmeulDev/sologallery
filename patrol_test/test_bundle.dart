@@ -9,7 +9,7 @@ import 'package:patrol/src/platform/contracts/contracts.dart';
 import 'package:test_api/src/backend/invoker.dart';
 
 // START: GENERATED TEST IMPORTS
-import '../integration_test/folders_ui_test.dart' as integration_test__folders_ui_test;
+import '../integration_test/ml_indexing_test.dart' as integration_test__ml_indexing_test;
 // END: GENERATED TEST IMPORTS
 
 Future<void> main() async {
@@ -72,7 +72,7 @@ Future<void> main() async {
   });
 
 // START: GENERATED TEST GROUPS
-  group('integration_test.folders_ui_test', integration_test__folders_ui_test.main);
+  group('integration_test.ml_indexing_test', integration_test__ml_indexing_test.main);
 // END: GENERATED TEST GROUPS
 
   final dartTestGroup = await testExplorationCompleter.future;

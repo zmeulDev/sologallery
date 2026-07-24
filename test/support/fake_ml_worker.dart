@@ -66,5 +66,5 @@ class FakeMlWorker implements MlWorker {
   }
 
   @override
-  void dispose() => disposed = true;
+  Future<void> dispose() async => disposed = true;
 }

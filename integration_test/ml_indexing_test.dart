@@ -40,7 +40,7 @@ void main() {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
     final worker = MlWorkerController();
-    addTearDown(worker.dispose);
+    addTearDown(() async => await worker.dispose());
 
     var anyLabel = <String, double>{};
     var labeledAssetId = '';

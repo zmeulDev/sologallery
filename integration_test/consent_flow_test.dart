@@ -68,13 +68,54 @@ void main() {
     await $.tester.tap(find.byTooltip('Settings'));
     await $.pumpAndSettle();
 
-    expect($('ON-DEVICE ANALYSIS'), findsOneWidget);
+    expect($('ANALYSIS'), findsOneWidget);
+    await $('Analysis').tap();
+    await $.pumpAndSettle();
+
     expect($('Content search'), findsOneWidget);
     final switches =
         $.tester.widgetList<Switch>(find.byType(Switch)).toList();
     expect(switches.first.value, isTrue, reason: 'content search stayed on');
     expect(switches[1].value, isFalse, reason: 'memories were never accepted');
     expect(switches[2].value, isFalse, reason: 'faces were never accepted');
+  });
+
+  patrolTest('folder scope chosen during onboarding reaches Settings', ($) async {
+    await reachConsentStep($);
+
+    expect($('Folders to analyze'), findsOneWidget);
+    await $('Folders to analyze').tap();
+    await $.pumpAndSettle();
+
+    // The folder picker sheet opens.
+    expect($('FOLDERS TO ANALYZE'), findsOneWidget);
+
+    // Toggle the last folder off. Real device folders vary, so just verify the
+    // sheet can be closed and the summary is reflected in Settings.
+    final checkboxes =
+        $.tester.widgetList<Checkbox>(find.byType(Checkbox)).toList();
+    expect(checkboxes.length, greaterThanOrEqualTo(2));
+    await $(Checkbox).last.tap();
+    await $.pumpAndSettle();
+
+    await $('Done').tap();
+    await $.pumpAndSettle();
+
+    // Continue so the choice is persisted.
+    await $('Continue').tap();
+    await $.pumpAndSettle();
+
+    // Verify the scope was written by checking Settings shows a non-'All folders'
+    // summary. The exact summary depends on device state.
+    await $.tester.tap(find.byTooltip('Settings'));
+    await $.pumpAndSettle();
+
+    await $.tester.tap(find.text('Analysis'));
+    await $.pumpAndSettle();
+
+    // The Settings screen displays the folder summary; it must not still say
+    // 'All folders' after we excluded at least one.
+    expect($('All folders'), findsNothing);
   });
 
   patrolTest('the People screen explains itself when faces are off', ($) async {

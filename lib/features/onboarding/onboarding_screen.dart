@@ -7,8 +7,12 @@ import '../../core/theme/app_text_styles.dart';
 import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
 import '../../widgets/app_button.dart';
+import '../../widgets/app_card.dart';
 import '../../widgets/consent_switch.dart';
+import '../folders/folders_providers.dart';
 import '../settings/consent_provider.dart';
+import '../settings/widgets/folder_picker_sheet.dart';
+import '../settings/widgets/settings_rows.dart';
 
 /// First-run gate, in two steps. The router sends the user here whenever the app
 /// lacks library access *or* still owes the analysis-consent question (see
@@ -51,15 +55,32 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   bool _memories = false;
   bool _faces = false;
 
+  /// Folder ids excluded from on-device analysis. Empty means every folder is
+  /// included, which is the default until the user opens the picker.
+  Set<String> _excludedFolderIds = const {};
+
   Future<void> _requestAccess() async {
     await ref.read(permissionProvider.notifier).request();
     if (mounted) setState(() => _attempted = true);
   }
 
   Future<void> _recordConsent() {
-    return ref
-        .read(consentProvider.notifier)
-        .record(search: _search, memories: _memories, faces: _faces);
+    return ref.read(consentProvider.notifier).record(
+          search: _search,
+          memories: _memories,
+          faces: _faces,
+          excludedFolderIds: _excludedFolderIds,
+        );
+  }
+
+  Future<void> _openFolderPicker() async {
+    final result = await FolderPickerSheet.show(
+      context,
+      initialExcluded: _excludedFolderIds,
+    );
+    if (result != null && mounted) {
+      setState(() => _excludedFolderIds = result);
+    }
   }
 
   @override
@@ -213,59 +234,68 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               // the headline overflow a short screen at large font scales, and
               // a RenderFlex overflow is a hard failure on device.
               Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: AppSpace.s32),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'What should stay\non the shelf?',
-                            style: text.display.copyWith(
-                              color: scheme.onSurface,
+                child: _InheritedConsentScope(
+                  search: _search,
+                  memories: _memories,
+                  faces: _faces,
+                  excludedFolderIds: _excludedFolderIds,
+                  onOpenFolderPicker: _openFolderPicker,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: AppSpace.s32),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'What should stay\non the shelf?',
+                              style: text.display.copyWith(
+                                color: scheme.onSurface,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 18),
-                          Text(
-                            'SoloGallery can look through your photos to '
-                            'make them easier to find. It all happens on '
-                            'this device — and none of it starts until you '
-                            'say so.',
-                            style: text.body.copyWith(
-                              color: colors.textSecondary,
+                            const SizedBox(height: 18),
+                            Text(
+                              'SoloGallery can look through your photos to '
+                              'make them easier to find. It all happens on '
+                              'this device — and none of it starts until you '
+                              'say so.',
+                              style: text.body.copyWith(
+                                color: colors.textSecondary,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: AppSpace.s32),
-                      _ConsentToggle(
-                        label: 'CONTENT SEARCH',
-                        detail:
-                            'Find photos by what is in them, and by '
-                            'text they contain',
-                        value: _search,
-                        onChanged: (v) => setState(() => _search = v),
-                      ),
-                      _ConsentToggle(
-                        label: 'MEMORIES',
-                        detail:
-                            'Occasional highlights built from photos '
-                            'you already have',
-                        value: _memories,
-                        onChanged: (v) => setState(() => _memories = v),
-                      ),
-                      _ConsentToggle(
-                        label: 'FACE DETECTION',
-                        detail:
-                            "Groups photos by who's in them. Faces "
-                            'never leave this device.',
-                        value: _faces,
-                        onChanged: (v) => setState(() => _faces = v),
-                      ),
-                      const SizedBox(height: AppSpace.s8),
-                    ],
+                          ],
+                        ),
+                        const SizedBox(height: AppSpace.s32),
+                        _ConsentToggle(
+                          label: 'CONTENT SEARCH',
+                          detail:
+                              'Find photos by what is in them, and by '
+                              'text they contain',
+                          value: _search,
+                          onChanged: (v) => setState(() => _search = v),
+                        ),
+                        _ConsentToggle(
+                          label: 'MEMORIES',
+                          detail:
+                              'Occasional highlights built from photos '
+                              'you already have',
+                          value: _memories,
+                          onChanged: (v) => setState(() => _memories = v),
+                        ),
+                        _ConsentToggle(
+                          label: 'FACE DETECTION',
+                          detail:
+                              "Groups photos by who's in them. Faces "
+                              'never leave this device.',
+                          value: _faces,
+                          onChanged: (v) => setState(() => _faces = v),
+                        ),
+                        const SizedBox(height: AppSpace.s24),
+                        const _FolderScopeCard(),
+                        const SizedBox(height: AppSpace.s8),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -292,6 +322,88 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         ),
       ),
     );
+  }
+}
+
+/// The folder-scope card on the consent step. Watches the device folders so
+/// the summary and selected-photo count update as the user opens/closes the
+/// picker. The picker itself is shared with Settings → Analysis.
+class _FolderScopeCard extends ConsumerWidget {
+  const _FolderScopeCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = _InheritedConsentScope.of(context);
+    final foldersAsync = ref.watch(deviceFoldersProvider);
+    final folders = foldersAsync.whenOrNull(data: (v) => v) ?? const [];
+
+    final includedFolders = [
+      for (final f in folders) if (!state.excludedFolderIds.contains(f.id)) f,
+    ];
+    final selectedCount = includedFolders.fold(0, (sum, f) => sum + f.count);
+    final totalFolders = folders.length;
+    final includedFoldersCount = includedFolders.length;
+
+    final summary = state.excludedFolderIds.isEmpty || totalFolders == 0
+        ? 'All folders'
+        : '$includedFoldersCount of $totalFolders folders';
+
+    final analysisEnabled = state.search || state.memories || state.faces;
+    final caption = !analysisEnabled
+        ? 'No on-device analysis is turned on.'
+        : selectedCount == 0
+            ? 'No photos selected to analyze.'
+            : '$selectedCount ${_pluralize(selectedCount, 'photo', 'photos')}. This may take a while.';
+
+    return AppCard.divided(
+      children: [
+        SettingsActionRow(
+          label: 'Folders to analyze',
+          caption: 'Excluded folders stay visible; their photos are skipped.',
+          onTap: state.onOpenFolderPicker,
+        ),
+        SettingsCaptionRow(
+          '$summary · $caption',
+        ),
+      ],
+    );
+  }
+
+  static String _pluralize(int count, String singular, String plural) =>
+      count == 1 ? singular : plural;
+}
+
+/// Scoped access from the card to the enclosing onboarding state without passing
+/// four fields through every constructor.
+class _InheritedConsentScope extends InheritedWidget {
+  const _InheritedConsentScope({
+    required super.child,
+    required this.search,
+    required this.memories,
+    required this.faces,
+    required this.excludedFolderIds,
+    required this.onOpenFolderPicker,
+  });
+
+  final bool search;
+  final bool memories;
+  final bool faces;
+  final Set<String> excludedFolderIds;
+  final VoidCallback onOpenFolderPicker;
+
+  @override
+  bool updateShouldNotify(_InheritedConsentScope old) =>
+      search != old.search ||
+      memories != old.memories ||
+      faces != old.faces ||
+      excludedFolderIds != old.excludedFolderIds ||
+      onOpenFolderPicker != old.onOpenFolderPicker;
+
+  static _InheritedConsentScope of(BuildContext context) {
+    final result = context.dependOnInheritedWidgetOfExactType<
+        _InheritedConsentScope>();
+    assert(result != null, '_InheritedConsentScope not found');
+    return result!;
   }
 }
 

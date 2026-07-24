@@ -52,9 +52,10 @@ class _SoloGalleryAppState extends ConsumerState<SoloGalleryApp>
       case AppLifecycleState.hidden:
       case AppLifecycleState.detached:
         // Defer all indexing work while the app isn't in the foreground and
-        // reclaim the short-lived detail preview cache.
+        // reclaim the short-lived detail preview + adjacent thumbnail caches.
         ref.read(indexingServiceProvider).pause();
         ref.read(photoLibraryServiceProvider).clearDetailPreviewCache();
+        ref.read(photoLibraryServiceProvider).clearAdjacentThumbnailCache();
     }
   }
 

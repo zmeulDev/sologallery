@@ -78,4 +78,56 @@ void main() {
     final image = tester.widget<Image>(find.byType(Image));
     expect((image.image as MemoryImage).bytes, highRes);
   });
+
+  testWidgets('shows a late-arriving small placeholder before high-res', (
+    tester,
+  ) async {
+    final placeholder = _loadBytes('small_png.png');
+    final highRes = _loadBytes('synthetic_face.jpg');
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          detailImageProvider.overrideWith((ref, id) async {
+            await Future.delayed(const Duration(milliseconds: 150));
+            return highRes;
+          }),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(body: PhotoPage(assetId: 'a1')),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    // The neighbour cache resolves before the high-res preview.
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          detailImageProvider.overrideWith((ref, id) async {
+            await Future.delayed(const Duration(milliseconds: 150));
+            return highRes;
+          }),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: PhotoPage(assetId: 'a1', placeholderBytes: placeholder),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    final firstImage = tester.widget<Image>(find.byType(Image));
+    expect((firstImage.image as MemoryImage).bytes, placeholder);
+
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump();
+
+    final secondImage = tester.widget<Image>(find.byType(Image));
+    expect((secondImage.image as MemoryImage).bytes, highRes);
+  });
 }

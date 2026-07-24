@@ -267,8 +267,8 @@ class IndexingService {
   // delete the derived data, and enabling has to arrange for it to be derived —
   // and this service owns the baseline keys, the DAOs, and the pass lifecycle.
 
-  /// Applies all three consent answers at once — onboarding's single entry
-  /// point.
+  /// Applies all three consent answers and the folder scope at once —
+  /// onboarding's single entry point.
   ///
   /// Deliberately *not* three [setSearchEnabled] / [setMemoriesEnabled] /
   /// [setFacesEnabled] calls in a row. Each of those persists its own flag and
@@ -277,23 +277,30 @@ class IndexingService {
   /// the pass ran with `facesEnabled: false`, still stamped `indexed_at` on
   /// every asset, and since [IndexDao.pendingMlIds] only returns unstamped rows
   /// nothing ever revisited them — People stayed empty until the user toggled
-  /// face detection in Settings. Here the flags land in one transaction before
-  /// any pass can observe them, and exactly one pass is kicked at the end.
+  /// face detection in Settings. Here the flags and folder scope land in one
+  /// transaction before any pass can observe them, and exactly one pass is kicked
+  /// at the end.
   Future<void> applyConsent({
     required bool searchEnabled,
     required bool memoriesEnabled,
     required bool facesEnabled,
+    required Set<String> excludedFolderIds,
   }) async {
+    final previousExcluded = await settings.readExcludedFolderIds();
+
     await settings.setConsent(
       search: searchEnabled,
       memories: memoriesEnabled,
       faces: facesEnabled,
+      excludedFolderIds: excludedFolderIds,
     );
+
+    final needsMl = searchEnabled || facesEnabled;
 
     // Enabling either ML feature re-queues the whole cache: anything indexed
     // while it was off carries an `indexed_at` stamp that would otherwise hide
     // it from pendingMlIds forever.
-    if (searchEnabled || facesEnabled) await dao.resetMlPending();
+    if (needsMl) await dao.resetMlPending();
 
     // Declining deletes what was already derived. An upgrading user reaches
     // this step with labels, faces, persons and memories already on disk from
@@ -306,6 +313,18 @@ class IndexingService {
       await settings.put(_reclusterBaselineKey, '0');
     }
     if (!memoriesEnabled) await memories.clearMemories();
+
+    // If the folder scope changed while ML features remain on, derived data may
+    // now cover assets that should be excluded. Wipe it so the next pass
+    // re-analyzes only the included folders.
+    if (needsMl && previousExcluded != excludedFolderIds) {
+      await dao.clearContent();
+      await faces.clearFaces();
+      await faces.clearPersons();
+      await settings.put(_reclusterBaselineKey, '0');
+      await settings.put(_clusterAlgoKey, _clusterAlgoVersion);
+      await memories.clearMemories();
+    }
 
     // Memories are planned from labels and clusters, so every branch above
     // invalidates the current plan: clear the baselines and the pass replans
@@ -394,6 +413,10 @@ class IndexingService {
     await faces.clearFaces();
     await faces.clearPersons();
     await settings.put(_reclusterBaselineKey, '0');
+    // The next pass should not treat this as an algorithm change; stamp the
+    // current version so the small post-reset face count doesn't force a global
+    // re-cluster immediately.
+    await settings.put(_clusterAlgoKey, _clusterAlgoVersion);
     await memories.clearMemories();
     await settings.put(_memoriesDateKey, '');
     await settings.put(_memoriesCountKey, '0');
@@ -411,7 +434,7 @@ class IndexingService {
     if (_changeNotifyStarted) await photos.stopLibraryChangeNotify();
     await _controller.close();
     await _sweptController.close();
-    worker.dispose();
+    await worker.dispose();
   }
 
   /// Registers the foreground library-change listener once. Wired from [start],
@@ -923,7 +946,7 @@ class IndexingService {
 /// App-wide ML worker, kept alive; disposed with the container.
 final mlWorkerProvider = Provider<MlWorker>((ref) {
   final worker = MlWorkerController();
-  ref.onDispose(worker.dispose);
+  ref.onDispose(() async => await worker.dispose());
   return worker;
 });
 

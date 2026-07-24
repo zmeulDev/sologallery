@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
 
 import 'permission_provider.dart';
 
@@ -24,6 +25,14 @@ class ThumbnailRequest {
   int get hashCode => Object.hash(assetId, width, height);
 }
 
+/// Size (longest edge, px) for the detail viewer's low-res neighbour
+/// placeholders. 512px is 1:1 on many phone screens, decodes much faster than
+/// the 1440px preview, and is small enough to keep 16 encoded entries under
+/// ~2 MB.
+const kAdjacentThumbnailMaxEdge = 512;
+
+final _adjacentLog = Logger('SoloGallery.adjacentThumbnail');
+
 /// Decoded thumbnail bytes for a single asset. `autoDispose` so off-screen grid
 /// cells release memory; `photo_manager` caches the bytes natively, so scrolling
 /// back is cheap. Overridable in golden/widget tests with deterministic bytes.
@@ -46,6 +55,25 @@ final thumbnailProvider =
           req.height,
           cancelled: () => disposed,
         );
+  },
+);
+
+/// Low-resolution placeholder bytes for a detail-viewer neighbour. Keeps the
+/// service's [AdjacentThumbnailCache] warm so a swipe lands on a photo, not a
+/// spinner, while the 1440px preview finishes. Overridable in tests.
+final adjacentThumbnailProvider =
+    FutureProvider.autoDispose.family<Uint8List?, String>(
+  (ref, assetId) async {
+    final sw = Stopwatch()..start();
+    final bytes = await ref
+        .read(photoLibraryServiceProvider)
+        .adjacentThumbnail(assetId, kAdjacentThumbnailMaxEdge);
+    sw.stop();
+    _adjacentLog.fine(
+      'adjacentThumbnailProvider($assetId) → ${bytes?.length ?? 0} bytes in '
+      '${sw.elapsedMilliseconds}ms',
+    );
+    return bytes;
   },
 );
 

@@ -115,7 +115,13 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   isolate must call `BackgroundIsolateBinaryMessenger.ensureInitialized(token)`
   **before** any ML Kit call or platform-channel calls hang; **tflite is FFI and
   runs in the isolate with no messenger** (load the `.tflite` bytes on the main
-  isolate via `rootBundle` and pass them to the worker). Face boxes are stored in
+  isolate via `rootBundle` and pass them to the worker). **Never kill the worker
+  isolate while a native ML Kit call is in flight** — `Isolate.immediate` ends
+  the Dart side but the native task still completes and tries to reply to the
+  dead port, which triggers a fatal `did_send` abort in the engine. Dispose must
+  send a shutdown command, wait for the worker to close its models and exit
+  naturally, and only force-kill as a last resort after the shutdown ack. Face
+  boxes are stored in
   the 512-thumb coordinate space so avatars crop the cached thumbnail. **Labels
   and faces run on the 512 thumbnail; OCR runs on a separate larger (1024)
   thumbnail** (`_ocrEdge`, via `analyzeFile(jpegPath, {ocrPath})`) for small-text
@@ -260,6 +266,13 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   three probe clusters) fuses visibly different people once every merge it adds is
   inspected. Single linkage chains — at 0.60 it produced one 129-face blob
   including dog faces.
+- **Resetting the re-cluster baseline without stamping `_clusterAlgoKey` makes
+  the next pass treat it as an algorithm change.** `_maybeGlobalRecluster` runs
+  when either the face count crossed the threshold *or* the stored algorithm
+  version is stale. After manually clearing derived data (folder-scope change,
+  consent re-establishment), write both `_reclusterBaselineKey` *and*
+  `_clusterAlgoKey` to the current version so the small post-reset face count
+  doesn't immediately trigger a global re-cluster.
 - **The face detector, the crop and `clusterMergeThreshold` are one calibrated
   system — changing how a face is detected invalidates the threshold.** Switching
   `FaceDetectorOptions` to `performanceMode: accurate` looked like a pure win

@@ -8,6 +8,7 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../features/search/domain/search_date.dart';
+import 'adjacent_thumbnail_cache.dart';
 import 'detail_preview_cache.dart';
 import 'thumbnail_gate.dart';
 
@@ -117,6 +118,7 @@ class PhotoLibraryService {
 
   static final _log = Logger('SoloGallery.photos');
   final _detailPreviewCache = DetailPreviewCache();
+  final _adjacentThumbnailCache = AdjacentThumbnailCache();
   final Map<String, Future<Uint8List?>> _previewPending = {};
 
   /// Maps a raw plugin [PermissionState] onto our coarse [PhotoAccess].
@@ -627,6 +629,56 @@ class PhotoLibraryService {
       'bytes=${bytes?.length ?? 0}',
     );
     return bytes;
+  }
+
+  /// A small, fast thumbnail for the detail viewer's adjacent pages. Capped at
+  /// [maxEdge] px on its longest side, it is meant as an instant placeholder
+  /// while the larger [previewImage] decodes. Results are cached in a tiny LRU
+  /// so swiping back and forth between the same neighbours is instant.
+  ///
+  /// This deliberately does not go through [thumbnail] / [ThumbnailGate]: the
+  /// detail viewer issues a bounded number of these (≤15) and iOS needs
+  /// `ResizeContentMode.fit` to avoid square-cropping the placeholder.
+  Future<Uint8List?> adjacentThumbnail(String assetId, int maxEdge) async {
+    final cached = _adjacentThumbnailCache.get(assetId);
+    if (cached != null) {
+      _log.fine('adjacentThumbnail($assetId) cache hit');
+      return cached;
+    }
+    if (_adjacentThumbnailCache.contains(assetId)) {
+      _log.fine('adjacentThumbnail($assetId) cache hit (null)');
+      return null;
+    }
+
+    final sw = Stopwatch()..start();
+    final bytes = await _fetchAdjacentThumbnail(assetId, maxEdge);
+    sw.stop();
+    _adjacentThumbnailCache.put(assetId, bytes);
+    _log.fine(
+      'adjacentThumbnail($assetId, ${maxEdge}px) fetched in '
+      '${sw.elapsedMilliseconds}ms bytes=${bytes?.length ?? 0}',
+    );
+    return bytes;
+  }
+
+  Future<Uint8List?> _fetchAdjacentThumbnail(String assetId, int maxEdge) async {
+    final entity = await _entity(assetId);
+    if (entity == null) return null;
+    final size = ThumbnailSize.square(maxEdge);
+    final option = (Platform.isIOS || Platform.isMacOS)
+        ? ThumbnailOption.ios(
+            size: size,
+            quality: 90,
+            resizeContentMode: ResizeContentMode.fit,
+          )
+        : ThumbnailOption(size: size, quality: 90);
+    return entity.thumbnailDataWithOption(option);
+  }
+
+  /// Drops the in-memory adjacent thumbnail cache. Call from lifecycle pause
+  /// and memory-pressure handlers to keep background RAM low.
+  void clearAdjacentThumbnailCache() {
+    _adjacentThumbnailCache.clear();
   }
 
   /// Drops the in-memory detail preview cache and any in-flight dedupe futures.

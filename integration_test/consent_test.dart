@@ -94,7 +94,7 @@ void main() {
     final bytes = await file.readAsBytes();
 
     final worker = MlWorkerController();
-    addTearDown(worker.dispose);
+    addTearDown(() async => await worker.dispose());
 
     // The positive control, in this same run.
     final accepted = await worker.analyze(bytes: bytes);
