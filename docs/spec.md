@@ -202,9 +202,17 @@ Library's month rhythm silently drifted to 36px.
 |---|---|
 | r2 | grab handle, progress segments |
 | r4 | DurationBadge |
-| r12 | cards, banner, filled inputs, **every photo thumbnail** (grid cells, previews, row and tile covers — one radius, no exceptions) |
+| r12 | cards, banner, filled inputs, **every photo thumbnail** (grid cells, previews, row and tile covers) |
 | r20 | sheets AND dialogs |
+| r30 | the two full-bleed cards — `AlbumCard` and the People strip's `AppCard` |
 | — | pills = `StadiumBorder` |
+
+r12 is the rule for thumbnails, with one shape of exception: where a cover
+**fills** its card rather than sitting inside it, the image takes the card's
+own radius, because two different radii on the same edge read as a mistake.
+That is `AlbumCard` (cover and card both r30) and the People strip's card. A
+thumbnail inset within a card — `CoverRow`, folder tiles, every grid cell —
+stays r12.
 
 ### Motion
 

@@ -206,7 +206,7 @@ Token tables (quick reference); the prose rules — what the tokens mean and how
 ### Rules (one line each — see `docs/spec.md#design-system` for prose)
 
 - **Spacing** `s2 s4 s8 s12 s16 s20 s24 s32`; s4 photo-grid gutter, s8 Saved masonry gutter, s16 screen inset, s20 Library inter-section rhythm; vertical gaps between stacked sections owned by the top edge alone
-- **Radius** r2 grab handle/progress · r4 DurationBadge · r12 cards + **every photo thumbnail** (no exceptions) · r20 sheets AND dialogs · pills `StadiumBorder`
+- **Radius** r2 grab handle/progress · r4 DurationBadge · r12 cards + **every photo thumbnail** · r20 sheets AND dialogs · r30 the two full-bleed cards (`AlbumCard`, People strip) where the cover fills the card and takes its radius · pills `StadiumBorder`
 - **Motion** no decorative motion — state changes snap. Two exceptions: Material default transitions (dialog/sheet/snackbar) and the 320 ms memory-player scene cross-slide (reduced-motion guard)
 - **Over-media** (`AppOverMedia`) theme-invariant scrims `0x99/0xB3/0xD9` (+`playScrim 0x66`), glyph whites, progress `segment`/`segmentOff`
 - **Error color = ink** (no red; errors carried by copy)

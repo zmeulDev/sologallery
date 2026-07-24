@@ -34,6 +34,8 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
   Widget build(BuildContext context) {
     final album = ref.watch(albumProvider(widget.albumId));
     final entries = ref.watch(albumEntriesProvider(widget.albumId));
+    // Entries arrive newest-photo-first, so the first one is the album's newest
+    // photo — the same cover the Albums grid computes for its card.
     final cover = album.value?.coverAssetId ??
         entries.value?.firstOrNull?.assetId;
 
@@ -121,75 +123,90 @@ class _HeroAppBar extends StatelessWidget {
       expandedHeight: 320,
       automaticallyImplyLeading: false,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      // explicitChildNodes: without it the app bar's own header annotation
+      // merges every descendant into one node — the Back button's node inflates
+      // to the whole 320px hero and announces "Back / <album> / <count>", so the
+      // title is unreadable and the only target is a screen-sized button.
       flexibleSpace: FlexibleSpaceBar(
-        background: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (cover != null)
-              AssetThumbnail(
-                assetId: cover,
-                size: 1000,
-                frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-                  if (!wasSynchronouslyLoaded) onCoverFrame?.call();
-                  return child;
-                },
-              )
-            else
-              ColoredBox(color: colors.surface2),
-            Positioned.fill(
-              child: AnimatedOpacity(
-                opacity: showPlaceholder ? 1 : 0,
-                duration: Duration.zero,
-                child: Container(color: colors.surface2),
-              ),
-            ),
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, AppOverMedia.scrimHeavy],
-                  stops: [0.5, 1],
+        background: Semantics(
+          explicitChildNodes: true,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (cover != null)
+                AssetThumbnail(
+                  assetId: cover,
+                  size: 1000,
+                  frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                    if (!wasSynchronouslyLoaded) onCoverFrame?.call();
+                    return child;
+                  },
+                )
+              else
+                ColoredBox(color: colors.surface2),
+              Positioned.fill(
+                child: AnimatedOpacity(
+                  opacity: showPlaceholder ? 1 : 0,
+                  duration: Duration.zero,
+                  child: Container(color: colors.surface2),
                 ),
               ),
-            ),
-            Positioned(
-              top: topPadding + 12,
-              left: 12,
-              child: CircleIconButton.overMedia(
-                icon: Icons.arrow_back_rounded,
-                tooltip: 'Back',
-                onPressed: () => context.pop(),
-              ),
-            ),
-            Positioned(
-              left: 20,
-              right: 20,
-              bottom: 24,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    name,
-                    style: text.pageTitle.copyWith(
-                      color: AppOverMedia.glyph,
-                      height: 1.1,
-                    ),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, AppOverMedia.scrimHeavy],
+                    stops: [0.5, 1],
                   ),
-                  if (count > 0) ...[
-                    const SizedBox(height: AppSpace.s4),
-                    Text(
-                      itemCountLabel(count),
-                      style: text.caption.copyWith(
-                        color: AppOverMedia.glyphSoft,
-                      ),
-                    ),
-                  ],
-                ],
+                ),
               ),
-            ),
-          ],
+              Positioned(
+                top: topPadding + 12,
+                left: 12,
+                child: CircleIconButton.overMedia(
+                  icon: Icons.arrow_back_rounded,
+                  tooltip: 'Back',
+                  onPressed: () => context.pop(),
+                ),
+              ),
+              Positioned(
+                left: 20,
+                right: 20,
+                bottom: 24,
+                // Name and count are one thought, so they are one header node
+                // rather than two stops reading "Trip" then "1 item".
+                child: Semantics(
+                  container: true,
+                  header: true,
+                  label: count > 0 ? '$name, ${itemCountLabel(count)}' : name,
+                  excludeSemantics: true,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        name,
+                        style: text.pageTitle.copyWith(
+                          color: AppOverMedia.glyph,
+                          height: 1.1,
+                        ),
+                      ),
+                      if (count > 0) ...[
+                        const SizedBox(height: AppSpace.s4),
+                        Text(
+                          itemCountLabel(count),
+                          style: text.caption.copyWith(
+                            color: AppOverMedia.glyphSoft,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

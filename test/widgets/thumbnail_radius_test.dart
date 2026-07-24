@@ -72,11 +72,18 @@ void main() {
     ];
   }
 
-  void expectAllBr12(WidgetTester tester, {required int count}) {
+  void expectAllRadius(
+    WidgetTester tester, {
+    required int count,
+    BorderRadius radius = AppRadius.br12,
+  }) {
     final radii = radiiOfThumbnails(tester);
     expect(radii, hasLength(count));
-    expect(radii, everyElement(AppRadius.br12));
+    expect(radii, everyElement(radius));
   }
+
+  void expectAllBr12(WidgetTester tester, {required int count}) =>
+      expectAllRadius(tester, count: count);
 
   testWidgets('AssetGrid cells clip to br12', (tester) async {
     // Backs "This week", the month grid, the older grid, search results, album
@@ -124,7 +131,10 @@ void main() {
     expectAllBr12(tester, count: 1);
   });
 
-  testWidgets('AlbumCard covers clip to br12', (tester) async {
+  testWidgets('AlbumCard covers clip to br30', (tester) async {
+    // The album card is the documented exception to the r12 thumbnail rule:
+    // the cover fills the card, so it takes the card's own r30 rather than
+    // sitting inside it as a thumbnail. Same for the People strip's card.
     await pump(
       tester,
       const SizedBox(
@@ -140,7 +150,7 @@ void main() {
         ),
       ),
     );
-    expectAllBr12(tester, count: 1);
+    expectAllRadius(tester, count: 1, radius: AppRadius.br30);
   });
 
 }

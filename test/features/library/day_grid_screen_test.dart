@@ -57,10 +57,17 @@ void main() {
   }
 
   testWidgets('renders the day title and a grid of assets', (tester) async {
-    final day = DateTime(2026, 7, 23);
+    // [formatDayHeader] resolves "Today" against the real clock, so the day
+    // under test has to be the real today — a hard-coded date passes on the day
+    // it was written and fails every day after.
+    final now = DateTime.now();
+    final day = DateTime(now.year, now.month, now.day);
+    final dateKey = '${day.year.toString().padLeft(4, '0')}-'
+        '${day.month.toString().padLeft(2, '0')}-'
+        '${day.day.toString().padLeft(2, '0')}';
     await pump(
       tester,
-      '2026-07-23',
+      dateKey,
       assets: [
         for (var i = 0; i < 10; i++)
           AssetRef(
@@ -69,8 +76,6 @@ void main() {
           ),
       ],
     );
-    // The title is formatted via [formatDayHeader]. If the test runs on the
-    // same calendar day as the mocked route, the label reads "Today".
     expect(
       find.widgetWithText(AppBar, 'Today'),
       findsOneWidget,

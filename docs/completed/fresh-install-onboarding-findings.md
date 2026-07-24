@@ -177,7 +177,121 @@ against a stashed-clean tree:
 - `design_goldens_test.dart: RecentlyViewedRow — label and square thumbnail cells`
 - `thumbnail_radius_test.dart: AlbumCard covers clip to br12` (expects br12, gets br30)
 
-## Next step
+---
 
-Triage the 4 pre-existing failures above — the `br12`/`br30` one in particular
-looks like the design system moved and the test did not.
+## The 4 pre-existing failures — all resolved
+
+Triaged and fixed after the work above, on the user's calls.
+
+### AlbumCard radius: the card moved to r30, the docs did not
+
+`album_card.dart` clips its cover to `AppRadius.br30`; the test asserted `br12`.
+The r30 is intentional, so the docs were wrong, not the code. Updated the radius
+table in `docs/spec.md` and the one-liner in CLAUDE.md with the rule behind it:
+**r12 is the thumbnail radius, except where a cover *fills* its card, in which
+case it takes the card's own radius** — two different radii on one edge read as
+a mistake. That is exactly two places, `AlbumCard` and the People strip's
+`AppCard`; an inset thumbnail (`CoverRow`, folder tiles, every grid cell) stays
+r12. Test renamed to `AlbumCard covers clip to br30`.
+
+### Day grid title: a hard-coded date
+
+The test pinned `DateTime(2026, 7, 23)` and asserted the header reads `Today`.
+`formatDayHeader` resolves "Today" against the real clock, so it passed on the
+day it was written and failed every day after. Now derives the day and the
+route's `dateKey` from `DateTime.now()`.
+
+### Album cover: newest photo, not most recently added
+
+The visible failure was a tie-break bug — `added_at` is stored at **second**
+granularity, so two adds in the same second tie and SQLite falls back to rowid
+order. But the rule itself was also wrong. The cover is now the album's
+**newest photo by capture date**, and the detail grid orders the same way, so
+the hero is the album's first cell and albums read like Library and Search.
+
+- `watchEntries` — now a left join to `photo_assets`, ordered
+  `created_at DESC, id DESC`.
+- `watchAlbumSummaries` — cover sub-select mirrors it exactly, so the Albums
+  grid card and the album hero can never disagree.
+- `AlbumsDao` gained `PhotoAssets` in its `@DriftAccessor`. **No schema change**
+  — the tables are untouched, so no migration.
+
+Left join, not inner: an entry whose asset has not been swept into
+`photo_assets` yet has no capture date, and a NULL sorts *last* under `DESC` in
+SQLite, so un-indexed entries collect at the end instead of stealing the cover.
+`id DESC` still breaks ties for the same-second case.
+
+Verified on device with the discriminating case — the newer photo added
+**first**, the older one added **second**:
+
+| entry | asset | taken | added |
+|---|---|---|---|
+| 1 | `1000005365` | 2026-07-24 | first |
+| 2 | `1000004719` | 2026-04-30 | second |
+
+The production cover sub-select returns `1000005365` (the July photo); the old
+`added_at DESC` rule returns `1000004719`. The rules genuinely disagree here and
+the new one wins.
+
+### RecentlyViewedRow golden: stale, not drifted
+
+`"image sizes do not match"` — the golden was 372×358, the widget now renders
+372×638. `recently_viewed_row.dart` builds a **two-row** horizontal grid
+(`crossAxisCount: 2`, `viewportHeight = cellSize * 2 + gutter`); the golden was
+recorded when it was a single row. Regenerated. Only that one file changed,
+which also confirms the People-strip semantics work was semantics-only.
+
+---
+
+## Album detail hero — the same semantics defect, fixed
+
+Found while verifying the album cover. The hero collapsed into a single node
+covering the whole 320 px header, `isButton` + `isHeader`, labelled
+`"Back / <album> / <count>"` — a screen-sized button, with the title
+unreadable as a title.
+
+Root cause is different from `_PersonTile`'s: nothing was missing a label. The
+app bar's own header annotation has no container of its own, so it merged
+*down* into the first node beneath it — the Back button — and inflated that
+node's rect to the full flexible space, dragging the title and count in with
+it. Reproduced in a widget test before touching anything:
+
+```
+SemanticsNode#8  Rect.fromLTRB(0.0, 0.0, 800.0, 320.0)
+  actions: focus, tap
+  flags: isButton, isHeader, isFocusable
+  label: "Back\nTrip\n1 item"
+```
+
+Two changes to `_HeroAppBar`:
+
+- `Semantics(explicitChildNodes: true)` around the hero `Stack`, so descendants
+  keep their own nodes instead of being folded into one.
+- The title/count `Column` wrapped in one `Semantics(container, header,
+  label: '<name>, <count>', excludeSemantics: true)` — name and count are one
+  thought, not two stops that read "Trip" then "1 item".
+
+After:
+
+```
+SemanticsNode#9   Rect.fromLTRB(12.0, 12.0, 52.0, 52.0)
+  flags: isButton, isFocusable   label: "Back"
+SemanticsNode#10  Rect.fromLTRB(20.0, 253.0, 780.0, 296.0)
+  flags: isHeader                label: "Trip, 1 item"
+```
+
+On device: Back is a **120×120** target, the title a separate non-clickable
+`CoverTest, 2 items` header — previously one 1344×960 blob.
+
+`dart format` was **not** run on this file. It reflows regions the change never
+touched (the `switch` in `_AlbumDetailScreenState.build`) and buries the diff;
+the edit was re-applied by hand instead. The remaining diff is the two-line
+cover comment plus the `_HeroAppBar` block, all of it re-indentation from the
+new wrapper.
+
+## Suite state
+
+`tool/check.sh` **fully green — 737 passing, 0 failing.**
+
+The **CoverTest** album created for the cover verification has been deleted from
+the device (long-press → Delete). No photos were modified at any point.
