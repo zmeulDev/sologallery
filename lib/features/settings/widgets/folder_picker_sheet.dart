@@ -151,38 +151,53 @@ class _CheckboxRow extends StatelessWidget {
     final styles = Theme.of(context).extension<AppTextStyles>()!;
     final scheme = Theme.of(context).colorScheme;
 
-    return InkWell(
+    // The row is one control, so it carries the checked state itself and the
+    // Checkbox is excluded rather than contributing a second, separately
+    // focusable node. Without this the row reports neither name nor state — the
+    // selection is invisible to a screen reader and to semantics finders.
+    return Semantics(
+      checked: checked,
+      label: caption == null ? label : '$label, $caption',
       onTap: () => onChanged(!checked),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpace.s16,
-          vertical: 12,
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: styles.body.copyWith(color: scheme.onSurface),
+      child: InkWell(
+        onTap: () => onChanged(!checked),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpace.s16,
+            vertical: 12,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: ExcludeSemantics(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: styles.body.copyWith(color: scheme.onSurface),
+                      ),
+                      if (caption != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          caption!,
+                          style: styles.caption.copyWith(
+                            color: colors.textMuted,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                  if (caption != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      caption!,
-                      style: styles.caption.copyWith(color: colors.textMuted),
-                    ),
-                  ],
-                ],
+                ),
               ),
-            ),
-            Checkbox(
-              value: checked,
-              onChanged: onChanged,
-            ),
-          ],
+              ExcludeSemantics(
+                child: Checkbox(
+                  value: checked,
+                  onChanged: onChanged,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

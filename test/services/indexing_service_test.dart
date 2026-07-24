@@ -825,6 +825,68 @@ void main() {
       expect(labels.single.assetId, 'screenshot');
     });
 
+    test('progress counts only the assets that will be analyzed', () async {
+      // The dial promises work. An excluded asset is walked but only stamped,
+      // so counting it makes the dial contradict the folder picker's own
+      // "1 of 2 folders · 1 photo" summary.
+      await db.settingsDao.setExcludedFolderIds({'camera-folder'});
+      await consentTo(search: true);
+      final service = serviceFor(
+        twoFolderPhotos(),
+        FakeMlWorker(labels: const [('Dog', 0.9)]),
+      );
+      addTearDown(service.dispose);
+
+      final emits = <IndexingStatus>[];
+      final sub = service.watchStatus().listen(emits.add);
+      await Future<void>.delayed(Duration.zero);
+      await service.start();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await sub.cancel();
+
+      expect(emits, contains(const IndexingStatus(remaining: 0, total: 1)));
+      expect(
+        emits.map((e) => e.total),
+        isNot(contains(2)),
+        reason: 'the excluded asset is stamped, never analyzed',
+      );
+    });
+
+    test('memories are not built out of excluded folders', () async {
+      // A burst big enough for a trip memory, entirely inside one folder.
+      final burst = assetsInMonth(2026, 5, 25);
+      FakePhotoLibraryService photos() => FakePhotoLibraryService(
+            assets: burst,
+            thumbnailBytes: Uint8List.fromList([1, 2, 3]),
+            folders: [
+              DeviceFolder(id: 'bulk-folder', name: 'Bulk', count: burst.length),
+            ],
+            folderAssetsById: {'bulk-folder': burst},
+          );
+
+      // Control: included, the trip memory exists. Memories alone — no search,
+      // no faces — so this is the date-window path, the one the folder gate
+      // used to miss entirely.
+      await consentTo(memories: true);
+      final included = serviceFor(photos(), FakeMlWorker());
+      addTearDown(included.dispose);
+      await included.start();
+      expect(
+        (await db.memoriesDao.watchActive().first).map((c) => c.kind),
+        contains('trip'),
+      );
+
+      // Same library, that folder excluded: nothing left to build from.
+      await db.memoriesDao.clearMemories();
+      await db.settingsDao.setExcludedFolderIds({'bulk-folder'});
+      await db.settingsDao.put('memories_generated_on', '');
+      final excluded = serviceFor(photos(), FakeMlWorker());
+      addTearDown(excluded.dispose);
+      await excluded.start();
+
+      expect(await db.memoriesDao.watchActive().first, isEmpty);
+    });
+
     test('excluded folder assets get no faces', () async {
       await db.settingsDao.setExcludedFolderIds({'camera-folder'});
       await consentTo(faces: true);

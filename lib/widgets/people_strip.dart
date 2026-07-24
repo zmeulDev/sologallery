@@ -131,37 +131,53 @@ class _PersonTile extends StatelessWidget {
     final styles = Theme.of(context).extension<AppTextStyles>()!;
     final scheme = Theme.of(context).colorScheme;
     final name = person.displayName;
+    void open() => context.push('/person/${person.id}');
 
-    return GestureDetector(
-      onTap: () => context.push('/person/${person.id}'),
-      child: SizedBox(
-        width: size,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: [
-            FaceAvatar(personId: person.id, size: size),
-            // The band is fixed for the whole row, so a named and an unnamed
-            // tile stay the same height and the circles line up.
-            if (captionBand > 0)
-              SizedBox(
-                height: captionBand,
-                child: name == null
-                    ? null
-                    : Padding(
-                        padding: EdgeInsets.only(top: captionGap),
-                        child: Text(
-                          name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: styles.caption.copyWith(
-                            color: scheme.onSurface,
-                            fontWeight: FontWeight.w600,
+    // Without a label of its own the tile contributes no semantics node at all,
+    // and the section collapses into the header's — a screen reader lands on
+    // one "People, See all" target covering the whole strip and can neither
+    // name nor reach an individual face. The action is repeated here because
+    // excludeSemantics drops the GestureDetector's node along with the caption's;
+    // without it the tile announces as a button that cannot be activated.
+    return Semantics(
+      container: true,
+      button: true,
+      label: name ?? 'Unnamed person',
+      onTap: open,
+      // The caption repeats the name the label already carries, and the avatar
+      // has nothing to say — the tile is one target, so it gets one node.
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: open,
+        child: SizedBox(
+          width: size,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              FaceAvatar(personId: person.id, size: size),
+              // The band is fixed for the whole row, so a named and an unnamed
+              // tile stay the same height and the circles line up.
+              if (captionBand > 0)
+                SizedBox(
+                  height: captionBand,
+                  child: name == null
+                      ? null
+                      : Padding(
+                          padding: EdgeInsets.only(top: captionGap),
+                          child: Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: styles.caption.copyWith(
+                              color: scheme.onSurface,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                      ),
-              ),
-          ],
+                ),
+            ],
+          ),
         ),
       ),
     );

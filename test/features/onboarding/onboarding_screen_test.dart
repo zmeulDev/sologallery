@@ -230,6 +230,25 @@ void main() {
       );
     });
 
+    testWidgets('a small selection drops the "a while" warning', (tester) async {
+      await pumpConsent(tester);
+
+      await tester.tap(find.byType(Switch).first);
+      await tester.pumpAndSettle();
+
+      // Exclude the 120-photo Camera folder, leaving 30 — well under the
+      // threshold where the warning is honest.
+      await tester.tap(find.text('Folders to analyze'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Camera'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('1 of 2 folders · 30 photos.'), findsOneWidget);
+      expect(find.textContaining('This may take a while'), findsNothing);
+    });
+
     testWidgets('folder picker updates summary and persisted scope', (
       tester,
     ) async {

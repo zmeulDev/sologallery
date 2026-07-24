@@ -349,11 +349,18 @@ class _FolderScopeCard extends ConsumerWidget {
         : '$includedFoldersCount of $totalFolders folders';
 
     final analysisEnabled = state.search || state.memories || state.faces;
+    final photos =
+        '$selectedCount ${_pluralize(selectedCount, 'photo', 'photos')}';
+    // The "a while" warning is only honest at a size where it is true. Shown
+    // unconditionally it read the same for 66 photos as for 892, which turns it
+    // into noise on exactly the selections the folder picker exists to make.
     final caption = !analysisEnabled
         ? 'No on-device analysis is turned on.'
         : selectedCount == 0
             ? 'No photos selected to analyze.'
-            : '$selectedCount ${_pluralize(selectedCount, 'photo', 'photos')}. This may take a while.';
+            : selectedCount >= _slowAnalysisThreshold
+                ? '$photos. This may take a while.'
+                : '$photos.';
 
     return AppCard.divided(
       children: [
@@ -368,6 +375,12 @@ class _FolderScopeCard extends ConsumerWidget {
       ],
     );
   }
+
+  /// Above this many photos the first analysis pass is long enough to be worth
+  /// warning about; below it the warning is just noise. Measured on a Pixel 9
+  /// Pro XL with search + faces on, a pass runs at roughly one photo a second,
+  /// so this is about the point where it stops finishing inside a minute.
+  static const _slowAnalysisThreshold = 100;
 
   static String _pluralize(int count, String singular, String plural) =>
       count == 1 ? singular : plural;

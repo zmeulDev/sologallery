@@ -753,13 +753,20 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   skip set. Do *not* override raw `JavaCompile` tasks to 17 — that strips the
   `android.jar` bootclasspath ("package android.app does not exist"). Re-check a
   plain `flutter build apk` (not just `patrol test`) when adding Android plugins.
-- **`developer.log` does not reach `adb logcat`.** The `SoloGallery`
-  logger routes through `dart:developer.log`, which goes to the Dart VM
-  service, **not** the Android log — so `adb logcat -s flutter:V
-  SoloGallery:V` shows nothing from our logger (only `print`/`debugPrint`
-  and engine lines appear under the `flutter` tag). For app-side logs use
-  `flutter run`/`flutter logs`/DevTools, or the on-device test output;
-  use `adb logcat` for native/crash inspection.
+- **`developer.log` alone reaches nothing but DevTools — the logger needs a
+  `debugPrint` mirror.** `dart:developer.log` feeds the VM-service *Logging*
+  stream only: it is **not** printed by `flutter run` and never reaches the
+  Android log. Measured on a Pixel 9 Pro XL, a full fresh-install onboarding
+  plus an 892-asset indexing pass produced 14,982 logcat lines and **zero**
+  from `SoloGallery.*`, despite the pass logging unconditionally. `dart:io`
+  `stdout.writeln` is not a fix either — Android discards that descriptor
+  (verified: still nothing in logcat). Only `print`/`debugPrint` is routed by
+  the engine to logcat under the `flutter` tag, so `configureLogging()` keeps
+  `developer.log` for DevTools **and** mirrors every record through
+  `debugPrint` outside release builds. That mirror is the sole sanctioned use
+  of `debugPrint` in the tree; it is what makes the documented
+  `adb logcat -s flutter:V SoloGallery:V` workflow actually produce output.
+  Delete it and on-device debugging goes silent again.
 - **Keep the `Logger.root.onRecord` subscription alive.** `configureLogging()`
   must hold the `StreamSubscription<LogRecord>` in a static variable. If the
   subscription is created inside the function without a reference, the GC drops

@@ -153,4 +153,28 @@ void main() {
     expect(bare, 64);
     expect(named, greaterThan(bare));
   });
+
+  testWidgets('every face is its own labelled target', (tester) async {
+    final semantics = tester.ensureSemantics();
+
+    await pump(tester, [person(1, 'Ada'), person(2, null)]);
+    await tester.pump();
+
+    // Without a label per tile the whole strip collapses into the section
+    // header's node, and no individual person can be reached or named.
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Ada')),
+      matchesSemantics(label: 'Ada', isButton: true, hasTapAction: true),
+    );
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Unnamed person')),
+      matchesSemantics(
+        label: 'Unnamed person',
+        isButton: true,
+        hasTapAction: true,
+      ),
+    );
+
+    semantics.dispose();
+  });
 }

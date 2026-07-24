@@ -67,8 +67,7 @@ void main() {
     );
 
     await tester.tap(find.text('Open'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
 
     expect(find.text('FOLDERS TO ANALYZE'), findsOneWidget);
     expect(find.text('All folders'), findsOneWidget);
@@ -94,8 +93,7 @@ void main() {
     );
 
     await tester.tap(find.text('Open'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('All folders'));
     await tester.pump();
@@ -147,18 +145,57 @@ void main() {
     );
     await tester.pump();
 
+    // pumpAndSettle, not a fixed pump: mid-animation the sheet has not reached
+    // its resting offset yet and a tap on Done lands outside it — a miss only
+    // warns, so the test would hang on the completer instead of failing.
     await tester.tap(find.text('Open'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
 
     // Uncheck Screenshots to exclude it.
     await tester.tap(find.text('Screenshots'));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('Done'));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(await completer.future, {'f2'});
   });
 
+  testWidgets('each row exposes its name, count and checked state', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(500, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final semantics = tester.ensureSemantics();
+
+    await pumpSheet(
+      tester,
+      initialExcluded: {'f2'},
+      folders: [
+        const DeviceFolder(id: 'f1', name: 'Camera', count: 10),
+        const DeviceFolder(id: 'f2', name: 'Screenshots', count: 5),
+      ],
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Camera, 10 items')),
+      matchesSemantics(hasCheckedState: true, isChecked: true, hasTapAction: true),
+    );
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Screenshots, 5 items')),
+      matchesSemantics(
+        hasCheckedState: true,
+        isChecked: false,
+        hasTapAction: true,
+      ),
+    );
+
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    semantics.dispose();
+  });
 }

@@ -515,8 +515,11 @@ class IndexingService {
 
       // Build the excluded-asset set once per round. If the user changes the
       // exclusion list mid-pass, the next round re-reads it via _dirty.
+      // Memories need it too — a date-window memory is derived content, and the
+      // folder sheet promises excluded photos are skipped — so this is not
+      // gated on `needsMl`.
       Set<String> excludedAssetIds = const {};
-      if (needsMl) {
+      if (needsMl || memoriesEnabled) {
         final excludedFolderIds = await settings.readExcludedFolderIds();
         if (excludedFolderIds.isNotEmpty) {
           excludedAssetIds = await _excludedAssetIds(excludedFolderIds);
@@ -529,11 +532,20 @@ class IndexingService {
 
       final todo = needsMl ? await dao.pendingMlIds() : const <String>[];
       if (todo.isNotEmpty) {
-        _log.info('Indexing ${todo.length} new asset(s)');
-        var done = 0;
-        _emitProgress(
-          IndexingStatus(remaining: todo.length, total: todo.length),
+        // Every pending asset is walked, but an excluded one is only stamped
+        // `indexed_at` — no thumbnail, no ML. Counting those in the dial makes
+        // it promise work it will never do: a library where one folder of 66 is
+        // analyzed would open on "891 left" and race through 825 of them,
+        // contradicting the "66 photos" the folder sheet just committed to. So
+        // progress is measured over the analyzable subset only.
+        final analyzable = todo
+            .where((id) => !excludedAssetIds.contains(id))
+            .length;
+        _log.info(
+          'Indexing ${todo.length} new asset(s); $analyzable to analyze',
         );
+        var done = 0;
+        _emitProgress(IndexingStatus(remaining: analyzable, total: analyzable));
 
         for (final id in todo) {
           if (_cancelled) return;
@@ -542,23 +554,26 @@ class IndexingService {
           }
           if (_cancelled) return;
 
+          final excluded = excludedAssetIds.contains(id);
           await _indexOne(
             id,
             searchEnabled: searchEnabled,
             facesEnabled: facesEnabled,
-            excluded: excludedAssetIds.contains(id),
+            excluded: excluded,
           );
-          done++;
-          _emitProgress(
-            IndexingStatus(remaining: todo.length - done, total: todo.length),
-          );
+          if (!excluded) {
+            done++;
+            _emitProgress(
+              IndexingStatus(remaining: analyzable - done, total: analyzable),
+            );
+          }
           await Future<void>.delayed(Duration.zero); // keep the UI isolate smooth
         }
         // The final progress state lands unconditionally so the dial doesn't
         // linger on a throttled mid-pass value during the post-todo
         // cluster/memories work that follows (a throttled emit may have skipped
         // the last few updates).
-        _emit(IndexingStatus(remaining: 0, total: todo.length));
+        _emit(IndexingStatus(remaining: 0, total: analyzable));
         _log.info('Indexing pass complete (${todo.length} asset(s))');
       }
 
@@ -580,6 +595,7 @@ class IndexingService {
         await _maybeRegenerateMemories(
           searchEnabled: searchEnabled,
           facesEnabled: facesEnabled,
+          excludedAssetIds: excludedAssetIds,
         );
         if (_cancelled) return;
       }
@@ -745,6 +761,7 @@ class IndexingService {
   Future<void> _maybeRegenerateMemories({
     required bool searchEnabled,
     required bool facesEnabled,
+    required Set<String> excludedAssetIds,
   }) async {
     await _awaitNotPaused();
     if (_cancelled) return;
@@ -766,6 +783,7 @@ class IndexingService {
       now,
       searchEnabled: searchEnabled,
       facesEnabled: facesEnabled,
+      excludedAssetIds: excludedAssetIds,
     );
     if (_cancelled) return;
 
@@ -783,9 +801,22 @@ class IndexingService {
     DateTime now, {
     required bool searchEnabled,
     required bool facesEnabled,
+    required Set<String> excludedAssetIds,
   }) async {
-    final onThisDay = await memories.onThisDay(now.month, now.day);
-    final recentDated = await memories.recentDatedProjection();
+    // On-this-day and trips are the only inputs drawn from raw metadata rather
+    // than from ML output, so they are the only ones the folder gate does not
+    // already cover. Without this filter a user who limited analysis to one
+    // folder still gets memories built entirely out of the folders they
+    // excluded — label and person memories stay inside the gate, date-window
+    // ones would not.
+    final onThisDay = _withoutExcluded(
+      await memories.onThisDay(now.month, now.day),
+      excludedAssetIds,
+    );
+    final recentDated = _withoutExcluded(
+      await memories.recentDatedProjection(),
+      excludedAssetIds,
+    );
 
     // Theme memories ("Dogs", "Food") are built from ML labels, so they only
     // exist when the user consented to content analysis.
@@ -835,6 +866,19 @@ class IndexingService {
         people: people,
       ),
     );
+  }
+
+  /// Drops assets in analysis-excluded folders from a memory input. Returns
+  /// [assets] untouched when nothing is excluded, which is the common case.
+  static List<DatedAsset> _withoutExcluded(
+    List<DatedAsset> assets,
+    Set<String> excludedAssetIds,
+  ) {
+    if (excludedAssetIds.isEmpty) return assets;
+    return [
+      for (final a in assets)
+        if (!excludedAssetIds.contains(a.assetId)) a,
+    ];
   }
 
   /// How many of the most-photographed people are even considered — bounds the
