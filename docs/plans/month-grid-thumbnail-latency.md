@@ -211,8 +211,26 @@ reopen → instant; kill + relaunch → still instant).
 - [x] (4) built: indexing yields the decode pool to the grid via `whenQuiet()`.
 - [x] (3a) ruled out: device's MediaStore thumbnails table is empty (Android 15).
 - [x] (1) persistent grid-thumbnail disk cache built (lazy-populate) + unit-tested.
-- [ ] (4) + (1) manual on-device verification (open month, back out/reopen, relaunch).
-- [ ] Optional: warm the cache during idle indexing (follow-up above).
+- [x] (1) verified on-device (Pixel 9 Pro XL): `files/thumb_cache/` populates live
+      as you browse (grew past 78 files / ~16 MB), filenames match the key scheme
+      (`base64url(id)_size_signature.jpg`; decoded ids are real MediaStore ids,
+      signature = `modifiedDateSecond`), bytes are valid JPEGs (SOI `ff d8 ff`,
+      and the grid renders them). Only real UI sizes present (256/400/500/1000 +
+      dynamic `cellWidth×dpr` values 312/424/500/612/1024) — **zero `_512_`**,
+      confirming the indexer's ML thumbs are correctly NOT persisted.
+- [ ] (4) manual on-device check while indexing runs (open a month mid-pass).
+- [ ] Decided AGAINST warming during indexing — marginal + spotty coverage
+      (see follow-up); lazy-populate delivers the durable win.
+
+### On-device note (sizes)
+
+Grid thumbnail sizes are per-screen: fixed (asset_grid/album grid 400, Saved/
+memory 500/1000, covers 256/120) and dynamic `(cellWidth × devicePixelRatio)
+.ceil()` (Library, Saved masonry, recently-viewed → 312/424/500/612/1024 on this
+device). Dynamic sizes are deterministic for a given device+orientation, so
+reopening the same screen is a cache hit; a rotation/split-screen resize decodes
+once at the new size (a new key). Every `AssetThumbnail` size persists, so covers
+and memory thumbs get the same durability for free.
 
 ### Note
 
