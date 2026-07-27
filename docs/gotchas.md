@@ -808,3 +808,36 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   Phase-5 icon-family swap left every golden byte-identical (md5-verified),
   which is the *expected* outcome, not a missed regen. Goldens verify layout/
   color only; verify glyph shapes on device (or by eye in the running app).
+
+---
+
+## Release / Play signing
+
+- **Lost upload keystore is fatal without Play App Signing, recoverable
+  with it.** A lost upload key normally means the app's identity on Play
+  is unrecoverable — Google cannot retrieve it and you cannot push
+  updates under the same `applicationId`. Enable Play App Signing in
+  Play Console (Setup → App signing) before any production upload: Google
+  holds the app-signing key as the source of truth, and the upload key
+  becomes replaceable (Setup → App signing → Request upload key reset).
+  The first upload must still be signed with a key whose SHA-256 you can
+  prove, so the upload keystore still needs an offline backup — but a
+  later loss is no longer fatal.
+- **`keytool` defaults to 90-day validity, which Play rejects.** A Play
+  upload keystore must be valid for at least ~25 years. Always pass
+  `-validity 10950` (days) to `keytool -genkey`. Also: the JBR's
+  `keytool` silently ignores `-storetype JKS` (its engine-load stack
+  shows `PKCS12KeyStore` regardless); use `-storetype pkcs12` to match
+  what the JBR actually creates. AGP's signing config accepts both
+  PKCS12 and JKS.
+- **The JBR's `keytool` needs `DYLD_LIBRARY_PATH` set to run from a
+  shell on macOS.** A bare `/Applications/Android Studio.app/Contents/
+  jbr/Contents/Home/bin/keytool` fails with "Unable to locate a Java
+  Runtime" because macOS's hardened-runtime policy blocks the
+  embedded `@rpath` lookup of `libjli.dylib`. The Flutter CLI sets
+  `JAVA_HOME` for you, so `flutter build appbundle` works; a bare
+  `keytool` does not. Set `JAVA_HOME=/Applications/Android Studio.app/
+  Contents/jbr/Contents/Home` and `DYLD_LIBRARY_PATH="$JAVA_HOME/lib"`
+  before invoking `keytool` directly. The `DYLD_LIBRARY_PATH` only
+  points dyld at the JBR's own `lib/`, not system libraries, so it's
+  safe.

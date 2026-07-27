@@ -60,6 +60,28 @@ void main() {
     expect(find.text('Your photos\nstay yours.'), findsOneWidget);
   });
 
+  testWidgets('access step leads with the brand mark + wordmark', (
+    tester,
+  ) async {
+    await pump(tester, access: PhotoAccess.denied);
+
+    // The bare mark asset is listed in pubspec.yaml under flutter.assets:,
+    // so flutter test bundles it into the test catalog. One widget on this
+    // step — the brand anchor.
+    expect(
+      find.byType(Image).evaluate().any(
+        (e) =>
+            (e.widget as Image).image is AssetImage &&
+            (e.widget as Image).image
+                .toString()
+                .contains('sologallery_mark_transparent_4096.png'),
+      ),
+      isTrue,
+      reason: 'bare brand mark should be the leading element on step 1',
+    );
+    expect(find.text('SoloGallery'), findsOneWidget);
+  });
+
   testWidgets('tapping allow requests access', (tester) async {
     final fake = await pump(
       tester,
@@ -166,6 +188,27 @@ void main() {
       );
     });
 
+    testWidgets('consent step leads with the same brand mark + wordmark', (
+      tester,
+    ) async {
+      await pumpConsent(tester);
+
+      // Same asset, same row, same identity — brand anchor doesn't change
+      // between steps.
+      expect(
+        find.byType(Image).evaluate().any(
+          (e) =>
+              (e.widget as Image).image is AssetImage &&
+              (e.widget as Image).image
+                  .toString()
+                  .contains('sologallery_mark_transparent_4096.png'),
+        ),
+        isTrue,
+        reason: 'bare brand mark should be the leading element on step 2',
+      );
+      expect(find.text('SoloGallery'), findsOneWidget);
+    });
+
     testWidgets('Continue persists exactly what was switched on', (
       tester,
     ) async {
@@ -236,6 +279,16 @@ void main() {
       await tester.tap(find.byType(Switch).first);
       await tester.pumpAndSettle();
 
+      // The brand-mark row + three switch rows push the folder card below
+      // the test viewport. Scroll the consent step until the card is on
+      // screen, then proceed.
+      await tester.scrollUntilVisible(
+        find.text('Folders to analyze'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
       // Exclude the 120-photo Camera folder, leaving 30 — well under the
       // threshold where the warning is honest.
       await tester.tap(find.text('Folders to analyze'));
@@ -259,6 +312,16 @@ void main() {
         find.text('All folders · No on-device analysis is turned on.'),
         findsOneWidget,
       );
+
+      // Scroll the consent step until the folder card is on screen (the
+      // brand-mark row + three switch rows push it past the default
+      // 800×600 test viewport).
+      await tester.scrollUntilVisible(
+        find.text('Folders to analyze'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
 
       await tester.tap(find.text('Folders to analyze'));
       await tester.pumpAndSettle();
