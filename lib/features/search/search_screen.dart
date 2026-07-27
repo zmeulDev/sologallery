@@ -268,8 +268,8 @@ class _FilterBar extends ConsumerWidget {
 }
 
 /// The results body: facets at the top, matching people, then the anchored
-/// field + album chips + photo grid, with the recently-viewed carousel pinned at
-/// the bottom.
+/// field + album chips + photo grid. Recently viewed is deliberately absent —
+/// once a query is running the screen shows only what matched it.
 class _ResultsBody extends StatelessWidget {
   const _ResultsBody({
     required this.searchField,
@@ -294,12 +294,6 @@ class _ResultsBody extends StatelessWidget {
         if (albums.isNotEmpty) _AlbumsResult(albums: albums),
         Expanded(
           child: _Results(anyMatch: albums.isNotEmpty || people.isNotEmpty),
-        ),
-        Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.paddingOf(context).bottom,
-          ),
-          child: const _RecentlyViewedStrip(),
         ),
       ],
     );
