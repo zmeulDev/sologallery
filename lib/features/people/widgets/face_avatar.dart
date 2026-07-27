@@ -120,6 +120,7 @@ class FaceAvatar extends ConsumerWidget {
     required this.personId,
     this.size = 64,
     this.borderRadius,
+    this.cover,
   });
 
   final int personId;
@@ -130,6 +131,14 @@ class FaceAvatar extends ConsumerWidget {
   /// strip passes `AppRadius.br12` so a name can sit on a scrim inside the
   /// tile rather than on a caption line beneath it.
   final BorderRadius? borderRadius;
+
+  /// The cover face, when a caller already resolved it (the People grid and
+  /// strip fetch every visible person's cover in one batch via
+  /// `personCoversProvider` so N avatars scrolling in don't fan out into N
+  /// individual DB queries — see B2). Null falls back to watching
+  /// [personCoverProvider] directly, one avatar at a time — the right default
+  /// for a caller that only ever renders a single avatar.
+  final CoverFace? cover;
 
   /// Over-zoom past just fitting the box so the face fills the circle. Tunable —
   /// raise to crop closer, lower to show more surround.
@@ -149,7 +158,7 @@ class FaceAvatar extends ConsumerWidget {
           ),
         );
 
-    final cover = ref.watch(personCoverProvider(personId)).value;
+    final cover = this.cover ?? ref.watch(personCoverProvider(personId)).value;
     if (cover == null) return placeholder();
 
     // The box is normalized, so its own extent is the fraction of the image the

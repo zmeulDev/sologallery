@@ -265,6 +265,21 @@ void main() {
     await settle(tester);
   });
 
+  // Once a query is running the screen shows results only — the recency
+  // carousel is an idle-state entry point, not a result.
+  testWidgets('the recently viewed carousel hides once a query is active', (
+    tester,
+  ) async {
+    await pump(tester, recentlyViewed: const ['recent-1', 'recent-2']);
+    expect(find.text('RECENTLY VIEWED'), findsOneWidget);
+
+    await type(tester, 'june 2026');
+
+    expect(find.text('RECENTLY VIEWED'), findsNothing);
+    expect(find.byType(RecentlyViewedRow), findsNothing);
+    await settle(tester);
+  });
+
   testWidgets('the recently viewed carousel is a two-row horizontal grid', (
     tester,
   ) async {
@@ -425,7 +440,7 @@ void main() {
     await settle(tester);
   });
 
-  testWidgets('the recently viewed carousel sits below the Photos results', (
+  testWidgets('results are the only thing below the field once a query runs', (
     tester,
   ) async {
     await pump(
@@ -435,10 +450,8 @@ void main() {
     );
     await type(tester, '2026-08');
 
-    final photosTop = tester.getTopLeft(find.text('PHOTOS')).dy;
-    final recentTop = tester.getTopLeft(find.text('RECENTLY VIEWED')).dy;
-    expect(photosTop, lessThan(recentTop),
-        reason: 'Recently viewed should sit below the Photos grid.');
+    expect(find.text('PHOTOS'), findsOneWidget);
+    expect(find.text('RECENTLY VIEWED'), findsNothing);
     await settle(tester);
   });
 

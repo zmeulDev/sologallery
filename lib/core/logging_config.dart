@@ -21,10 +21,17 @@ import 'package:logging/logging.dart';
 /// Loggers are created per-area at their point of use, e.g.
 /// `Logger('SoloGallery.db')`, `Logger('SoloGallery.ml')`; they inherit this
 /// root configuration by name.
+///
+/// Level policy: `Level.WARNING` everywhere — debug and release — so a normal
+/// session logs only warnings and errors and the documented logcat filter
+/// stays useful for surface-level triage. `INFO`/`FINE`/`FINEST` are dropped at
+/// the source (they're still cheap to write, and a one-shot
+/// `Logger.root.level = Level.ALL` in DevTools restores full verbosity when
+/// investigating a specific bug — see docs/plans/quiet-debug-logs.md).
 StreamSubscription<LogRecord>? _loggingSubscription;
 
 void configureLogging() {
-  Logger.root.level = kReleaseMode ? Level.WARNING : Level.ALL;
+  Logger.root.level = Level.WARNING;
   _loggingSubscription?.cancel();
   _loggingSubscription = Logger.root.onRecord.listen((record) {
     developer.log(

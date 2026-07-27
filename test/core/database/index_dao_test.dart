@@ -136,6 +136,22 @@ void main() {
     expect(await search('dog'), isEmpty); // a, b (and their labels) gone
   });
 
+  group('isVideoInCache', () {
+    test('is true for a cached video row', () async {
+      await seed(); // b is a video
+      expect(await db.indexDao.isVideoInCache('b'), isTrue);
+    });
+
+    test('is false for a cached image row', () async {
+      await seed(); // a is a photo
+      expect(await db.indexDao.isVideoInCache('a'), isFalse);
+    });
+
+    test('is false for an id not yet in the cache', () async {
+      expect(await db.indexDao.isVideoInCache('unknown'), isFalse);
+    });
+  });
+
   /// Seeds one dated asset per [dates] entry, ids `s0`, `s1`, … — enough for
   /// the grouping queries, which read only `created_at` and `is_dated`.
   Future<void> seedDates(List<DateTime> dates) async {

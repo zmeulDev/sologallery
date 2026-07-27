@@ -7,9 +7,12 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../services/permission_provider.dart' show photoLibraryServiceProvider;
+import '../../services/thumbnail_provider.dart';
 import '../../widgets/asset_grid.dart' show kPhotoGridCacheExtent;
 import '../../widgets/asset_thumbnail.dart';
 import '../../widgets/empty_state.dart';
+import '../detail/detail_providers.dart' show kDetailImageMaxEdge;
 import '../detail/photo_viewer_args.dart';
 import 'saved_providers.dart';
 import 'widgets/masonry_grid_delegate.dart';
@@ -79,14 +82,75 @@ class _CountLabel extends StatelessWidget {
   }
 }
 
-class _SavedGrid extends StatelessWidget {
+class _SavedGrid extends StatefulWidget {
   const _SavedGrid({required this.favorites});
 
   final List<FavoriteAsset> favorites;
 
   @override
+  State<_SavedGrid> createState() => _SavedGridState();
+}
+
+class _SavedGridState extends State<_SavedGrid> {
+  late List<String> _assetIds;
+  late List<({int width, int height})> _items;
+  late MasonryGridDelegate _delegate;
+
+  @override
+  void initState() {
+    super.initState();
+    _rebuildFromFavorites();
+  }
+
+  @override
+  void didUpdateWidget(_SavedGrid old) {
+    super.didUpdateWidget(old);
+    if (_favoritesChanged(old.favorites, widget.favorites)) {
+      _rebuildFromFavorites();
+    }
+  }
+
+  void _rebuildFromFavorites() {
+    _assetIds = [for (final f in widget.favorites) f.assetId];
+    _items = [
+      for (final f in widget.favorites) (width: f.width, height: f.height),
+    ];
+    _delegate = MasonryGridDelegate(
+      items: _items,
+      columns: SavedScreen._columns,
+      gutter: AppSpace.s8,
+    );
+  }
+
+  /// Cheap content comparison over the favorites (a deliberately-kept, small
+  /// set) so `_delegate`'s identity — and the layout memo it holds — survives
+  /// benign rebuilds that carry the same favorites, e.g. a parent repaint.
+  bool _favoritesChanged(
+    List<FavoriteAsset> oldFavorites,
+    List<FavoriteAsset> newFavorites,
+  ) {
+    if (oldFavorites.length != newFavorites.length) return true;
+    for (var i = 0; i < newFavorites.length; i++) {
+      final oldFavorite = oldFavorites[i];
+      final newFavorite = newFavorites[i];
+      if (oldFavorite.assetId != newFavorite.assetId ||
+          oldFavorite.width != newFavorite.width ||
+          oldFavorite.height != newFavorite.height) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final assetIds = [for (final f in favorites) f.assetId];
+    // Shared target thumbnail pixel size for every cell this build, sized off
+    // the actual on-screen column width (not a fixed guess) so a cell never
+    // requests more pixels than it can show, and never blurs up from fewer.
+    final width = MediaQuery.sizeOf(context).width - 2 * AppSpace.s16;
+    final columnWidth = (width - AppSpace.s8) / SavedScreen._columns;
+    final thumbSize =
+        (columnWidth * MediaQuery.devicePixelRatioOf(context)).ceil();
     return CustomScrollView(
       scrollCacheExtent: kPhotoGridCacheExtent,
       slivers: [
@@ -96,16 +160,14 @@ class _SavedGrid extends StatelessWidget {
             bottom: AppSpace.s16 + MediaQuery.paddingOf(context).bottom,
           ),
           sliver: SliverGrid(
-            gridDelegate: MasonryGridDelegate(
-              items: [
-                for (final f in favorites) (width: f.width, height: f.height),
-              ],
-              columns: SavedScreen._columns,
-              gutter: AppSpace.s8,
-            ),
+            gridDelegate: _delegate,
             delegate: SliverChildBuilderDelegate(
-              (context, i) => _SavedCell(assetIds: assetIds, index: i),
-              childCount: favorites.length,
+              (context, i) => _SavedCell(
+                assetIds: _assetIds,
+                index: i,
+                thumbSize: thumbSize,
+              ),
+              childCount: widget.favorites.length,
             ),
           ),
         ),
@@ -114,24 +176,44 @@ class _SavedGrid extends StatelessWidget {
   }
 }
 
-class _SavedCell extends StatelessWidget {
-  const _SavedCell({required this.assetIds, required this.index});
+class _SavedCell extends ConsumerWidget {
+  const _SavedCell({
+    required this.assetIds,
+    required this.index,
+    required this.thumbSize,
+  });
 
   final List<String> assetIds;
   final int index;
+  final int thumbSize;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final id = assetIds[index];
     return GestureDetector(
-      onTap: () =>
-          context.push('/photo/$id', extra: PhotoViewerArgs(assetIds, index)),
+      onTap: () {
+        final thumb = ref.read(
+          thumbnailProvider(
+            ThumbnailRequest(id, width: thumbSize, height: thumbSize),
+          ),
+        );
+        // Warm the high-res image before the push so the detail page hits the
+        // cache.
+        ref
+            .read(photoLibraryServiceProvider)
+            .previewImage(id, kDetailImageMaxEdge)
+            .ignore();
+        context.push(
+          '/photo/${Uri.encodeComponent(id)}',
+          extra: PhotoViewerArgs(assetIds, index, initialBytes: thumb.value),
+        );
+      },
       child: ClipRRect(
         borderRadius: AppRadius.br12,
         child: Stack(
           fit: StackFit.expand,
           children: [
-            AssetThumbnail(assetId: id, size: 500, showVideoBadge: true),
+            AssetThumbnail(assetId: id, size: thumbSize, showVideoBadge: true),
             // A quiet heart marks the whole grid as favorites at a glance;
             // unfavoriting still flows through the detail viewer.
             const Positioned(

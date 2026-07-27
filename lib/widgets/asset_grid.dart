@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_radius.dart';
 import '../core/theme/app_space.dart';
+import '../features/detail/detail_providers.dart';
 import '../features/detail/photo_viewer_args.dart';
+import '../services/permission_provider.dart' show photoLibraryServiceProvider;
 import '../services/photo_library_service.dart';
+import '../services/thumbnail_provider.dart';
 import 'asset_thumbnail.dart';
 
 /// How far beyond the viewport a photo scroller pre-builds its children.
@@ -24,11 +28,17 @@ import 'asset_thumbnail.dart';
 /// all.
 const ScrollCacheExtent kPhotoGridCacheExtent = ScrollCacheExtent.viewport(1);
 
+/// Requested pixel size of each grid cell's thumbnail. Shared between the tap
+/// handler's cache-warming read and the [AssetThumbnail] below it — they must
+/// match or the tap reads a different [ThumbnailRequest] than the one already
+/// resolved for the cell, missing the in-memory cache it's meant to hit.
+const int _kCellThumbnailSize = 400;
+
 /// A paginating three-column grid of asset thumbnails, shared by the full-month
 /// grid and the "Older" grid. Tapping a cell opens the detail viewer swiping
 /// across [items]; scrolling near the end calls [onLoadMore]. When [hasMore] is
 /// true, trailing placeholder cells stand in for the next, still-loading page.
-class AssetGrid extends StatelessWidget {
+class AssetGrid extends ConsumerWidget {
   const AssetGrid({
     super.key,
     required this.items,
@@ -41,7 +51,7 @@ class AssetGrid extends StatelessWidget {
   final VoidCallback onLoadMore;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return NotificationListener<ScrollNotification>(
       onNotification: (n) {
         if (n.metrics.pixels >= n.metrics.maxScrollExtent - 800) {
@@ -70,15 +80,37 @@ class AssetGrid extends StatelessWidget {
         itemBuilder: (context, i) {
           if (i >= items.length) return const _CellPlaceholder();
           return GestureDetector(
-            onTap: () => context.push(
-              '/photo/${items[i].id}',
-              extra: PhotoViewerArgs([for (final a in items) a.id], i),
-            ),
+            onTap: () {
+              final id = items[i].id;
+              final thumb = ref.read(
+                thumbnailProvider(
+                  ThumbnailRequest(
+                    id,
+                    width: _kCellThumbnailSize,
+                    height: _kCellThumbnailSize,
+                  ),
+                ),
+              );
+              // Warm the high-res image before the push so the detail page
+              // hits the cache.
+              ref
+                  .read(photoLibraryServiceProvider)
+                  .previewImage(id, kDetailImageMaxEdge)
+                  .ignore();
+              context.push(
+                '/photo/${Uri.encodeComponent(id)}',
+                extra: PhotoViewerArgs(
+                  [for (final a in items) a.id],
+                  i,
+                  initialBytes: thumb.value,
+                ),
+              );
+            },
             child: ClipRRect(
               borderRadius: AppRadius.br12,
               child: AssetThumbnail(
                 assetId: items[i].id,
-                size: 400,
+                size: _kCellThumbnailSize,
                 showVideoBadge: true,
               ),
             ),

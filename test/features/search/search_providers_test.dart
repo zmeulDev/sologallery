@@ -1,10 +1,12 @@
+import 'dart:async';
+
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sologallery/core/database/app_database.dart'
     show AppDatabase, RecentlyViewedData;
 import 'package:sologallery/core/database/daos/index_dao.dart'
-    show FavoriteAsset;
+    show FavoriteAsset, IndexDao;
 import 'package:sologallery/core/database/daos/albums_dao.dart'
     show AlbumSummary;
 import 'package:sologallery/core/database/database_provider.dart';
@@ -17,6 +19,23 @@ import 'package:sologallery/services/photo_library_service.dart';
 
 import '../../support/asset_fixtures.dart';
 import '../../support/fake_photo_library_service.dart';
+
+/// A fake [IndexDao] whose top-labels stream is fully controlled by the test,
+/// so `topBrowseLabelsProvider`'s `distinct(listEquals)` can be asserted
+/// against a stream shaped exactly like Drift's real re-emission behaviour (a
+/// fresh row list per emission) without depending on Drift's own re-emission
+/// timing.
+class _FakeIndexDao extends IndexDao {
+  _FakeIndexDao(super.db, this._stream);
+
+  final Stream<List<({String label, int count})>> _stream;
+
+  @override
+  Stream<List<({String label, int count})>> watchTopLabels({
+    required Set<String> allow,
+    int limit = 10,
+  }) => _stream;
+}
 
 void main() {
   // Aug 2026 (3 assets, the first a video) + Jul 2026 (2 assets), newest first.
@@ -334,6 +353,46 @@ void main() {
 
     test('is empty while nothing is labeled yet', () async {
       expect(await read(), isEmpty);
+    });
+
+    test('drops a duplicate emission and propagates a changed one', () async {
+      final controller =
+          StreamController<List<({String label, int count})>>();
+      addTearDown(controller.close);
+      final container = ProviderContainer(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          indexDaoProvider.overrideWithValue(
+            _FakeIndexDao(db, controller.stream),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final emissions = <List<String>>[];
+      container.listen(topBrowseLabelsProvider, (_, next) {
+        next.whenData(emissions.add);
+      });
+
+      // Two structurally-equal but separately-allocated lists — matching how
+      // Drift re-runs and re-emits the real GROUP BY on every unrelated
+      // photo_label write, even when its result hasn't actually changed.
+      controller.add([(label: 'Dog', count: 3)]);
+      await pumpEventQueue();
+      controller.add([(label: 'Dog', count: 3)]);
+      await pumpEventQueue();
+      expect(
+        emissions.length,
+        1,
+        reason: 'the byte-for-byte-identical re-emission is dropped',
+      );
+
+      // A genuine change — here, a new label entering the top-N — must still
+      // propagate.
+      controller.add([(label: 'Dog', count: 3), (label: 'Cat', count: 2)]);
+      await pumpEventQueue();
+      expect(emissions.length, 2);
+      expect(emissions.last, ['Dog', 'Cat']);
     });
   });
 

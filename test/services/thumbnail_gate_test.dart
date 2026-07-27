@@ -97,6 +97,62 @@ void main() {
       expect(await gate.run(() async => 5), 5);
     });
 
+    test('whenQuiet resolves immediately when nothing is running', () async {
+      final gate = ThumbnailGate(maxConcurrent: 2);
+      expect(gate.isQuiet, isTrue);
+      var done = false;
+      unawaited(gate.whenQuiet().then((_) => done = true));
+      await pumpEventQueue();
+      expect(done, isTrue);
+    });
+
+    test('whenQuiet waits until an active burst fully drains', () async {
+      // The indexing-yield contract: a decode queued while the grid is busy
+      // must not resolve until every running *and* queued grid decode is gone.
+      final gate = ThumbnailGate(maxConcurrent: 2);
+      final completers = List.generate(3, (_) => Completer<int?>());
+      final tasks = [for (var i = 0; i < 3; i++) gate.run(() => completers[i].future)];
+
+      await pumpEventQueue();
+      expect(gate.isQuiet, isFalse);
+
+      var resolved = false;
+      unawaited(gate.whenQuiet().then((_) => resolved = true));
+
+      completers[0].complete(0); // frees a slot, but the queued third runs on
+      await pumpEventQueue();
+      expect(resolved, isFalse, reason: 'still one running + none queued? no — one runs');
+
+      completers[1].complete(1);
+      await pumpEventQueue();
+      expect(resolved, isFalse, reason: 'the third decode is still running');
+
+      completers[2].complete(2);
+      await Future.wait(tasks);
+      await pumpEventQueue();
+      expect(resolved, isTrue, reason: 'gate drained to quiet');
+      expect(gate.isQuiet, isTrue);
+    });
+
+    test('whenQuiet wakes every parked waiter when the gate drains', () async {
+      final gate = ThumbnailGate(maxConcurrent: 1);
+      final blocker = Completer<int?>();
+      final held = gate.run(() => blocker.future);
+
+      var a = false;
+      var b = false;
+      unawaited(gate.whenQuiet().then((_) => a = true));
+      unawaited(gate.whenQuiet().then((_) => b = true));
+      await pumpEventQueue();
+      expect(a || b, isFalse);
+
+      blocker.complete(0);
+      await held;
+      await pumpEventQueue();
+      expect(a, isTrue);
+      expect(b, isTrue);
+    });
+
     test('serves the newest waiter first', () async {
       // LIFO: the newest request is the one nearest the viewport.
       final gate = ThumbnailGate(maxConcurrent: 1);

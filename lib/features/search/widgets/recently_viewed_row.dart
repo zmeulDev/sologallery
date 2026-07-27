@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_radius.dart';
 import '../../../core/theme/app_space.dart';
+import '../../../services/permission_provider.dart'
+    show photoLibraryServiceProvider;
+import '../../../services/thumbnail_provider.dart';
 import '../../../widgets/asset_thumbnail.dart';
 import '../../../widgets/section_header.dart';
+import '../../detail/detail_providers.dart' show kDetailImageMaxEdge;
 import '../../detail/photo_viewer_args.dart';
 
 /// The Search screen's horizontal "recently viewed" carousel.
@@ -68,25 +73,43 @@ class RecentlyViewedRow extends StatelessWidget {
   }
 }
 
-class _RecentCell extends StatelessWidget {
+class _RecentCell extends ConsumerWidget {
   const _RecentCell({required this.assetId, required this.size});
 
   final String assetId;
   final double size;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Shared target thumbnail pixel size for the tap handler's cache-warming
+    // read and the AssetThumbnail below it — they must match or the tap reads
+    // a different ThumbnailRequest than the one already resolved for the
+    // cell, missing the in-memory cache it's meant to hit.
+    final thumbSize = (size * MediaQuery.devicePixelRatioOf(context)).ceil();
     return GestureDetector(
-      onTap: () => context.push(
-        '/photo/${Uri.encodeComponent(assetId)}',
-        extra: PhotoViewerArgs([assetId], 0),
-      ),
+      onTap: () {
+        final thumb = ref.read(
+          thumbnailProvider(
+            ThumbnailRequest(assetId, width: thumbSize, height: thumbSize),
+          ),
+        );
+        // Warm the high-res image before the push so the detail page hits the
+        // cache.
+        ref
+            .read(photoLibraryServiceProvider)
+            .previewImage(assetId, kDetailImageMaxEdge)
+            .ignore();
+        context.push(
+          '/photo/${Uri.encodeComponent(assetId)}',
+          extra: PhotoViewerArgs([assetId], 0, initialBytes: thumb.value),
+        );
+      },
       child: ClipRRect(
         borderRadius: AppRadius.br12,
         child: SizedBox(
           width: size,
           height: size,
-          child: AssetThumbnail(assetId: assetId),
+          child: AssetThumbnail(assetId: assetId, size: thumbSize),
         ),
       ),
     );

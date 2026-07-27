@@ -70,6 +70,19 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
     });
   }
 
+  /// Whether the cached row for [assetId] is a video. False when the asset isn't
+  /// cached yet — the grid badge just appears once the metadata sweep records it.
+  /// An in-process lookup so [videoDurationProvider] can skip the platform
+  /// round-trip for the overwhelming majority of cells (photos) — see B6.
+  Future<bool> isVideoInCache(String assetId) async {
+    final row = await (selectOnly(photoAssets)
+          ..addColumns([photoAssets.isVideo])
+          ..where(photoAssets.assetId.equals(assetId)))
+        .map((r) => r.read(photoAssets.isVideo))
+        .getSingleOrNull();
+    return row ?? false;
+  }
+
   /// Every cached asset id — the sweep subtracts the live library from this to
   /// find rows to prune (deleted assets / a shrunken limited-access subset).
   Future<Set<String>> allCachedIds() async {

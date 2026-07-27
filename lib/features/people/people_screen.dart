@@ -90,6 +90,10 @@ class _PeopleScreenState extends ConsumerState<PeopleScreen> {
 
     final chosen = _selected ?? const <int>{};
     final persons = people.value ?? const <PersonSummary>[];
+    // Resolved once for every person currently on the grid, instead of each
+    // avatar cell hitting the DB on its own as it scrolls into view (B2).
+    final covers =
+        ref.watch(personCoversProvider).value ?? const <int, CoverFace>{};
     return Scaffold(
       appBar: AppBar(
         title: Text(_selecting ? '${chosen.length} selected' : 'People'),
@@ -127,6 +131,7 @@ class _PeopleScreenState extends ConsumerState<PeopleScreen> {
                 itemCount: persons.length,
                 itemBuilder: (context, i) => _PersonCard(
                   person: persons[i],
+                  cover: covers[persons[i].id],
                   selecting: _selecting,
                   selected: chosen.contains(persons[i].id),
                   onToggle: () => _toggle(persons[i].id),
@@ -230,6 +235,7 @@ class _MergeBar extends StatelessWidget {
 class _PersonCard extends StatelessWidget {
   const _PersonCard({
     required this.person,
+    this.cover,
     required this.selecting,
     required this.selected,
     required this.onToggle,
@@ -237,6 +243,10 @@ class _PersonCard extends StatelessWidget {
   });
 
   final PersonSummary person;
+
+  /// This person's cover face, resolved up front by [personCoversProvider] —
+  /// see [FaceAvatar.cover].
+  final CoverFace? cover;
   final bool selecting;
   final bool selected;
   final VoidCallback onToggle;
@@ -267,7 +277,11 @@ class _PersonCard extends StatelessWidget {
                     child: Stack(
                       children: [
                         Positioned.fill(
-                          child: FaceAvatar(personId: person.id, size: edge),
+                          child: FaceAvatar(
+                            personId: person.id,
+                            size: edge,
+                            cover: cover,
+                          ),
                         ),
                         // Always built, never conditional, so the tree shape is
                         // stable across selection changes.

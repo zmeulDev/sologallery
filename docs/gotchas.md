@@ -129,6 +129,13 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   space off 512 and break avatars, or shrink OCR again). Both are still bounded
   thumbnails, never the original. Host tests use fake (undecodable) bytes, so
   avatar geometry only shows on-device — validate people avatars on a real device.
+  **At runtime ML Kit's bundled Google `datatransport` (Firelog) keeps trying to
+  upload usage telemetry** — logcat shows repeated `W/TransportRuntime: Error
+  scheduling event ConnectivityService: Neither user … nor current process has
+  android.permission.ACCESS_NETWORK_STATE`. This is *expected and harmless*: the
+  SDK attempts it, the manifest strip (no `INTERNET`/`ACCESS_NETWORK_STATE`)
+  blocks it, so nothing leaves the device. Treat the line as *proof* the network
+  strip is holding, not a bug — don't "fix" it by granting the permission.
 - **`thumbnail(id, N, N)` is aspect-*fill*: the returned image's SHORT edge is
   N, the long edge is larger.** A 4:3 photo requested at 512 comes back
   **683×512**, at 1024 comes back 1365×1024 — it is not square, and it is *not*
@@ -213,6 +220,20 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   grepping unfiltered logcat for `vision`/`face`: unrelated system chatter
   ("provisioning", "Surface") matches and inflates the count into false
   evidence.
+- **`D/HWUI: Failed to create image decoder with message 'unimplemented'` is
+  benign** — Android's hardware UI pipeline logs this when its GPU-backed
+  decoder path isn't implemented for the requested codec (commonly seen on
+  Pixel 9 Pro XL / Android 16+ for HEIC + JPEG swap chains). The renderer
+  falls back to the software decoder and the image still draws; the bytes
+  count in the matching `[SoloGallery.photos] previewImage(...) bytes=…`
+  line is non-zero, and the corresponding `detailImageProvider` /
+  `adjacentThumbnailProvider` lines land. Don't grep this as an error, don't
+  suppress it (the engine routes the fallback through it), and don't be
+  tempted to grant GPU decoder permissions to silence it — there are none to
+  grant, and the log is a real-world signal of HWUI's codec-coverage gaps.
+  Verified on the 2026-07-27 iOS-asset-id-encoding session with
+  `1000005645` (MediaStore id) → 5 of these lines → image still rendered in
+  ~951ms.
 
 ---
 
@@ -787,3 +808,36 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   Phase-5 icon-family swap left every golden byte-identical (md5-verified),
   which is the *expected* outcome, not a missed regen. Goldens verify layout/
   color only; verify glyph shapes on device (or by eye in the running app).
+
+---
+
+## Release / Play signing
+
+- **Lost upload keystore is fatal without Play App Signing, recoverable
+  with it.** A lost upload key normally means the app's identity on Play
+  is unrecoverable — Google cannot retrieve it and you cannot push
+  updates under the same `applicationId`. Enable Play App Signing in
+  Play Console (Setup → App signing) before any production upload: Google
+  holds the app-signing key as the source of truth, and the upload key
+  becomes replaceable (Setup → App signing → Request upload key reset).
+  The first upload must still be signed with a key whose SHA-256 you can
+  prove, so the upload keystore still needs an offline backup — but a
+  later loss is no longer fatal.
+- **`keytool` defaults to 90-day validity, which Play rejects.** A Play
+  upload keystore must be valid for at least ~25 years. Always pass
+  `-validity 10950` (days) to `keytool -genkey`. Also: the JBR's
+  `keytool` silently ignores `-storetype JKS` (its engine-load stack
+  shows `PKCS12KeyStore` regardless); use `-storetype pkcs12` to match
+  what the JBR actually creates. AGP's signing config accepts both
+  PKCS12 and JKS.
+- **The JBR's `keytool` needs `DYLD_LIBRARY_PATH` set to run from a
+  shell on macOS.** A bare `/Applications/Android Studio.app/Contents/
+  jbr/Contents/Home/bin/keytool` fails with "Unable to locate a Java
+  Runtime" because macOS's hardened-runtime policy blocks the
+  embedded `@rpath` lookup of `libjli.dylib`. The Flutter CLI sets
+  `JAVA_HOME` for you, so `flutter build appbundle` works; a bare
+  `keytool` does not. Set `JAVA_HOME=/Applications/Android Studio.app/
+  Contents/jbr/Contents/Home` and `DYLD_LIBRARY_PATH="$JAVA_HOME/lib"`
+  before invoking `keytool` directly. The `DYLD_LIBRARY_PATH` only
+  points dyld at the JBR's own `lib/`, not system libraries, so it's
+  safe.

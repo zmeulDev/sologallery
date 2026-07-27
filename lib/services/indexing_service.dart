@@ -732,23 +732,30 @@ class IndexingService {
     final all = await faces.allFacesForClustering();
     if (all.isEmpty) return;
     final input = [for (final f in all) (id: f.id, embedding: f.embedding)];
-    final groups = await Isolate.run(() => clusterAll(input));
-    final plan = planClusters(
-      groups: groups,
-      faceMeta: {
-        for (final f in all) f.id: (personId: f.personId, assetId: f.assetId),
-      },
-      persons: {
-        for (final p in await faces.allPersons())
-          p.id: (displayName: p.displayName, coverAssetId: p.coverAssetId),
-      },
+    final faceMeta = {
+      for (final f in all) f.id: (personId: f.personId, assetId: f.assetId),
+    };
+    final personsMeta = {
+      for (final p in await faces.allPersons())
+        p.id: (displayName: p.displayName, coverAssetId: p.coverAssetId),
+    };
+    // Both clusterAll (quadratic in face count) and planClusters
+    // (faces×groups) are pure functions of the plain data gathered above, so
+    // the whole planning pass — not just clustering — goes to a worker
+    // isolate; neither may run on the caller's (UI) isolate.
+    final plan = await Isolate.run(
+      () => planClusters(
+        groups: clusterAll(input),
+        faceMeta: faceMeta,
+        persons: personsMeta,
+      ),
     );
     if (_cancelled) return;
     await faces.rebuildClusters(plan);
     await settings.put(_reclusterBaselineKey, total.toString());
     await settings.put(_clusterAlgoKey, _clusterAlgoVersion);
     _log.info(
-      'Global re-cluster: ${all.length} face(s) -> ${groups.length} person(s)',
+      'Global re-cluster: ${all.length} face(s) -> ${plan.length} person(s)',
     );
   }
 

@@ -109,7 +109,22 @@
       "Bash(~/Library/Android/sdk/platform-tools/adb -s 46121FDAS008AA devices)",
       "Bash(~/Library/Android/sdk/platform-tools/adb -s 46121FDAS008AA shell pm list packages)",
       "Bash(~/Library/Android/sdk/platform-tools/adb -s 46121FDAS008AA shell ps -A)",
-      "Bash(~/Library/Android/sdk/platform-tools/adb -s 46121FDAS008AA logcat -d -T \"2m ago\" -s flutter:I SoloGallery:V)"
+      "Bash(~/Library/Android/sdk/platform-tools/adb -s 46121FDAS008AA logcat -d -T \"2m ago\" -s flutter:I SoloGallery:V)",
+      "Bash(git --no-pager diff --stat)",
+      "Bash(git *)",
+      "Bash(xcrun simctl *)",
+      "Bash(xcodebuild -workspace /Users/zml-m4/Dev/sologallery/ios/Runner.xcworkspace -scheme Runner -showdestinations)",
+      "Bash(xcodebuild -workspace Runner.xcworkspace -scheme Runner -configuration Debug -destination \"platform=iOS Simulator,id=3F874713-6647-4A03-A54E-A090E3124098\" -derivedDataPath build/derived build)",
+      "Bash(xcodebuild -workspace Runner.xcworkspace -scheme Runner -showdestinations -destination \"platform=iOS Simulator,id=3F874713-6647-4A03-A54E-A090E3124098\")",
+      "Bash(xcodebuild -workspace Runner.xcworkspace -scheme Runner -showdestinations)",
+      "Bash(xcodebuild -workspace /Users/zml-m4/Dev/sologallery/ios/Runner.xcworkspace -scheme Runner -configuration Debug -destination \"platform=iOS Simulator,id=3F874713-6647-4A03-A54E-A090E3124098\" -derivedDataPath /Users/zml-m4/Dev/sologallery/ios/build/derived build)",
+      "Bash(flutter clean *)",
+      "Bash(pod install *)",
+      "Bash(xcodebuild -workspace /Users/zml-m4/Dev/sologallery/ios/Runner.xcworkspace -scheme Runner -configuration Debug -sdk iphonesimulator -destination \"generic/platform=iOS Simulator\" -derivedDataPath /Users/zml-m4/Dev/sologallery/ios/build/derived clean build)",
+      "Bash(lipo -info /Users/zml-m4/Dev/sologallery/ios/build/derived/Build/Products/Debug-iphonesimulator/Runner.app/Runner)",
+      "Bash(lipo -info /Users/zml-m4/Dev/sologallery/ios/build/derived/Build/Products/Debug-iphonesimulator/google_mlkit_commons.framework/google_mlkit_commons)",
+      "Bash(lipo -info /Users/zml-m4/Dev/sologallery/ios/build/derived/Build/Products/Debug-iphonesimulator/MLKitCommon.framework/MLKitCommon)",
+      "Bash(xargs -I {} sh -c 'echo \"--- $\\(basename {}\\) ---\"; lipo -info {}/$\\(basename {}\\) 2>&1')"
     ]
   }
 }

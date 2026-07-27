@@ -63,6 +63,9 @@ void main() {
           personSummariesProvider.overrideWith((ref) => Stream.value(people)),
           // Avatars resolve to the placeholder — no DB/thumbnail needed here.
           personCoverProvider.overrideWith((ref, id) async => null),
+          // The grid resolves covers in one batch (B2); stub it too so no real
+          // database gets touched by this widget test.
+          personCoversProvider.overrideWith((ref) async => const {}),
           peopleActionsProvider.overrideWithValue(actions),
         ],
         child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),

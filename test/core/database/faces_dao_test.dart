@@ -232,6 +232,52 @@ void main() {
     });
   });
 
+  // The People grid/strip resolve every visible avatar's cover in one batch
+  // instead of one `coverFace` query per cell as it scrolls in (B2). This just
+  // reuses `coverFace`, so these pin that the batch agrees with it face-for-
+  // face rather than re-testing cover selection itself.
+  group('coverFacesFor', () {
+    test('returns the same cover coverFace would, for each id', () async {
+      await asset('a');
+      await asset('b', at: DateTime(2026, 7, 1));
+      await db.facesDao.insertFaces('a', [face([1, 0])]);
+      await db.facesDao.insertFaces('b', [face([0, 1])]);
+      final p1 = await db.facesDao.createPerson(coverAssetId: 'a');
+      final p2 = await db.facesDao.createPerson(coverAssetId: 'b');
+      for (final f in await db.facesDao.unclusteredFaces()) {
+        await db.facesDao.assignPersonToFace(f.id, f.assetId == 'a' ? p1 : p2);
+      }
+
+      final batch = await db.facesDao.coverFacesFor([p1, p2]);
+      final individually = {
+        p1: await db.facesDao.coverFace(p1),
+        p2: await db.facesDao.coverFace(p2),
+      };
+      expect(batch[p1]!.assetId, individually[p1]!.assetId);
+      expect(batch[p1]!.left, closeTo(individually[p1]!.left, 1e-9));
+      expect(batch[p2]!.assetId, individually[p2]!.assetId);
+      expect(batch[p2]!.left, closeTo(individually[p2]!.left, 1e-9));
+    });
+
+    test('omits people with no face', () async {
+      final withFace = await db.facesDao.createPerson(coverAssetId: 'a');
+      await asset('a');
+      await db.facesDao.insertFaces('a', [face([1, 0])]);
+      for (final f in await db.facesDao.unclusteredFaces()) {
+        await db.facesDao.assignPersonToFace(f.id, withFace);
+      }
+      final orphan = await db.facesDao.createPerson(); // no faces at all
+
+      final batch = await db.facesDao.coverFacesFor([withFace, orphan]);
+      expect(batch.keys, [withFace]);
+      expect(batch.containsKey(orphan), isFalse);
+    });
+
+    test('an empty id list returns an empty map', () async {
+      expect(await db.facesDao.coverFacesFor(const []), isEmpty);
+    });
+  });
+
   group('user merges', () {
     // Two clusters of the same person that clustering keeps apart — the real
     // case is one man with and without sunglasses.

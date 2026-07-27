@@ -13,7 +13,7 @@ import '../domain/masonry_layout.dart';
 /// having to materialise children to find out. A `Column`-of-`Column`s masonry
 /// would be far shorter and would build every favorite on first frame.
 class MasonryGridDelegate extends SliverGridDelegate {
-  const MasonryGridDelegate({
+  MasonryGridDelegate({
     required this.items,
     required this.columns,
     required this.gutter,
@@ -25,9 +25,30 @@ class MasonryGridDelegate extends SliverGridDelegate {
   final int columns;
   final double gutter;
 
+  // `RenderSliverGrid.performLayout` calls `getLayout` on every layout pass —
+  // i.e. every scroll frame, not just when the inputs change — so without a
+  // memo this recomputed `layoutMasonry` (O(n) over every favorite) plus the
+  // `_MasonryGridLayout` constructor's own O(n) `_columnMembers` pass on each
+  // frame. `shouldRelayout` only gates whether the *sliver* asks again, not
+  // whether this delegate is a fresh instance; caching here is what makes a
+  // reused instance cheap to re-query.
+  //
+  // Keying on `crossAxisExtent` alone is safe because a delegate instance is
+  // only ever reused while `items`/`columns`/`gutter` are unchanged — the
+  // widget above hoists the delegate into `State` and only rebuilds it when
+  // the favorites' content actually changes (see `_SavedGrid`). So across all
+  // the frames a single instance sees, `crossAxisExtent` is the only input
+  // that can vary.
+  _MasonryGridLayout? _cachedLayout;
+  double? _cachedExtent;
+
   @override
   SliverGridLayout getLayout(SliverConstraints constraints) {
-    return _MasonryGridLayout(
+    final cached = _cachedLayout;
+    if (cached != null && _cachedExtent == constraints.crossAxisExtent) {
+      return cached;
+    }
+    final layout = _MasonryGridLayout(
       layout: layoutMasonry(
         items: items,
         columns: columns,
@@ -37,6 +58,9 @@ class MasonryGridDelegate extends SliverGridDelegate {
       columns: columns,
       gutter: gutter,
     );
+    _cachedLayout = layout;
+    _cachedExtent = constraints.crossAxisExtent;
+    return layout;
   }
 
   @override

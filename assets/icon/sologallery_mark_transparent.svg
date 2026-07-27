@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="130 130 252 252" role="img"><title>SoloGallery mark</title><desc>Three offset cards; the front card shows a red sun above an ink ridge.</desc><defs><clipPath id="frontCard"><rect x="137" y="185" width="190" height="190" rx="30"/></clipPath></defs><rect x="185" y="137" width="190" height="190" rx="30" fill="#4A4A46"/>
+<rect x="161" y="161" width="190" height="190" rx="30" fill="#8A8A84"/>
+<rect x="137" y="185" width="190" height="190" rx="30" fill="#F5F5F3"/>
+<g clip-path="url(#frontCard)">
+<circle cx="200" cy="243" r="34" fill="#D9452E"/>
+<path d="M137 356 L182 312 L222 344 L272 302 L327 348 L327 375 L137 375 Z" fill="#111110"/>
+</g></svg>

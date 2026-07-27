@@ -7,9 +7,12 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../services/permission_provider.dart' show photoLibraryServiceProvider;
+import '../../services/thumbnail_provider.dart';
 import '../../widgets/asset_thumbnail.dart';
 import '../../widgets/circle_icon_button.dart';
 import '../../widgets/empty_state.dart';
+import '../detail/detail_providers.dart';
 import '../detail/photo_viewer_args.dart';
 import 'albums_providers.dart';
 
@@ -216,13 +219,13 @@ class _HeroAppBar extends StatelessWidget {
 /// Three-column square grid of the album's photos. Each cell clips to the
 /// app's standard `br12` photo radius and opens the detail viewer swiping
 /// across this album.
-class _Grid extends StatelessWidget {
+class _Grid extends ConsumerWidget {
   const _Grid({required this.assetIds});
 
   final List<String> assetIds;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return SliverPadding(
       padding: EdgeInsets.fromLTRB(
         AppSpace.s4,
@@ -238,10 +241,24 @@ class _Grid extends StatelessWidget {
         ),
         delegate: SliverChildBuilderDelegate(
           (context, i) => GestureDetector(
-            onTap: () => context.push(
-              '/photo/${assetIds[i]}',
-              extra: PhotoViewerArgs(assetIds, i),
-            ),
+            onTap: () {
+              final id = assetIds[i];
+              final thumb = ref.read(
+                thumbnailProvider(
+                  ThumbnailRequest(id, width: 400, height: 400),
+                ),
+              );
+              // Warm the high-res image before the push so the detail page
+              // hits the cache.
+              ref
+                  .read(photoLibraryServiceProvider)
+                  .previewImage(id, kDetailImageMaxEdge)
+                  .ignore();
+              context.push(
+                '/photo/${Uri.encodeComponent(id)}',
+                extra: PhotoViewerArgs(assetIds, i, initialBytes: thumb.value),
+              );
+            },
             child: ClipRRect(
               borderRadius: AppRadius.br12,
               child: AssetThumbnail(

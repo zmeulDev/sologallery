@@ -31,11 +31,35 @@ class ThumbnailGate {
   int _active = 0;
   final Queue<Completer<void>> _waiting = Queue<Completer<void>>();
 
+  /// Callers parked on [whenQuiet] until this gate next drains fully.
+  final List<Completer<void>> _quietWaiters = <Completer<void>>[];
+
   /// Held slots — running tasks. Exposed for tests.
   int get active => _active;
 
   /// Requests queued behind [maxConcurrent]. Exposed for tests.
   int get waiting => _waiting.length;
+
+  /// No decode running or queued right now.
+  bool get isQuiet => _active == 0 && _waiting.isEmpty;
+
+  /// Completes the next time this gate has nothing running or queued — i.e. a
+  /// foreground grid decode burst has fully drained. Resolves immediately if
+  /// already quiet.
+  ///
+  /// Background indexing awaits this before submitting its own decode so it
+  /// yields the shared native decode pool (Android: Glide's thread pool) to an
+  /// active grid, per CLAUDE.md's "speed and UX come first / move work to
+  /// background when idle". A single indexing decode may still overlap the next
+  /// grid cell — the burst refills faster than this races — which is harmless;
+  /// what it prevents is a whole indexing pass grinding against a "View all"
+  /// screenful on the same native decoders (see docs/plans/…-latency.md).
+  Future<void> whenQuiet() {
+    if (isQuiet) return Future<void>.value();
+    final waiter = Completer<void>();
+    _quietWaiters.add(waiter);
+    return waiter.future;
+  }
 
   /// Runs [task] once a slot is free, returning null instead if [cancelled]
   /// reports the caller has gone away — checked both before queueing and again
@@ -73,6 +97,13 @@ class ThumbnailGate {
       _waiting.removeLast().complete();
     } else {
       _active--;
+    }
+    if (isQuiet && _quietWaiters.isNotEmpty) {
+      final waiters = List<Completer<void>>.of(_quietWaiters);
+      _quietWaiters.clear();
+      for (final w in waiters) {
+        w.complete();
+      }
     }
   }
 }

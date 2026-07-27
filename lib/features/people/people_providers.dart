@@ -47,6 +47,18 @@ final personCoverProvider =
   (ref, id) => ref.watch(facesDaoProvider).coverFace(id),
 );
 
+/// Cover faces for every person in [personSummariesProvider], resolved in one
+/// batch so avatar cells don't each hit the DB as they scroll in (B2). Keyed by
+/// person id; a person with no face is absent.
+final personCoversProvider =
+    FutureProvider.autoDispose<Map<int, CoverFace>>((ref) async {
+  final summaries = await ref.watch(personSummariesProvider.future);
+  if (summaries.isEmpty) return const {};
+  return ref
+      .watch(facesDaoProvider)
+      .coverFacesFor([for (final p in summaries) p.id]);
+});
+
 /// The clusters the user merged into this person — empty for almost everyone,
 /// so the "separate" action only appears where it means something.
 final mergedPeopleProvider =

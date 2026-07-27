@@ -385,4 +385,16 @@ class FacesDao extends DatabaseAccessor<AppDatabase> with _$FacesDaoMixin {
       bottom: row.bottom,
     );
   }
+
+  /// The cover face for each of [personIds], resolved concurrently — the People
+  /// grid/strip fetch all covers once instead of one query fan-out per avatar
+  /// cell as it scrolls in. People with no face are omitted from the map.
+  Future<Map<int, ({String assetId, double left, double top, double right, double bottom})>>
+      coverFacesFor(List<int> personIds) async {
+    final entries = await Future.wait([
+      for (final id in personIds)
+        coverFace(id).then((c) => c == null ? null : MapEntry(id, c)),
+    ]);
+    return {for (final e in entries) if (e != null) e.key: e.value};
+  }
 }

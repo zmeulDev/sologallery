@@ -268,9 +268,16 @@ class FakePhotoLibraryService extends PhotoLibraryService {
     return previewBytes ?? thumbnailBytes;
   }
 
+  /// Every id [videoDuration] was called with, in call order — lets a test
+  /// prove the platform round-trip was (or wasn't) reached, e.g. the
+  /// `videoDurationProvider` cache gate skipping it for photos (B6).
+  final List<String> videoDurationCalls = [];
+
   @override
-  Future<Duration?> videoDuration(String assetId) async =>
-      videoDurations[assetId];
+  Future<Duration?> videoDuration(String assetId) async {
+    videoDurationCalls.add(assetId);
+    return videoDurations[assetId];
+  }
 
   @override
   Future<bool> isVideoAsset(String assetId) async =>
