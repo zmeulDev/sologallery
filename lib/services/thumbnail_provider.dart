@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 
+import '../core/database/database_provider.dart';
 import 'permission_provider.dart';
 
 /// Identifies a thumbnail request. Value-equal so Riverpod's family cache reuses
@@ -80,8 +81,15 @@ final adjacentThumbnailProvider =
 /// Clip length for a video asset, or null for images. Drives the grid duration
 /// badge (see [AssetThumbnail]). `autoDispose` and keyed by id so it rides the
 /// same warm entity the thumbnail already resolved. Overridable in tests.
+///
+/// Every grid cell watches this, including the overwhelming majority that are
+/// photos, so it checks the cached `isVideo` flag first (a cheap in-process DB
+/// lookup) and only falls through to the platform round-trip for actual
+/// videos — see B6.
 final videoDurationProvider =
     FutureProvider.autoDispose.family<Duration?, String>(
-  (ref, assetId) =>
-      ref.read(photoLibraryServiceProvider).videoDuration(assetId),
+  (ref, assetId) async {
+    if (!await ref.read(indexDaoProvider).isVideoInCache(assetId)) return null;
+    return ref.read(photoLibraryServiceProvider).videoDuration(assetId);
+  },
 );

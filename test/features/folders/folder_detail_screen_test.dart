@@ -1,7 +1,10 @@
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sologallery/core/database/app_database.dart';
+import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/folders/folder_detail_screen.dart';
 import 'package:sologallery/services/permission_provider.dart';
@@ -28,6 +31,11 @@ void main() {
         ),
       ],
     );
+    // FolderDetailScreen's AssetGrid always passes showVideoBadge: true, so
+    // videoDurationProvider needs a real (empty) indexDaoProvider to check —
+    // a cache miss resolves to "not a video".
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -35,6 +43,7 @@ void main() {
             FakePhotoLibraryService(folderAssetsById: {'cam': assets})
               ..failFolderAssets = fail,
           ),
+          databaseProvider.overrideWithValue(db),
         ],
         child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
       ),
@@ -62,11 +71,14 @@ void main() {
   });
 
   testWidgets('shows a spinner while the first page loads', (tester) async {
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           photoLibraryServiceProvider
               .overrideWithValue(FakePhotoLibraryService()),
+          databaseProvider.overrideWithValue(db),
         ],
         child: MaterialApp(
           theme: AppTheme.light, // CenteredNote reads the AppTextStyles extension

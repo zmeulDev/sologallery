@@ -589,6 +589,11 @@ void main() {
         overrides: [
           for (final id in [1, 2, 3, 4])
             personCoverProvider(id).overrideWith((ref) async => null),
+          // PeopleStrip now resolves every visible cover in one batch (B2)
+          // instead of each FaceAvatar reading personCoverProvider on its
+          // own; stub the batch too so this stays a pure widget test with no
+          // real database underneath it.
+          personCoversProvider.overrideWith((ref) async => const {}),
         ],
         child: PeopleStrip(
           people: const [

@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:io' show File, Platform;
 import 'dart:typed_data';
 import 'dart:ui' show Rect;
@@ -10,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 import '../features/search/domain/search_date.dart';
 import 'adjacent_thumbnail_cache.dart';
 import 'detail_preview_cache.dart';
+import 'thumbnail_disk_cache.dart';
 import 'thumbnail_gate.dart';
 
 /// Coarse photo-library access state, mapped from `photo_manager`'s
@@ -114,12 +116,19 @@ class AssetDetail {
 /// and album queries, and thumbnail requests go through here — UI and other
 /// layers never import `photo_manager` directly (see docs/spec.md#architecture).
 class PhotoLibraryService {
-  PhotoLibraryService();
+  PhotoLibraryService({ThumbnailDiskCache? thumbnailDiskCache})
+      : _thumbnailDiskCache =
+            thumbnailDiskCache ?? ThumbnailDiskCache.appSupport();
 
   static final _log = Logger('SoloGallery.photos');
   final _detailPreviewCache = DetailPreviewCache();
   final _adjacentThumbnailCache = AdjacentThumbnailCache();
   final Map<String, Future<Uint8List?>> _previewPending = {};
+
+  /// Persistent grid-thumbnail bytes, so a section opened for the first time
+  /// *ever* re-decodes but every later open (incl. after a restart) is a file
+  /// read — see [ThumbnailDiskCache] and thumbnail().
+  final ThumbnailDiskCache _thumbnailDiskCache;
 
   /// Maps a raw plugin [PermissionState] onto our coarse [PhotoAccess].
   static PhotoAccess accessFromState(PermissionState state) {
@@ -545,9 +554,14 @@ class PhotoLibraryService {
   /// (Absolute rules) — the detail viewer requests a screen-capped size, the
   /// grid a cell-sized one.
   ///
-  /// Pass [indexing] true for the background indexer's own thumbnails so they
-  /// use a separate pool ([_indexingGate]) and don't take slots from the grid's
-  /// gate mid-fling.
+  /// Grid requests (the default, `indexing: false`) are backed by the
+  /// persistent [ThumbnailDiskCache]: a hit returns file bytes without touching
+  /// the native decoder, a miss decodes once and persists (see [_gridThumbnail]).
+  ///
+  /// Pass [indexing] true for the background indexer's own ML thumbnails (512 /
+  /// 1024): they use a separate pool ([_indexingGate]), yield the native decode
+  /// pool to an active grid, and are **not** persisted — each is consumed once by
+  /// the analysis pass and never re-read, so caching them would only waste disk.
   Future<Uint8List?> thumbnail(
     String assetId,
     int width,
@@ -555,13 +569,52 @@ class PhotoLibraryService {
     bool Function()? cancelled,
     bool indexing = false,
   }) {
-    final gate = indexing ? _indexingGate : _thumbnailGate;
-    return gate.run(() async {
-      final entity = await _entity(assetId);
-      if (entity == null) return null;
-      return entity.thumbnailDataWithSize(ThumbnailSize(width, height));
-    }, cancelled: cancelled);
+    if (indexing) {
+      return _indexingGate.run(() async {
+        // Yield the shared native decode pool (Android: Glide's thread pool) to
+        // any in-flight foreground grid burst — e.g. a "View all" screenful —
+        // before submitting ours. The separate gates cap Dart-side concurrency
+        // but both bottom out on the same native decoders, so a pass opening
+        // over a fresh grid would otherwise steal decode threads from the cells
+        // the user is looking at (docs/plans/month-grid-thumbnail-latency.md).
+        await _thumbnailGate.whenQuiet();
+        final entity = await _entity(assetId);
+        if (entity == null) return null;
+        return entity.thumbnailDataWithSize(ThumbnailSize(width, height));
+      }, cancelled: cancelled);
+    }
+    return _thumbnailGate.run(
+      () => _gridThumbnail(assetId, width, height),
+      cancelled: cancelled,
+    );
   }
+
+  /// The grid-cell decode path: return the persisted thumbnail if we have it,
+  /// otherwise decode it natively (the expensive Glide downsample of the
+  /// original) and persist the bytes so the next open — this session or a later
+  /// launch — is a plain file read. Grid requests are always square
+  /// (`width == height`), so the disk key uses `width` as the size dimension.
+  ///
+  /// The persist is fire-and-forget: a slow or failing disk write must not hold
+  /// up the cell, which already has its bytes.
+  Future<Uint8List?> _gridThumbnail(String assetId, int width, int height) async {
+    final entity = await _entity(assetId);
+    if (entity == null) return null;
+    final signature = entity.modifiedDateSecond ?? 0;
+    final cached = await _thumbnailDiskCache.get(assetId, width, signature);
+    if (cached != null) return cached;
+    final bytes = await entity.thumbnailDataWithSize(ThumbnailSize(width, height));
+    if (bytes != null) {
+      unawaited(_thumbnailDiskCache.put(assetId, width, signature, bytes));
+    }
+    return bytes;
+  }
+
+  /// Empties the persistent grid-thumbnail cache — for a settings "clear cache"
+  /// action or a wholesale library reset. Individual edited/replaced assets
+  /// invalidate themselves through the `modifiedDateSecond` signature in the
+  /// cache key, so this is only for a deliberate full wipe.
+  Future<void> clearThumbnailDiskCache() => _thumbnailDiskCache.clear();
 
   /// A high-quality, screen-sized preview for the detail viewer — the whole
   /// image, uncropped, capped at [maxEdge] px on its longest side. Uses `fit`

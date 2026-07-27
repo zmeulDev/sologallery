@@ -1,9 +1,12 @@
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sologallery/core/database/app_database.dart';
 import 'package:sologallery/core/database/daos/albums_dao.dart'
     show AlbumSummary;
+import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/albums/widgets/album_card.dart';
 import 'package:sologallery/services/permission_provider.dart';
@@ -20,12 +23,18 @@ import '../support/fake_photo_library_service.dart';
 /// rather than re-checking one of them.
 void main() {
   Future<void> pump(WidgetTester tester, Widget child) async {
+    // The AssetGrid case renders showVideoBadge: true cells, so
+    // videoDurationProvider needs a real (empty) indexDaoProvider to check —
+    // a cache miss resolves to "not a video".
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           photoLibraryServiceProvider.overrideWithValue(
             FakePhotoLibraryService(),
           ),
+          databaseProvider.overrideWithValue(db),
         ],
         child: MaterialApp.router(
           theme: AppTheme.light,

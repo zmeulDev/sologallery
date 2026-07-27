@@ -1,9 +1,27 @@
+import 'dart:async';
+
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sologallery/core/database/app_database.dart';
+import 'package:sologallery/core/database/daos/index_dao.dart'
+    show FavoriteAsset, IndexDao;
 import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/features/saved/saved_providers.dart';
+
+/// A fake [IndexDao] whose favorites stream is fully controlled by the test,
+/// so `savedFavoritesProvider`'s `distinct(listEquals)` can be asserted
+/// against a stream shaped exactly like Drift's real re-emission behaviour
+/// (a fresh `List<FavoriteAsset>` per emission) without depending on Drift's
+/// own re-emission timing.
+class _FakeIndexDao extends IndexDao {
+  _FakeIndexDao(super.db, this._stream);
+
+  final Stream<List<FavoriteAsset>> _stream;
+
+  @override
+  Stream<List<FavoriteAsset>> watchFavoritesInCache() => _stream;
+}
 
 void main() {
   late AppDatabase db;
@@ -58,4 +76,54 @@ void main() {
     final rows = await makeContainer().read(savedFavoritesProvider.future);
     expect(rows.map((f) => f.assetId).toList(), ['kept']);
   });
+
+  test(
+    'savedFavoritesProvider drops a duplicate emission and propagates a '
+    'changed one',
+    () async {
+      final controller = StreamController<List<FavoriteAsset>>();
+      addTearDown(controller.close);
+      final container = ProviderContainer(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          indexDaoProvider.overrideWithValue(
+            _FakeIndexDao(db, controller.stream),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final emissions = <List<FavoriteAsset>>[];
+      container.listen(savedFavoritesProvider, (_, next) {
+        next.whenData(emissions.add);
+      });
+
+      FavoriteAsset favorite({int height = 150}) => (
+        assetId: 'a1',
+        favoritedAt: DateTime(2024, 1, 2),
+        width: 100,
+        height: height,
+      );
+
+      // Two structurally-equal but separately-allocated lists — matching how
+      // Drift re-runs and re-emits the real join on every unrelated
+      // photo_asset write, even when its result hasn't actually changed.
+      controller.add([favorite()]);
+      await pumpEventQueue();
+      controller.add([favorite()]);
+      await pumpEventQueue();
+      expect(
+        emissions.length,
+        1,
+        reason: 'the byte-for-byte-identical re-emission is dropped',
+      );
+
+      // A genuine change — here, cached dimensions resolving to a new value —
+      // must still propagate.
+      controller.add([favorite(height: 200)]);
+      await pumpEventQueue();
+      expect(emissions.length, 2);
+      expect(emissions.last.single.height, 200);
+    },
+  );
 }

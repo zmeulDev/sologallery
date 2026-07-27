@@ -129,6 +129,13 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   space off 512 and break avatars, or shrink OCR again). Both are still bounded
   thumbnails, never the original. Host tests use fake (undecodable) bytes, so
   avatar geometry only shows on-device — validate people avatars on a real device.
+  **At runtime ML Kit's bundled Google `datatransport` (Firelog) keeps trying to
+  upload usage telemetry** — logcat shows repeated `W/TransportRuntime: Error
+  scheduling event ConnectivityService: Neither user … nor current process has
+  android.permission.ACCESS_NETWORK_STATE`. This is *expected and harmless*: the
+  SDK attempts it, the manifest strip (no `INTERNET`/`ACCESS_NETWORK_STATE`)
+  blocks it, so nothing leaves the device. Treat the line as *proof* the network
+  strip is holding, not a bug — don't "fix" it by granting the permission.
 - **`thumbnail(id, N, N)` is aspect-*fill*: the returned image's SHORT edge is
   N, the long edge is larger.** A 4:3 photo requested at 512 comes back
   **683×512**, at 1024 comes back 1365×1024 — it is not square, and it is *not*

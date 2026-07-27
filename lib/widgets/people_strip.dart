@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/database/daos/faces_dao.dart' show PersonSummary;
 import '../core/theme/app_radius.dart';
 import '../core/theme/app_space.dart';
 import '../core/theme/app_text_styles.dart';
+import '../features/people/people_providers.dart';
 import '../features/people/widgets/face_avatar.dart';
 import 'app_button.dart';
 import 'app_card.dart';
@@ -28,7 +30,7 @@ import 'section_header.dart';
 /// The photo count is not shown here — it lives on `/people`, where a second
 /// line has room; two stacked lines under a circle is what makes this row's
 /// height fragile (below).
-class PeopleStrip extends StatelessWidget {
+class PeopleStrip extends ConsumerWidget {
   const PeopleStrip({super.key, required this.people});
 
   final List<PersonSummary> people;
@@ -46,9 +48,13 @@ class PeopleStrip extends StatelessWidget {
   static const double _captionLineHeight = 1.45;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final styles = Theme.of(context).extension<AppTextStyles>()!;
     final captionSize = styles.caption.fontSize ?? 11;
+    // Resolved once for the whole row, instead of each tile's avatar hitting
+    // the DB on its own as it scrolls into view (B2).
+    final covers =
+        ref.watch(personCoversProvider).value ?? const <int, CoverFace>{};
 
     // A horizontal ListView constrains its children's height *tightly*, so this
     // height is the tile's height, not a maximum — a caption that doesn't fit
@@ -95,6 +101,7 @@ class PeopleStrip extends StatelessWidget {
                         const SizedBox(width: AppSpace.s20),
                     itemBuilder: (context, i) => _PersonTile(
                       person: people[i],
+                      cover: covers[people[i].id],
                       size: _avatarSize,
                       captionBand: band,
                       captionGap: _captionGap,
@@ -113,12 +120,17 @@ class PeopleStrip extends StatelessWidget {
 class _PersonTile extends StatelessWidget {
   const _PersonTile({
     required this.person,
+    this.cover,
     required this.size,
     required this.captionBand,
     required this.captionGap,
   });
 
   final PersonSummary person;
+
+  /// This person's cover face, resolved up front by [personCoversProvider] —
+  /// see [FaceAvatar.cover].
+  final CoverFace? cover;
   final double size;
 
   /// Height reserved under the circle for the caption line, gap included. Zero
@@ -154,7 +166,7 @@ class _PersonTile extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
-              FaceAvatar(personId: person.id, size: size),
+              FaceAvatar(personId: person.id, size: size, cover: cover),
               // The band is fixed for the whole row, so a named and an unnamed
               // tile stay the same height and the circles line up.
               if (captionBand > 0)

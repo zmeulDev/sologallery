@@ -1,9 +1,12 @@
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sologallery/core/database/app_database.dart';
 import 'package:sologallery/core/database/daos/memories_dao.dart'
     show MemorySummary;
+import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/library/domain/year_month.dart';
 import 'package:sologallery/features/library/library_providers.dart';
@@ -70,12 +73,19 @@ void main() {
       ],
     );
 
+    // The home previews render with showVideoBadge: true, so
+    // videoDurationProvider needs a real (empty) indexDaoProvider to check —
+    // a cache miss resolves to "not a video". The rest of the library
+    // providers below are overridden directly, bypassing the DB.
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           photoLibraryServiceProvider.overrideWithValue(
             FakePhotoLibraryService(access: PhotoAccess.granted),
           ),
+          databaseProvider.overrideWithValue(db),
           libraryCacheReadyProvider.overrideWithValue(const AsyncData(true)),
           memoriesProvider.overrideWithValue(
             AsyncData(withMemories ? memories : const <MemorySummary>[]),

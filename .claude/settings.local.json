@@ -109,7 +109,9 @@
       "Bash(~/Library/Android/sdk/platform-tools/adb -s 46121FDAS008AA devices)",
       "Bash(~/Library/Android/sdk/platform-tools/adb -s 46121FDAS008AA shell pm list packages)",
       "Bash(~/Library/Android/sdk/platform-tools/adb -s 46121FDAS008AA shell ps -A)",
-      "Bash(~/Library/Android/sdk/platform-tools/adb -s 46121FDAS008AA logcat -d -T \"2m ago\" -s flutter:I SoloGallery:V)"
+      "Bash(~/Library/Android/sdk/platform-tools/adb -s 46121FDAS008AA logcat -d -T \"2m ago\" -s flutter:I SoloGallery:V)",
+      "Bash(git --no-pager diff --stat)",
+      "Bash(git *)"
     ]
   }
 }

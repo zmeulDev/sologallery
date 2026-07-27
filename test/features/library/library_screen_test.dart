@@ -1,7 +1,10 @@
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sologallery/core/database/app_database.dart';
+import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/library/domain/library_filter.dart';
 import 'package:sologallery/features/library/domain/year_month.dart';
@@ -66,6 +69,12 @@ void main() {
     ];
 
     final fake = FakePhotoLibraryService(access: access);
+    // The home previews render with showVideoBadge: true, so
+    // videoDurationProvider needs a real (empty) indexDaoProvider to check —
+    // a cache miss resolves to "not a video". The rest of the library
+    // providers below are overridden directly, bypassing the DB.
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
     final router = GoRouter(
       routes: [
         GoRoute(path: '/', builder: (_, _) => const LibraryScreen()),
@@ -95,6 +104,7 @@ void main() {
       ProviderScope(
         overrides: [
           photoLibraryServiceProvider.overrideWithValue(fake),
+          databaseProvider.overrideWithValue(db),
           libraryCacheReadyProvider.overrideWithValue(AsyncData(cacheReady)),
           // The carousel would otherwise reach the real database through
           // memoriesDaoProvider; the carousel has its own test file.

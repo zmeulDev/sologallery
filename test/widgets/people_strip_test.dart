@@ -7,6 +7,7 @@ import 'package:sologallery/core/database/daos/faces_dao.dart'
     show PersonSummary;
 import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/core/theme/app_theme.dart';
+import 'package:sologallery/features/people/people_providers.dart';
 import 'package:sologallery/features/people/widgets/face_avatar.dart';
 import 'package:sologallery/services/permission_provider.dart';
 import 'package:sologallery/widgets/app_card.dart';
@@ -32,6 +33,7 @@ void main() {
           photoLibraryServiceProvider.overrideWithValue(
             FakePhotoLibraryService(),
           ),
+          personCoversProvider.overrideWith((ref) async => const {}),
         ],
         child: MaterialApp(
           theme: AppTheme.light,

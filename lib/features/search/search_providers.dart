@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/database/daos/albums_dao.dart' show AlbumSummary;
@@ -118,6 +119,13 @@ final recentlyViewedProvider =
 /// Empty while nothing is labeled yet (fresh library, indexer still running, or
 /// content search declined), which hides the section rather than offering chips
 /// that match no photo.
+///
+/// `watchTopLabels` is a `GROUP BY` aggregate that Drift re-runs — and
+/// re-emits — on every `photo_label` write during background labeling, even
+/// when the resulting top-N list is byte-for-byte unchanged.
+/// `distinct(listEquals)` drops those no-op re-emissions before they reach the
+/// idle Search screen, while a genuine change — a label entering/leaving the
+/// top-N, or reordering — still differs structurally and propagates.
 final topBrowseLabelsProvider =
     StreamProvider.autoDispose<List<String>>((ref) {
   return ref
@@ -126,7 +134,8 @@ final topBrowseLabelsProvider =
         allow: MemoryBuilder.presentableLabels,
         limit: browseLabelCount,
       )
-      .map((rows) => [for (final r in rows) r.label]);
+      .map((rows) => [for (final r in rows) r.label])
+      .distinct(listEquals);
 });
 
 /// The photo results grid, newest first. Two sources depending on the query:

@@ -208,4 +208,54 @@ void main() {
       expect(plan.single.coverAssetId, 'p');
     });
   });
+
+  group('clusterAll + planClusters composition', () {
+    // `_maybeGlobalRecluster` in indexing_service.dart moves the whole
+    // planning pass — `planClusters(groups: clusterAll(input), ...)` — into a
+    // single Isolate.run, rather than running clusterAll in the isolate and
+    // planClusters back on the caller. Both functions are pure and
+    // deterministic, so composing them nested (as the isolate closure now
+    // does) must produce exactly the same plan as calling them as two
+    // separate steps (as the old two-call code did). This is the seam that
+    // stands in for actually exercising the isolate boundary.
+    test('nested composition matches the two-step call', () {
+      final input = [
+        (id: 1, embedding: vec([1, 0, 0])),
+        (id: 2, embedding: vec([0.97, 0.03, 0])), // ~ id 1
+        (id: 3, embedding: vec([0, 1, 0])), // distinct
+      ];
+      final faceMeta = {
+        1: (personId: 5, assetId: 'a'),
+        2: (personId: 9, assetId: 'b'),
+        3: (personId: null, assetId: 'c'),
+      };
+      final persons = {
+        5: (displayName: 'Alice', coverAssetId: 'a'),
+        9: (displayName: null, coverAssetId: 'b'),
+      };
+
+      // Two-step form, as the calling isolate used to run it.
+      final groups = clusterAll(input);
+      final twoStep = planClusters(
+        groups: groups,
+        faceMeta: faceMeta,
+        persons: persons,
+      );
+
+      // Composed form, exactly as the Isolate.run closure now calls it.
+      final composed = planClusters(
+        groups: clusterAll(input),
+        faceMeta: faceMeta,
+        persons: persons,
+      );
+
+      expect(composed, hasLength(twoStep.length));
+      for (var i = 0; i < composed.length; i++) {
+        expect(composed[i].faceIds, twoStep[i].faceIds);
+        expect(composed[i].reusePersonId, twoStep[i].reusePersonId);
+        expect(composed[i].displayName, twoStep[i].displayName);
+        expect(composed[i].coverAssetId, twoStep[i].coverAssetId);
+      }
+    });
+  });
 }
