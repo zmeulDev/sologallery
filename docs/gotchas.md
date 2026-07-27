@@ -220,6 +220,20 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   grepping unfiltered logcat for `vision`/`face`: unrelated system chatter
   ("provisioning", "Surface") matches and inflates the count into false
   evidence.
+- **`D/HWUI: Failed to create image decoder with message 'unimplemented'` is
+  benign** — Android's hardware UI pipeline logs this when its GPU-backed
+  decoder path isn't implemented for the requested codec (commonly seen on
+  Pixel 9 Pro XL / Android 16+ for HEIC + JPEG swap chains). The renderer
+  falls back to the software decoder and the image still draws; the bytes
+  count in the matching `[SoloGallery.photos] previewImage(...) bytes=…`
+  line is non-zero, and the corresponding `detailImageProvider` /
+  `adjacentThumbnailProvider` lines land. Don't grep this as an error, don't
+  suppress it (the engine routes the fallback through it), and don't be
+  tempted to grant GPU decoder permissions to silence it — there are none to
+  grant, and the log is a real-world signal of HWUI's codec-coverage gaps.
+  Verified on the 2026-07-27 iOS-asset-id-encoding session with
+  `1000005645` (MediaStore id) → 5 of these lines → image still rendered in
+  ~951ms.
 
 ---
 

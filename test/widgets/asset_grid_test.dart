@@ -144,4 +144,67 @@ void main() {
       expect(args.assetIds, [for (final a in items) a.id]);
     },
   );
+
+  testWidgets(
+    // Regression: iOS AssetEntity ids are paths like
+    // `{uuid}/L0/001`; raw interpolation into `/photo/$id` produced a
+    // three-segment path that GoRouter rejected as "Page Not Found". The fix
+    // is `Uri.encodeComponent` at every `/photo/$id` call site — assert the
+    // push reaches the route's `state.pathParameters['id']` after round-trip
+    // decoding, matching the real id exactly.
+    'iOS-shaped id (with `/L0/001`) reaches the photo route',
+    (tester) async {
+      // Mimic iOS AssetEntity id shape: `{uuid}/L0/001`.
+      const iosPrefix = '603345BD-E05C-40D8-8A29-3335675F276B/L0/001';
+      final items = assetsInMonth(2026, 8, 2, prefix: iosPrefix);
+      final fake = FakePhotoLibraryService(
+        assets: items,
+        thumbnailBytes: validThumbnailBytes,
+      );
+      String? routedId;
+
+      // Build a router that captures the routed path parameter (decoded by
+      // GoRouter) so we can assert the iOS-shaped id round-trips correctly.
+      final router = GoRouter(
+        initialLocation: '/',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => Scaffold(
+              body: AssetGrid(
+                items: items,
+                hasMore: false,
+                onLoadMore: () {},
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/photo/:id',
+            builder: (_, state) {
+              routedId = state.pathParameters['id'];
+              return const Scaffold(body: Text('photo-detail'));
+            },
+          ),
+        ],
+      );
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            photoLibraryServiceProvider.overrideWithValue(fake),
+            databaseProvider.overrideWithValue(db),
+          ],
+          child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(AssetThumbnail).first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('photo-detail'), findsOneWidget);
+      expect(routedId, items.first.id);
+    },
+  );
 }

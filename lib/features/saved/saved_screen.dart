@@ -204,7 +204,7 @@ class _SavedCell extends ConsumerWidget {
             .previewImage(id, kDetailImageMaxEdge)
             .ignore();
         context.push(
-          '/photo/$id',
+          '/photo/${Uri.encodeComponent(id)}',
           extra: PhotoViewerArgs(assetIds, index, initialBytes: thumb.value),
         );
       },
