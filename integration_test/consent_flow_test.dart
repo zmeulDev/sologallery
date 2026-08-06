@@ -22,9 +22,9 @@ void main() {
   /// Boots the app and gets past the photo-access step, landing on consent.
   Future<void> reachConsentStep(PatrolIntegrationTester $) async {
     await $.pumpWidgetAndSettle(const ProviderScope(child: SoloGalleryApp()));
-    expect($('Allow photo access'), findsOneWidget);
+    expect($('Continue'), findsOneWidget);
 
-    await $('Allow photo access').tap();
+    await $('Continue').tap();
     await $.platform.mobile.grantPermissionWhenInUse();
     await $.pumpAndSettle();
   }

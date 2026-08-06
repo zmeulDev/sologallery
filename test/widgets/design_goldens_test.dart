@@ -370,7 +370,7 @@ void main() {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AppButton.primary(
-            label: 'Allow photo access',
+            label: 'Open Settings',
             expand: true,
             onPressed: () {},
           ),

@@ -55,7 +55,7 @@ void main() {
     // show the allow CTA, not the settings path.
     await pump(tester, access: PhotoAccess.denied);
 
-    expect(find.text('Allow photo access'), findsOneWidget);
+    expect(find.text('Continue'), findsOneWidget);
     expect(find.text('Open Settings'), findsNothing);
     expect(find.text('Your photos\nstay yours.'), findsOneWidget);
   });
@@ -89,7 +89,7 @@ void main() {
       grantResult: PhotoAccess.granted,
     );
 
-    await tester.tap(find.text('Allow photo access'));
+    await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
 
     expect(fake.requestCount, 1);
@@ -99,11 +99,11 @@ void main() {
     // Prompt stays denied -> the screen switches to the Settings path.
     final fake = await pump(tester, access: PhotoAccess.denied);
 
-    await tester.tap(find.text('Allow photo access'));
+    await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
 
     expect(find.text('Open Settings'), findsOneWidget);
-    expect(find.text('Allow photo access'), findsNothing);
+    expect(find.text('Continue'), findsNothing);
 
     await tester.tap(find.text('Open Settings'));
     await tester.pumpAndSettle();
@@ -146,7 +146,7 @@ void main() {
 
       expect(find.text('What should stay\non the shelf?'), findsOneWidget);
       expect(find.byType(Switch), findsNWidgets(3));
-      expect(find.text('Allow photo access'), findsNothing);
+      expect(find.text('Your photos\nstay yours.'), findsNothing);
     });
 
     /// Pumps with access already granted, so the screen advances to step 2.

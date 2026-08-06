@@ -178,7 +178,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               Column(
                 children: [
                   AppButton.primary(
-                    label: denied ? 'Open Settings' : 'Allow photo access',
+                    label: denied ? 'Open Settings' : 'Continue',
                     busy: _busy,
                     expand: true,
                     onPressed: _busy

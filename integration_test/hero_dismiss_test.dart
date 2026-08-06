@@ -27,8 +27,8 @@ void main() {
     $,
   ) async {
     await $.pumpWidgetAndSettle(const ProviderScope(child: SoloGalleryApp()));
-    expect($('Allow photo access'), findsOneWidget);
-    await $('Allow photo access').tap();
+    expect($('Continue'), findsOneWidget);
+    await $('Continue').tap();
     await $.platform.mobile.grantPermissionWhenInUse();
     await $.pumpAndSettle();
     await $('Continue').tap();

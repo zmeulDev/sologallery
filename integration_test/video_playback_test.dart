@@ -20,8 +20,8 @@ import 'package:video_player/video_player.dart';
 void main() {
   patrolTest('open a video → it renders a real player', ($) async {
     await $.pumpWidgetAndSettle(const ProviderScope(child: SoloGalleryApp()));
-    expect($('Allow photo access'), findsOneWidget);
-    await $('Allow photo access').tap();
+    expect($('Continue'), findsOneWidget);
+    await $('Continue').tap();
     await $.platform.mobile.grantPermissionWhenInUse();
     await $.pumpAndSettle();
     // Onboarding step 2 (analysis consent): decline all and continue.

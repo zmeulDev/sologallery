@@ -16,8 +16,8 @@ import 'package:sologallery/widgets/nav_pill_bar.dart';
 void main() {
   Future<void> bootAndGrant(PatrolIntegrationTester $) async {
     await $.pumpWidgetAndSettle(const ProviderScope(child: SoloGalleryApp()));
-    expect($('Allow photo access'), findsOneWidget);
-    await $('Allow photo access').tap();
+    expect($('Continue'), findsOneWidget);
+    await $('Continue').tap();
     await $.platform.mobile.grantPermissionWhenInUse();
     await $.pumpAndSettle();
     // Onboarding step 2 (analysis consent): decline all and continue.
@@ -234,7 +234,7 @@ void main() {
   patrolTest('the indexing dial rides right of the capsule while analysing',
       ($) async {
     await $.pumpWidgetAndSettle(const ProviderScope(child: SoloGalleryApp()));
-    await $('Allow photo access').tap();
+    await $('Continue').tap();
     await $.platform.mobile.grantPermissionWhenInUse();
     await $.pumpAndSettle();
     // Accept content search, so the pass has real work and the dial has a

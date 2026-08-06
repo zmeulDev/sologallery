@@ -19,13 +19,13 @@ void main() {
   Future<void> bootOnboarding(PatrolIntegrationTester $) async {
     await $.pumpWidgetAndSettle(const ProviderScope(child: SoloGalleryApp()));
     // Fresh install → no access → onboarding gate.
-    expect($('Allow photo access'), findsOneWidget);
+    expect($('Continue'), findsOneWidget);
   }
 
   patrolTest('granting full access reveals the month grid', ($) async {
     await bootOnboarding($);
 
-    await $('Allow photo access').tap();
+    await $('Continue').tap();
     await $.platform.mobile.grantPermissionWhenInUse(); // "Allow all" on Android 14+
     await $.pumpAndSettle();
 
@@ -36,7 +36,7 @@ void main() {
     await $.pumpAndSettle();
 
     // Redirected off onboarding into the Library.
-    expect($('Allow photo access'), findsNothing);
+    expect($('Continue'), findsNothing);
     expect($('Library'), findsWidgets);
     // A device with photos shows sections (thumbnails), not the empty state.
     expect($('No photos yet'), findsNothing);
@@ -46,7 +46,7 @@ void main() {
   patrolTest('denying access keeps the user on onboarding', ($) async {
     await bootOnboarding($);
 
-    await $('Allow photo access').tap();
+    await $('Continue').tap();
     await $.platform.mobile.denyPermission();
     await $.pumpAndSettle();
 
@@ -57,7 +57,7 @@ void main() {
   patrolTest('limited access shows the selected-photos banner', ($) async {
     await bootOnboarding($);
 
-    await $('Allow photo access').tap();
+    await $('Continue').tap();
     // Android 14 photo dialog: choose "Allow limited access", then the picker.
     await $.platform.mobile.tap(Selector(text: 'Allow limited access'));
     // Confirm the (empty or default) selection in the system photo picker.
