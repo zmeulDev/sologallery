@@ -1,7 +1,7 @@
 # Remediation plan — findings from the 2026-09-04 audit
 
 **Status:** Phase 1 in progress.
-**Next step:** Task 1.5 — fix the stale `folders_providers.dart` doc comment.
+**Next step:** Task 1.6 — remove committed golden-failure artifacts and expand `.gitignore`.
 
 Written to be executed by a Sonnet-class agent, one task at a time. Every task is
 self-contained: it names the exact files, the exact change, and the command that
@@ -112,13 +112,19 @@ Small, independent, no structural risk. Each is a few minutes.
 
 ### 1.5 Fix the stale provider doc comment
 
-- [ ] **File:** `lib/features/folders/folders_providers.dart:8`
+- [x] **File:** `lib/features/folders/folders_providers.dart:8`
 - **Change:** the doc comment says device folders are "the Search screen's idle
   Folders section". `FolderList` is actually rendered from
   `lib/features/albums/albums_screen.dart`, and `search_screen.dart` documents
   the same thing. Correct the comment to say Albums.
 - **Verify:** read the comment back; no code change, so `tool/check.sh` suffices.
-- **Result:**
+- **Result:** Done. `FolderList` renders from `albums_screen.dart:191`;
+  `search_screen.dart` no longer has a Folders section at all. Grepping turned
+  up the same stale "Search screen's Folders section" phrasing in three more
+  live files, so fixed all four (same defect, fixing one in isolation would
+  leave contradictory comments): `folders_providers.dart:8`,
+  `folder_detail_screen.dart:9`, and `photo_library_service.dart:51` & `:398`.
+  Archived docs left as historical record. `tool/check.sh` → all checks passed.
 
 ### 1.6 Remove committed golden-failure artifacts
 

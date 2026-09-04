@@ -5,7 +5,7 @@ import '../../services/permission_provider.dart';
 import '../../services/photo_library_service.dart';
 
 /// The device's folders (Android MediaStore buckets, iOS albums) with their
-/// asset counts, newest-cover first — the Search screen's idle Folders section.
+/// asset counts, newest-cover first — the Albums screen's idle Folders section.
 /// One-shot: the list is cheap enough to rebuild when the screen is reopened,
 /// and folder membership only changes when the library does.
 final deviceFoldersProvider = FutureProvider.autoDispose<List<DeviceFolder>>(

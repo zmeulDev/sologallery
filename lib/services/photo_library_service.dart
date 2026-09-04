@@ -48,7 +48,7 @@ class AssetRef {
 /// A pure, plugin-free projection of a `photo_manager` [AssetPathEntity] — one
 /// of the folders/collections the device already groups the library into
 /// (Android: a MediaStore bucket such as Camera or Screenshots; iOS: a photo
-/// album). Surfaced by the Search screen's Folders section; the plugin type
+/// album). Surfaced by the Albums screen's Folders section; the plugin type
 /// never leaves this service (the architecture rule).
 class DeviceFolder {
   const DeviceFolder({
@@ -395,7 +395,7 @@ class PhotoLibraryService {
   final Map<String, AssetPathEntity> _pathCache = {};
 
   /// Lists every folder/collection the device groups the library into, with its
-  /// asset count and a cover asset — the Search screen's Folders section.
+  /// asset count and a cover asset — the Albums screen's Folders section.
   /// Sorted by [DeviceFolder.count] descending (name ascending to break ties);
   /// empty folders are dropped.
   ///

@@ -5,7 +5,7 @@ import '../../widgets/asset_grid.dart';
 import '../../widgets/empty_state.dart';
 import 'folders_providers.dart';
 
-/// One device folder's photos (`/folder?id=…&name=…`), reached from the Search
+/// One device folder's photos (`/folder?id=…&name=…`), reached from the Albums
 /// screen's Folders section. [folderName] titles the app bar so the screen
 /// doesn't have to re-list every folder just to name itself; a deep link that
 /// omits it falls back to a generic title.
