@@ -52,19 +52,27 @@ checked off.**
 
 **Status: COMPLETE (2026-09-04).** The **Completion** checklist at the bottom
 of this document is done: `tool/check.sh` green (827/827); all 18
-`integration_test/` files run on the Samsung SM-S938B, one per run (15 green,
-3 confirmed pre-existing and unrelated to this backlog — see the Completion
-section's Result for the full breakdown and root causes); `PRD.md#known-gaps`
-updated; this file moved to `docs/archived/`.
+`integration_test/` files run on the Samsung SM-S938B, one per run (16 green
+as of the same-day follow-up below, 2 confirmed pre-existing and unrelated to
+this backlog — see the Completion section's Result for the full breakdown and
+root causes); `PRD.md#known-gaps` updated; this file moved to
+`docs/archived/`.
 
-**Follow-ups left for a future task** (all recorded in
+**Same-day follow-up: `cache_live_update_test.dart` fixed.** Diagnosed with a
+throwaway `patrol` test (`NativeAutomator2.getNativeViews`) instead of left as
+a filed gap. Root cause was device *locale* (this Samsung is set to Romanian),
+not a One UI wording difference as first suspected — the test now matches the
+delete-confirmation dialog's stable framework resource id
+(`android:id/button1`) instead of its localized text. Green 2× on-device;
+`tool/check.sh` still 827/827. Detail on 6.1's Result (addendum) and in
+`docs/gotchas.md`.
+
+**Follow-ups left for a future task** (recorded in
 [PRD.md#known-gaps](../../PRD.md#known-gaps)): update `nav_shell_test.dart`'s
 stale autofocus assertion and `video_playback_test.dart`'s stale
 `SectionHeader` finder, both against UI behaviour that changed on 2026-07-23,
-six weeks before this backlog; find the real Samsung One UI
-delete-confirmation dialog text so `cache_live_update_test.dart` can pass on
-that device too (known since Phase 6.1); bump AGENTS.md's "17 on-device Patrol
-tests" line to 18 (`people_test.dart`, added by task 3.2, was never counted).
+six weeks before this backlog; bump AGENTS.md's "17 on-device Patrol tests"
+line to 18 (`people_test.dart`, added by task 3.2, was never counted).
 
 **Test device for Phase 2+ (2026-09-04):** a **physical iPhone 17 Pro Max**
 (`-d 00008150-0016388A1A43401C`, iOS 26.6.1), run as a plain `integration_test`
@@ -961,6 +969,24 @@ consent transaction becomes unclear mid-task, stop and ask rather than guessing.
   of this task's scope to fix. Filed as a gap for a future task rather than
   guessed at.
 
+  **Follow-up (2026-09-04, closing the Completion checklist): fixed, and the
+  suspected root cause above was wrong.** It isn't One UI wording — it's
+  device *locale*. Diagnosed by writing a throwaway `patrol` test that calls
+  `NativeAutomator2.getNativeViews` (`Selector(className:
+  'android.widget.TextView'/'android.widget.Button')`) right after triggering
+  the delete, which reads the live native tree without fighting patrol for
+  the UiAutomation connection the way `adb shell uiautomator dump` does. On
+  this Samsung SM-S938B (set to Romanian) the dialog reads "Permiți ca
+  SoloGallery să șteargă această fotografie?" over `Refuz`/`Permite`, not
+  "Allow SoloGallery to delete this photo?" over `Deny`/`Allow` — same
+  package (`com.google.android.providers.media.module`), same dialog,
+  different locale. Fixed `cache_live_update_test.dart` to tap
+  `Selector(resourceId: 'android:id/button1')` — the AlertDialog's positive-
+  button framework id, stable across locale and OEM skin — instead of
+  matching text. Reproduced green 2× on-device after the fix; `tool/check.sh`
+  still 827/827. Full detail in `docs/gotchas.md` ("Patrol / on-device
+  testing"); `PRD.md#known-gaps`' entry for this removed.
+
   **Did not reach a hand-scroll of the actual grid.** Reaching Library needs
   walking a *fresh* first-run onboarding (the app was reinstalled during this
   task's device verification, wiping the Drift-backed consent state), which
@@ -1275,11 +1301,13 @@ When every box is ticked:
    - `nav_shell_test.dart` (patrol) → **4/5 pass** — see finding below.
    - `permission_matrix_test.dart` (patrol) → 2/2 pass, 1 skipped (the
      Android-14 limited-access case, `skip: true` per-device as documented).
-   - `cache_live_update_test.dart` (patrol) → **0/1, reproduced 2×** — the
-     same pre-existing failure 6.1 already root-caused and confirmed
-     unrelated via A/B against unmodified `main` (Samsung One UI's
-     delete-confirmation dialog text mismatch). Not re-investigated;
-     re-confirmed only.
+   - `cache_live_update_test.dart` (patrol) → **0/1, reproduced 2×** at the
+     time this section was first written; **fixed same day** — see the
+     addendum on 6.1's Result above. The suspected root cause there (Samsung
+     One UI wording) was wrong: a throwaway diagnostic (`getNativeViews`) found
+     it's device **locale** (this device is set to Romanian), and the test now
+     matches the dialog's stable framework resource id instead of localized
+     text. Green 2× after the fix.
    - `detail_actions_test.dart` (patrol) → 3/3 pass, 2 skipped.
    - `folders_ui_test.dart` (patrol) → 1/1 pass.
    - `hero_dismiss_test.dart` (patrol) → 1/1 pass.
@@ -1321,14 +1349,27 @@ When every box is ticked:
    test-content changes) and is recorded in
    [PRD.md#known-gaps](../../PRD.md#known-gaps) instead.
 
-   **Net: 15 of 18 `integration_test/` files fully green; 3 fail, all three
-   confirmed pre-existing and unrelated to every task in this document** (one
-   already known from 6.1, two newly found and root-caused above). No
-   `lib/`/`test/` change was made to chase them — per the scope rule, fixing
-   test content is outside this backlog.
+   **Net at first pass: 15 of 18 `integration_test/` files fully green; 3
+   fail, all three confirmed pre-existing and unrelated to every task in this
+   document** (one already known from 6.1, two newly found and root-caused
+   above). No `lib/`/`test/` change was made to chase them at that point —
+   per the scope rule, fixing test content was judged outside this backlog's
+   extraction/coverage/hygiene scope.
+
+   **Revised same day: `cache_live_update_test.dart` fixed.** The user asked
+   for the dialog text to actually be captured rather than left as a filed
+   gap. Diagnosed via a throwaway `patrol` test calling
+   `NativeAutomator2.getNativeViews` — root cause was device locale
+   (Romanian), not a Samsung/One UI wording difference as 6.1 had suspected —
+   and fixed by matching the dialog's framework resource id instead of its
+   localized text (see the addendum on 6.1's Result above and
+   `docs/gotchas.md`). **Net: 16 of 18 green; 2 remain — both stale test
+   assertions against UI behaviour changed on 2026-07-23, deliberately left
+   as test-content fixes for a future task** (see above).
 3. **Status updated below.**
 4. **This file is being moved to `docs/archived/2026-09-04-remediation.md`.**
 5. **`PRD.md#known-gaps` updated** — the five closed gaps (test determinism,
    the People integration test, the missing video fixture, the red host test,
    the eight oversized files) removed; the signing-material gap kept
-   (out of scope, unchanged); the three test/device findings above added.
+   (out of scope, unchanged); the two remaining test/device findings kept, the
+   third (`cache_live_update_test.dart`) removed as fixed.

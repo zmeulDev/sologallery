@@ -215,7 +215,13 @@ The 2026-09-04 audit's findings were closed by
 [docs/archived/2026-09-04-remediation.md](docs/archived/2026-09-04-remediation.md)
 (test determinism, the People integration test, the missing video fixture, the
 red host test, and the eight oversized files — see that document for detail).
-What remains, including three found while closing it out:
+Three more were found while closing it out; two remain below. The third —
+`cache_live_update_test.dart` failing on the Samsung SM-S938B — turned out to
+be a locale bug, not a device one: its delete-confirmation-dialog tap matched
+on localized button text (`Selector(text: 'Allow')`), which doesn't hold on a
+device set to a non-English locale. Fixed by matching the dialog's stable
+framework resource id instead (`Selector(resourceId: 'android:id/button1')`);
+see `docs/gotchas.md` ("Patrol / on-device testing") for the diagnosis method.
 
 - **Two on-device Patrol/`integration_test` files assert removed UI behaviour.**
   `integration_test/nav_shell_test.dart`'s "bottom nav" case expects the Search
@@ -229,15 +235,6 @@ What remains, including three found while closing it out:
   other code. Confirmed via `git log -L` against the pre-remediation commit
   that changed each behaviour. Needs the test bodies updated to match current
   UI, not a product fix.
-- **`integration_test/cache_live_update_test.dart` fails on the Samsung
-  SM-S938B (One UI).** Its delete-confirmation-dialog tap
-  (`Selector(text: 'Allow')`) times out with a 404 selector error. Confirmed
-  pre-existing and unrelated to the remediation via an A/B run against
-  unmodified `main` (see the archived plan, Phase 6.1's Result). Root cause is
-  suspected to be a One UI-specific dialog wording that differs from the
-  Pixel 9 Pro XL's, on which `docs/gotchas.md`'s dialog text was verified —
-  not confirmed further. Needs the actual dialog text captured on a Samsung
-  device.
 - **Signing material is committed to the repository.**
   `android/key.properties` (plaintext store and key passwords) and
   `android/app/upload-keystore.jks` are tracked in git and pushed to the remote;

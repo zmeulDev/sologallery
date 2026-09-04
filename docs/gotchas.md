@@ -358,21 +358,38 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   RenderFlex overflow on device throws and fails the test at the *next*
   expect — that's how the AlbumCard 7px overflow surfaced; layout bugs are
   real failures on-device even though host widget tests may tolerate them.
-- **Patrol native selectors: use exact `text:`, never `textContains:`, for a
-  dialog button — and a "successful" tap step proves nothing.** Android's
-  delete-confirmation dialog is titled "Allow SoloGallery to delete this
-  photo?" over `Deny`/`Allow` buttons, so `Selector(textContains: 'Allow')`
-  matches the **title** (a non-clickable `TextView`) first. Patrol taps it,
-  reports the step ✅, and the dialog just stays up — the run then hangs
-  forever with an all-green step trace, which reads like a slow test rather
-  than a missed tap. Two corollaries: `PhotoManager.editor.deleteWithIds` goes
-  through `MediaStore.createDeleteRequest` on Android 11+, so **any test that
-  deletes an asset must be a `patrol` test** (a plain `integration_test` has
-  nothing to tap and hangs in teardown — the assertions themselves pass long
-  before, and the row still disappears because uninstall takes app-owned media
-  with it, so the cleanup *looks* like it worked). And `uiautomator dump`
-  returns nothing while patrol holds the UiAutomation connection, so to read a
-  stuck dialog you have to kill the run first — the dialog outlives it.
+- **Patrol native selectors for a system dialog: match on `resourceId`, never
+  on text — the text is localized and a "successful" tap step proves
+  nothing.** `PhotoManager.editor.deleteWithIds`'s confirmation
+  (`MediaStore.createDeleteRequest`, `com.google.android.providers.media.module`)
+  is a stock `AlertDialog` with framework ids `android:id/button1` (positive)
+  and `android:id/button2` (negative) — those two ids are the one thing
+  guaranteed stable across device locale and OEM skin; the button *text* is
+  not. Confirmed on the Samsung SM-S938B test device (set to Romanian) via
+  `NativeAutomator2.getNativeViews` (`Selector(className:
+  'android.widget.TextView'/'android.widget.Button')`, run once as a
+  throwaway diagnostic test): the dialog reads "Permiți ca SoloGallery să
+  șteargă această fotografie?" over `Refuz`/`Permite`, not the English
+  "Allow SoloGallery to delete this photo?" over `Deny`/`Allow` the Pixel
+  shows — same dialog, same package, different device locale. A prior version
+  of this note assumed a Samsung/One UI wording difference; the real variable
+  is locale, and `cache_live_update_test.dart` now taps
+  `Selector(resourceId: 'android:id/button1')` instead of matching text.
+  A text selector has a second failure mode even in one locale:
+  `Selector(textContains: 'Allow')` matches the dialog's **title** (a
+  non-clickable `TextView`) before its button, since both contain "Allow".
+  Patrol taps it, reports the step ✅, and the dialog just stays up — the run
+  then hangs forever with an all-green step trace, which reads like a slow
+  test rather than a missed tap. Two corollaries: `deleteWithIds` goes through
+  a system dialog on Android 11+, so **any test that deletes an asset must be
+  a `patrol` test** (a plain `integration_test` has nothing to tap and hangs
+  in teardown — the assertions themselves pass long before, and the row still
+  disappears because uninstall takes app-owned media with it, so the cleanup
+  *looks* like it worked). And `uiautomator dump` returns nothing while patrol
+  holds the UiAutomation connection, so to read a stuck dialog's real text you
+  have to kill the run first (the dialog outlives it) — or use
+  `NativeAutomator2.getNativeViews` from inside the running test instead, as
+  above, which doesn't fight patrol for the connection.
 - **On-device integration runs wipe the photo permission — grant it between
   install and run, one file at a time.** `flutter test integration_test/…`
   **uninstalls** the app when the run ends (`dumpsys package` afterwards reports

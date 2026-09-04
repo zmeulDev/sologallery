@@ -68,15 +68,21 @@ void main() {
     // Cleanup, inline rather than in a tearDown: the delete only completes once
     // the system dialog is confirmed, and both halves have to run in order.
     //
-    // The selector is an **exact** text match on purpose. That dialog reads
-    // "Allow SoloGallery to delete this photo?" over `Deny` / `Allow` buttons,
-    // so `textContains: 'Allow'` matches the *title* — a non-clickable
-    // TextView — first. Patrol reports that tap as a success and the dialog
-    // just stays up, so the delete never returns and the run hangs with a
-    // green step trace.
+    // The selector targets the dialog's **resource id**, not its text.
+    // `MediaStore.createDeleteRequest`'s confirmation is a stock
+    // `android:id/button1`/`button2` AlertDialog (positive/negative,
+    // `com.google.android.providers.media.module`) — those two framework ids
+    // are the one thing guaranteed stable across device locale and OEM skin.
+    // A text selector isn't: on a device set to Romanian this dialog reads
+    // "Permiți ca SoloGallery să șteargă această fotografie?" over
+    // `Refuz`/`Permite`, not `Deny`/`Allow` — confirmed via
+    // `NativeAutomator2.getNativeViews` on the Samsung SM-S938B test device
+    // (docs/gotchas.md). `textContains: 'Allow'` would also match the dialog
+    // *title* first — a non-clickable TextView — reporting the tap a success
+    // while the dialog stays up and the delete never returns.
     final deletion = PhotoManager.editor.deleteWithIds([saved.id]);
     await $.platform.mobile.tap(
-      Selector(text: 'Allow'),
+      Selector(resourceId: 'android:id/button1'),
       timeout: const Duration(seconds: 20),
     );
     final deleted = await deletion;
