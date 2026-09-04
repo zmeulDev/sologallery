@@ -3,15 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/format/count_labels.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../services/photo_library_service.dart' show AssetRef;
-import '../../widgets/asset_thumbnail.dart';
 import '../../widgets/precache_adjacent.dart';
 import '../detail/widgets/photo_page.dart';
 import 'memories_providers.dart';
+import 'widgets/progress.dart';
+import 'widgets/title_card.dart';
 
 /// Scene-transition motion for the memory player — the one piece of decorative
 /// motion the app keeps (see docs/plans/remove-animations-and-performance.md).
@@ -167,7 +166,7 @@ class _MemoryPlayerScreenState extends ConsumerState<MemoryPlayerScreen> {
                   // what the memory opens on anyway.
                   itemCount: list.length + 1,
                   itemBuilder: (context, i) => i == 0
-                      ? _TitleCard(
+                      ? TitleCard(
                           memoryId: widget.memoryId,
                           title: summary?.title ?? 'Memory',
                           subtitle: summary?.subtitle,
@@ -203,7 +202,7 @@ class _MemoryPlayerScreenState extends ConsumerState<MemoryPlayerScreen> {
             // Segments come from the summary's count while the photos load,
             // so the spine opens at its real length instead of growing from
             // one segment to the whole story a frame later.
-            _Progress(
+            Progress(
               pages: pages == 0 ? (summary?.assetCount ?? 0) + 1 : pages,
               index: _index,
               paused: _held,
@@ -212,133 +211,6 @@ class _MemoryPlayerScreenState extends ConsumerState<MemoryPlayerScreen> {
           ],
         ),
       },
-    );
-  }
-}
-
-/// The story's spine: one segment per page, filled up to the current one. The
-/// same motif the memory card previews.
-class _Progress extends StatelessWidget {
-  const _Progress({
-    required this.pages,
-    required this.index,
-    required this.paused,
-  });
-
-  final int pages;
-  final int index;
-  final bool paused;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      top: MediaQuery.of(context).padding.top + 10,
-      left: AppSpace.s16,
-      right: AppSpace.s16,
-      child: Opacity(
-        // Dimming the whole bar is the only "paused" signal — no icon, no
-        // overlay covering the photo you paused to look at.
-        opacity: paused ? 0.35 : 1,
-        child: Row(
-          children: [
-            for (var i = 0; i < pages; i++) ...[
-              if (i > 0) const SizedBox(width: 3),
-              Expanded(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: i <= index
-                        ? AppOverMedia.glyph
-                        : AppOverMedia.segmentOff,
-                    borderRadius: const BorderRadius.all(Radius.circular(1)),
-                  ),
-                  child: const SizedBox(height: 2),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// The opening frame: the cover photo, dimmed, with the title over it.
-///
-/// The cover carries the frame — a text-only card on black reads as a blank
-/// screen, not as an opening title. Scrim and bottom-left type block mirror
-/// `MemoryCard`, so tapping a card feels like it expanded into the story.
-class _TitleCard extends StatelessWidget {
-  const _TitleCard({
-    required this.memoryId,
-    required this.title,
-    required this.subtitle,
-    required this.count,
-    required this.coverAssetId,
-  });
-
-  final int memoryId;
-  final String title;
-  final String? subtitle;
-  final int count;
-  final String coverAssetId;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).extension<AppTextStyles>()!;
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        AssetThumbnail(assetId: coverAssetId, size: 1000),
-        // Heavier than the card's scrim: the title is larger here and has to
-        // hold against a full-bleed photo rather than a 150px thumbnail.
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Color(0x59000000),
-                Color(0x26000000),
-                AppOverMedia.scrimDeep,
-              ],
-              stops: [0, 0.45, 1],
-            ),
-          ),
-        ),
-        Positioned(
-          left: 28,
-          right: 28,
-          bottom: 72,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (subtitle case final sub?)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Text(
-                    sub.toUpperCase(),
-                    style: text.sectionLabel.copyWith(
-                      color: AppOverMedia.glyphSoft,
-                    ),
-                  ),
-                ),
-              Text(
-                title,
-                style: text.pageTitle.copyWith(
-                  color: AppOverMedia.glyph,
-                  height: 1.15,
-                ),
-              ),
-              const SizedBox(height: AppSpace.s12),
-              Text(
-                photoCountLabel(count),
-                style: text.caption.copyWith(color: AppOverMedia.glyphFaint),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }

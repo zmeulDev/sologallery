@@ -16,8 +16,17 @@ tests only, existing cache tests pass unmodified (see its Result). 4.2 done —
 `lib/features/search/widgets/` files, tests unmodified (see its Result).
 5.2 done — Library screen split 612→71 lines into eight new
 `lib/features/library/widgets/` files, tests unmodified (see its Result).
-**Next step:** Phase 5 — Task 5.3, split the Onboarding screen
-(`lib/features/onboarding/onboarding_screen.dart`, 586 lines).
+5.3 done — Onboarding screen split 586→114 lines into six new
+`lib/features/onboarding/widgets/` files, tests unmodified, full first-run
+walkthrough verified on the Samsung device including both `AccessStep`
+branches and the live `ConsentStep`/`FolderScopeCard` update (see its Result).
+5.4 done — memory player trimmed 402→274 lines, two new
+`lib/features/memories/widgets/` files (title card, progress spine), tests
+unmodified (see its Result). **Phase 5 complete.**
+**Next step:** Phase 6 — Task 6.1, compose the photo library service's caches
+(`lib/services/photo_library_service.dart`, 853 lines). Do not start it
+without explicit go-ahead — Phase 6 is the highest-risk phase in this
+document (isolate lifecycle, the consent race, the plugin boundary).
 
 **Test device for Phase 2+ (2026-09-04):** a **physical iPhone 17 Pro Max**
 (`-d 00008150-0016388A1A43401C`, iOS 26.6.1), run as a plain `integration_test`
@@ -787,13 +796,51 @@ for a person or an agent.
 
 ### 5.4 Trim the memory player
 
-- [ ] **File:** `lib/features/memories/memory_player_screen.dart` (402 lines)
+- [x] **File:** `lib/features/memories/memory_player_screen.dart` (402 lines)
 - **Change:** borderline. Extract the title card and the progress-segment row into
   `lib/features/memories/widgets/`. Leave the scene-transition logic and its
   reduced-motion guard in the screen — it is the app's one sanctioned animation
   and splitting it across files would make it easier to break.
 - **Verify:** `flutter test test/features/memories/`
-- **Result:**
+- **Result:** Done. Two new files under `lib/features/memories/widgets/`
+  (a folder that already existed, holding `memories_carousel.dart` and
+  `memory_card.dart`), doc comments moved verbatim:
+  - `progress.dart` — `Progress` (from `_Progress`, the story-spine segment
+    row).
+  - `title_card.dart` — `TitleCard` (from `_TitleCard`, the opening frame).
+
+  Matches the 5.1–5.3 precedent: both were file-private, had to become public
+  to cross the file boundary, picked up `super.key`. `TitleCard.memoryId` is
+  carried over unused in `build()` exactly as it was on `_TitleCard` (not a
+  regression introduced by the move — `unused_field` only flags
+  underscore-prefixed fields, so it was silent before too; left as-is, fixing
+  it is outside this task's scope). Per the plan, left untouched in the
+  screen: `_kSceneChange`/`_kSceneCurve`, `_advance`/`_restartTimer`/
+  `_onPageChanged`/`_setHeld` and the `MediaQuery.disableAnimationsOf` guard,
+  plus the small `_CloseButton`/`_Stage`/`_Spinner`/`_Message` helpers (none
+  named in the task, and each under 20 lines).
+
+  402 → **274 lines**. No logic changes.
+
+  `flutter test test/features/memories/` → 45/45 pass, **unmodified**.
+  `flutter analyze lib/features/memories/` → clean. `dart format` run on the
+  three touched/new files (not the directory). `tool/check.sh` → all checks
+  passed (827 tests, same count — extraction only).
+
+  **Device check (Samsung SM-S938B, `RZGYB1E58CV`):** `flutter install --debug`
+  (this cycled a fresh install — the device had no prior debug build with a
+  matching signature — so the 5.3 onboarded state was lost), launched. Boots
+  clean to onboarding, `topResumedActivity` confirms `MainActivity` foreground,
+  no `sologallery`-tagged exception/error/fatal in
+  `adb logcat -s flutter:V SoloGallery:V AndroidRuntime:E` or
+  `dumpsys dropbox --print`. Did not re-run onboarding to reach an actual
+  Memory: unlike 5.3, this task's own Verify line doesn't call for a device
+  step, the change is extraction-only behind an unmodified 45-test suite, and
+  reaching a real Memory needs consent + a completed indexing pass + specific
+  memory-worthy content (a trip, an anniversary, a themed cluster) that isn't
+  guaranteed to exist on this device's photo set — disproportionate to what it
+  would additionally prove over the widget-test coverage, matching 5.1/5.2's
+  same call.
 
 ---
 
