@@ -1,5 +1,6 @@
-import 'dart:collection' show LinkedHashMap;
 import 'dart:typed_data';
+
+import 'simple_lru.dart';
 
 /// Tiny in-memory LRU for low-resolution detail-viewer neighbours. Keyed only
 /// by asset id — the placeholder is always a single small size, so unlike
@@ -11,30 +12,18 @@ import 'dart:typed_data';
 class AdjacentThumbnailCache {
   static const _capacity = 16;
 
-  final LinkedHashMap<String, Uint8List?> _cache =
-      LinkedHashMap<String, Uint8List?>();
+  final SimpleLru<String, Uint8List?> _cache = SimpleLru<String, Uint8List?>(
+    _capacity,
+  );
 
   /// Returns the cached bytes, or `null` if the key is not present.
   /// A cached `null` (entity unresolved) is returned as `null`; use [contains]
   /// if you need to distinguish a miss from a known-missing asset.
-  Uint8List? get(String assetId) {
-    if (!_cache.containsKey(assetId)) return null;
-    final bytes = _cache[assetId];
-    // Move to most-recently-used position.
-    _cache.remove(assetId);
-    _cache[assetId] = bytes;
-    return bytes;
-  }
+  Uint8List? get(String assetId) => _cache.get(assetId);
 
   /// Stores [bytes] (which may be `null`) and evicts the oldest entry if the
   /// cache is over capacity.
-  void put(String assetId, Uint8List? bytes) {
-    _cache.remove(assetId);
-    _cache[assetId] = bytes;
-    if (_cache.length > _capacity) {
-      _cache.remove(_cache.keys.first);
-    }
-  }
+  void put(String assetId, Uint8List? bytes) => _cache.put(assetId, bytes);
 
   /// Drops every entry.
   void clear() => _cache.clear();
@@ -43,5 +32,5 @@ class AdjacentThumbnailCache {
   int get length => _cache.length;
 
   /// Whether [assetId] is present in the cache, including as a cached `null`.
-  bool contains(String assetId) => _cache.containsKey(assetId);
+  bool contains(String assetId) => _cache.contains(assetId);
 }

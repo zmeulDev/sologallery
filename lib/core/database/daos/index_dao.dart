@@ -209,47 +209,106 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
     });
   }
 
-  // --- Library grid (cache-backed) -----------------------------------------
+  // --- Shared query builders (private) --------------------------------------
+  //
+  // The four grouping axes below (month / year / day / older) each want the
+  // same three query shapes over `photo_asset` — only the `WHERE` fragment and
+  // (for counts) the STRFTIME bucket differ. Factored here so the sixteen
+  // public methods below just supply that fragment; the SQL each one runs is
+  // unchanged from before this refactor.
 
-  /// Non-empty calendar months over *dated* assets with their exact counts,
-  /// newest first — one grouped query backing the Library home. Reactive: emits
-  /// on every cache change (sweep, ML stamp, prune).
-  Stream<List<({YearMonth month, int count})>> watchMonthCounts() {
-    // Group by the *local* calendar month (`'localtime'`), matching
-    // [YearMonth.fromDate] and [monthAssets]'s local `[start, end)` window.
-    // Drift's `.month`/`.year` extract in UTC, which mis-buckets assets near a
-    // month boundary in a non-UTC timezone. `created_at` is stored as unix
-    // seconds (default int storage), so `'unixepoch'` applies. Key is
-    // `YYYY-MM`, whose lexical order is chronological.
+  /// The grouped-count shape shared by [watchMonthCounts], [watchYearCounts]
+  /// and [watchDayCounts]: count assets matching [where], bucketed by the
+  /// local-time key `STRFTIME([strftimeFormat], created_at, 'unixepoch',
+  /// 'localtime')`, newest bucket first (the key's lexical order is
+  /// chronological). Local-time extraction matters — Drift's own
+  /// `.month`/`.year` extract in UTC, which mis-buckets a capture near a
+  /// boundary in a non-UTC timezone. [mapRow] turns the raw `(key, count)`
+  /// pair into the caller's bucket record.
+  Stream<List<T>> _groupedCounts<T>(
+    String strftimeFormat,
+    Expression<bool> where,
+    T Function(String key, int count) mapRow,
+  ) {
     final key = CustomExpression<String>(
-      "STRFTIME('%Y-%m', created_at, 'unixepoch', 'localtime')",
+      "STRFTIME('$strftimeFormat', created_at, 'unixepoch', 'localtime')",
       precedence: Precedence.primary,
     );
     final count = photoAssets.assetId.count();
     final q = selectOnly(photoAssets)
       ..addColumns([key, count])
-      ..where(photoAssets.isDated.equals(true))
+      ..where(where)
       ..groupBy([key])
       ..orderBy([OrderingTerm.desc(key)]);
-    return q.map((r) {
-      final parts = r.read(key)!.split('-');
-      return (
-        month: YearMonth(int.parse(parts[0]), int.parse(parts[1])),
-        count: r.read(count)!,
-      );
-    }).watch();
+    return q.map((r) => mapRow(r.read(key)!, r.read(count)!)).watch();
   }
 
-  /// Up to [limit] newest preview ids for a dated [month], reactive — re-emits
-  /// as the sweep/ML/prune change the cache so the home section stays live.
-  Stream<List<String>> watchMonthPreviews(YearMonth month, {int limit = 6}) {
+  /// The preview-strip shape shared by every `watch*Previews`: up to [limit]
+  /// newest asset ids matching [where], reactive.
+  Stream<List<String>> _previewIds(Expression<bool> where, int limit) {
     final q = selectOnly(photoAssets)
       ..addColumns([photoAssets.assetId])
-      ..where(_datedInMonth(month))
+      ..where(where)
       ..orderBy([OrderingTerm.desc(photoAssets.createdAt)])
       ..limit(limit);
     return q.map((r) => r.read(photoAssets.assetId)!).watch();
   }
+
+  /// The growing-window shape shared by every `watch*Assets`: the newest
+  /// [limit] asset refs matching [where], as a reactive stream that re-emits
+  /// on any cache change. The paginator grows [limit] (offset stays 0) so a
+  /// single live subscription covers all loaded pages.
+  Stream<List<AssetRef>> _watchGrowingWindow(Expression<bool> where, int limit) {
+    final q = select(photoAssets)
+      ..where((_) => where)
+      ..orderBy([(a) => OrderingTerm.desc(a.createdAt)])
+      ..limit(limit);
+    return q.watch().map(
+      (rows) => [
+        for (final r in rows) AssetRef(id: r.assetId, createdAt: r.createdAt),
+      ],
+    );
+  }
+
+  Expression<bool> _datedInMonth(YearMonth month) =>
+      photoAssets.isDated.equals(true) &
+      photoAssets.createdAt.isBiggerOrEqualValue(month.start) &
+      photoAssets.createdAt.isSmallerThanValue(month.end);
+
+  Expression<bool> _datedInYear(int year) =>
+      photoAssets.isDated.equals(true) &
+      photoAssets.createdAt.isBiggerOrEqualValue(DateTime(year)) &
+      photoAssets.createdAt.isSmallerThanValue(DateTime(year + 1));
+
+  Expression<bool> _datedInDay(DateTime day) {
+    final start = DateTime(day.year, day.month, day.day);
+    final end = start.add(const Duration(days: 1));
+    return photoAssets.isDated.equals(true) &
+        photoAssets.createdAt.isBiggerOrEqualValue(start) &
+        photoAssets.createdAt.isSmallerThanValue(end);
+  }
+
+  // --- Library grid (cache-backed) -----------------------------------------
+
+  /// Non-empty calendar months over *dated* assets with their exact counts,
+  /// newest first — one grouped query backing the Library home. Reactive: emits
+  /// on every cache change (sweep, ML stamp, prune).
+  Stream<List<({YearMonth month, int count})>> watchMonthCounts() =>
+      _groupedCounts('%Y-%m', photoAssets.isDated.equals(true), (
+        key,
+        count,
+      ) {
+        final parts = key.split('-');
+        return (
+          month: YearMonth(int.parse(parts[0]), int.parse(parts[1])),
+          count: count,
+        );
+      });
+
+  /// Up to [limit] newest preview ids for a dated [month], reactive — re-emits
+  /// as the sweep/ML/prune change the cache so the home section stays live.
+  Stream<List<String>> watchMonthPreviews(YearMonth month, {int limit = 6}) =>
+      _previewIds(_datedInMonth(month), limit);
 
   /// A page of dated asset refs for one [month]'s full grid, newest first.
   Future<List<AssetRef>> monthAssets(
@@ -258,12 +317,7 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
     required int offset,
   }) async {
     final q = select(photoAssets)
-      ..where(
-        (a) =>
-            a.isDated.equals(true) &
-            a.createdAt.isBiggerOrEqualValue(month.start) &
-            a.createdAt.isSmallerThanValue(month.end),
-      )
+      ..where((_) => _datedInMonth(month))
       ..orderBy([(a) => OrderingTerm.desc(a.createdAt)])
       ..limit(limit, offset: offset);
     final rows = await q.get();
@@ -279,80 +333,28 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
   Stream<List<AssetRef>> watchMonthAssets(
     YearMonth month, {
     required int limit,
-  }) {
-    final q = select(photoAssets)
-      ..where(
-        (a) =>
-            a.isDated.equals(true) &
-            a.createdAt.isBiggerOrEqualValue(month.start) &
-            a.createdAt.isSmallerThanValue(month.end),
-      )
-      ..orderBy([(a) => OrderingTerm.desc(a.createdAt)])
-      ..limit(limit);
-    return q.watch().map(
-      (rows) => [
-        for (final r in rows) AssetRef(id: r.assetId, createdAt: r.createdAt),
-      ],
-    );
-  }
+  }) => _watchGrowingWindow(_datedInMonth(month), limit);
 
   // --- Year grouping (the `Year` / `Months` time filters) ------------------
 
   /// Non-empty calendar years over *dated* assets with their exact counts,
   /// newest first — the year-grouped mirror of [watchMonthCounts], and reactive
   /// on the same cache changes.
-  Stream<List<({int year, int count})>> watchYearCounts() {
-    // Local-time extraction, for the same reason [watchMonthCounts] does it:
-    // Drift's `.year` extracts in UTC, which would file a local-Jan-1 00:00
-    // capture under the previous year in any timezone west of UTC.
-    final key = CustomExpression<String>(
-      "STRFTIME('%Y', created_at, 'unixepoch', 'localtime')",
-      precedence: Precedence.primary,
-    );
-    final count = photoAssets.assetId.count();
-    final q = selectOnly(photoAssets)
-      ..addColumns([key, count])
-      ..where(photoAssets.isDated.equals(true))
-      ..groupBy([key])
-      ..orderBy([OrderingTerm.desc(key)]);
-    return q
-        .map((r) => (year: int.parse(r.read(key)!), count: r.read(count)!))
-        .watch();
-  }
+  Stream<List<({int year, int count})>> watchYearCounts() => _groupedCounts(
+    '%Y',
+    photoAssets.isDated.equals(true),
+    (key, count) => (year: int.parse(key), count: count),
+  );
 
   /// Up to [limit] newest preview ids for one calendar [year], reactive —
   /// the year-section mirror of [watchMonthPreviews].
-  Stream<List<String>> watchYearPreviews(int year, {int limit = 6}) {
-    final q = selectOnly(photoAssets)
-      ..addColumns([photoAssets.assetId])
-      ..where(
-        photoAssets.isDated.equals(true) &
-            photoAssets.createdAt.isBiggerOrEqualValue(DateTime(year)) &
-            photoAssets.createdAt.isSmallerThanValue(DateTime(year + 1)),
-      )
-      ..orderBy([OrderingTerm.desc(photoAssets.createdAt)])
-      ..limit(limit);
-    return q.map((r) => r.read(photoAssets.assetId)!).watch();
-  }
+  Stream<List<String>> watchYearPreviews(int year, {int limit = 6}) =>
+      _previewIds(_datedInYear(year), limit);
 
   /// A page of dated asset refs for one [year]'s full grid, newest first, as a
   /// reactive growing window — the year mirror of [watchMonthAssets].
-  Stream<List<AssetRef>> watchYearAssets(int year, {required int limit}) {
-    final q = select(photoAssets)
-      ..where(
-        (a) =>
-            a.isDated.equals(true) &
-            a.createdAt.isBiggerOrEqualValue(DateTime(year)) &
-            a.createdAt.isSmallerThanValue(DateTime(year + 1)),
-      )
-      ..orderBy([(a) => OrderingTerm.desc(a.createdAt)])
-      ..limit(limit);
-    return q.watch().map(
-      (rows) => [
-        for (final r in rows) AssetRef(id: r.assetId, createdAt: r.createdAt),
-      ],
-    );
-  }
+  Stream<List<AssetRef>> watchYearAssets(int year, {required int limit}) =>
+      _watchGrowingWindow(_datedInYear(year), limit);
 
   // --- Recent window (the `This week` time filter) --------------------------
 
@@ -362,91 +364,45 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
   /// result as one scrolling grid, and a week's captures are small. A local
   /// `DateTime` maps to the same absolute instant the column stores, so the
   /// boundary lands on the caller's local midnight without a timezone dance.
-  Stream<List<AssetRef>> watchRecentSince(DateTime cutoff, {int limit = 500}) {
-    final q = select(photoAssets)
-      ..where(
-        (a) =>
-            a.isDated.equals(true) & a.createdAt.isBiggerOrEqualValue(cutoff),
-      )
-      ..orderBy([(a) => OrderingTerm.desc(a.createdAt)])
-      ..limit(limit);
-    return q.watch().map(
-      (rows) => [
-        for (final r in rows) AssetRef(id: r.assetId, createdAt: r.createdAt),
-      ],
-    );
-  }
+  Stream<List<AssetRef>> watchRecentSince(DateTime cutoff, {int limit = 500}) =>
+      _watchGrowingWindow(
+        photoAssets.isDated.equals(true) &
+            photoAssets.createdAt.isBiggerOrEqualValue(cutoff),
+        limit,
+      );
 
   /// Non-empty calendar days over *dated* assets on or after [cutoff] with their
   /// exact counts, newest first. Groups by local calendar day, matching how
   /// [watchMonthCounts] groups by local month so a capture near midnight ends up
   /// in the day the user sees.
-  Stream<List<({DateTime day, int count})>> watchDayCounts(DateTime cutoff) {
-    final key = CustomExpression<String>(
-      "STRFTIME('%Y-%m-%d', created_at, 'unixepoch', 'localtime')",
-      precedence: Precedence.primary,
-    );
-    final count = photoAssets.assetId.count();
-    final q = selectOnly(photoAssets)
-      ..addColumns([key, count])
-      ..where(photoAssets.isDated.equals(true) & photoAssets.createdAt.isBiggerOrEqualValue(cutoff))
-      ..groupBy([key])
-      ..orderBy([OrderingTerm.desc(key)]);
-    return q.map((r) {
-      final parts = r.read(key)!.split('-');
+  Stream<List<({DateTime day, int count})>> watchDayCounts(
+    DateTime cutoff,
+  ) => _groupedCounts(
+    '%Y-%m-%d',
+    photoAssets.isDated.equals(true) &
+        photoAssets.createdAt.isBiggerOrEqualValue(cutoff),
+    (key, count) {
+      final parts = key.split('-');
       return (
         day: DateTime(
           int.parse(parts[0]),
           int.parse(parts[1]),
           int.parse(parts[2]),
         ),
-        count: r.read(count)!,
+        count: count,
       );
-    }).watch();
-  }
+    },
+  );
 
   /// Up to [limit] newest preview ids for one calendar [day], reactive — the
   /// day-section mirror of [watchMonthPreviews].
-  Stream<List<String>> watchDayPreviews(DateTime day, {int limit = 6}) {
-    final start = DateTime(day.year, day.month, day.day);
-    final end = start.add(const Duration(days: 1));
-    final q = selectOnly(photoAssets)
-      ..addColumns([photoAssets.assetId])
-      ..where(
-        photoAssets.isDated.equals(true) &
-            photoAssets.createdAt.isBiggerOrEqualValue(start) &
-            photoAssets.createdAt.isSmallerThanValue(end),
-      )
-      ..orderBy([OrderingTerm.desc(photoAssets.createdAt)])
-      ..limit(limit);
-    return q.map((r) => r.read(photoAssets.assetId)!).watch();
-  }
+  Stream<List<String>> watchDayPreviews(DateTime day, {int limit = 6}) =>
+      _previewIds(_datedInDay(day), limit);
 
   /// A page of dated asset refs for one calendar [day]'s full grid, newest
   /// first, as a reactive growing window — the day mirror of [watchMonthAssets].
-  Stream<List<AssetRef>> watchDayAssets(DateTime day, {required int limit}) {
-    final start = DateTime(day.year, day.month, day.day);
-    final end = start.add(const Duration(days: 1));
-    final q = select(photoAssets)
-      ..where(
-        (a) =>
-            a.isDated.equals(true) &
-            a.createdAt.isBiggerOrEqualValue(start) &
-            a.createdAt.isSmallerThanValue(end),
-      )
-      ..orderBy([(a) => OrderingTerm.desc(a.createdAt)])
-      ..limit(limit);
-    return q.watch().map(
-      (rows) => [
-        for (final r in rows) AssetRef(id: r.assetId, createdAt: r.createdAt),
-      ],
-    );
-  }
-
-  Expression<bool> _datedInMonth(YearMonth month) =>
-      photoAssets.isDated.equals(true) &
-      photoAssets.createdAt.isBiggerOrEqualValue(month.start) &
-      photoAssets.createdAt.isSmallerThanValue(month.end);
+  Stream<List<AssetRef>> watchDayAssets(DateTime day, {required int limit}) =>
+      _watchGrowingWindow(_datedInDay(day), limit);
 
   // --- "Older" bucket (undated; Android only) ------------------------------
 
@@ -463,28 +419,13 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
   }
 
   /// Up to [limit] newest-added preview ids for the "Older" section, reactive.
-  Stream<List<String>> watchOlderPreviews({int limit = 6}) {
-    final q = selectOnly(photoAssets)
-      ..addColumns([photoAssets.assetId])
-      ..where(photoAssets.isDated.equals(false))
-      ..orderBy([OrderingTerm.desc(photoAssets.createdAt)])
-      ..limit(limit);
-    return q.map((r) => r.read(photoAssets.assetId)!).watch();
-  }
+  Stream<List<String>> watchOlderPreviews({int limit = 6}) =>
+      _previewIds(photoAssets.isDated.equals(false), limit);
 
   /// The "Older" full grid as a reactive growing window — newest-added [limit]
   /// undated asset refs, re-emitting on any cache change.
-  Stream<List<AssetRef>> watchOlderAssets({required int limit}) {
-    final q = select(photoAssets)
-      ..where((a) => a.isDated.equals(false))
-      ..orderBy([(a) => OrderingTerm.desc(a.createdAt)])
-      ..limit(limit);
-    return q.watch().map(
-      (rows) => [
-        for (final r in rows) AssetRef(id: r.assetId, createdAt: r.createdAt),
-      ],
-    );
-  }
+  Stream<List<AssetRef>> watchOlderAssets({required int limit}) =>
+      _watchGrowingWindow(photoAssets.isDated.equals(false), limit);
 
   // --- Saved ---------------------------------------------------------------
 

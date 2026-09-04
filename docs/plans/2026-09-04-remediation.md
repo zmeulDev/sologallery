@@ -7,9 +7,14 @@ its Result). 3.2 done — plain `integration_test` not patrol, second face is a
 StyleGAN photo not a synthetic draw (see its Result); green on the Samsung
 SM-S938B (`RZGYB1E58CV`). 3.3 done — host widget tests for `app_button.dart`
 and `settings_rows.dart` (see its Result). **Phase 3 complete.**
-**Next step:** Task 4.1 — extract one generic `SimpleLru<K, V>` and reimplement
-`adjacent_thumbnail_cache.dart` / `detail_preview_cache.dart` on it; host tests
-only, existing cache tests must pass unmodified.
+4.1 done — `SimpleLru<K, V>` extracted, both caches reimplemented on it, host
+tests only, existing cache tests pass unmodified (see its Result). 4.2 done —
+`IndexDao`'s repeated query shapes collapsed into three private builders,
+634→575 lines, `index_dao_test.dart` green unmodified (see its Result).
+**Phase 4 complete.**
+**Next step:** Phase 5 — Task 5.1, split the Search screen
+(`lib/features/search/search_screen.dart`, 621 lines) into
+`lib/features/search/widgets/`.
 
 **Test device for Phase 2+ (2026-09-04):** a **physical iPhone 17 Pro Max**
 (`-d 00008150-0016388A1A43401C`, iOS 26.6.1), run as a plain `integration_test`
@@ -495,7 +500,7 @@ they shrink the files those phases touch.
 
 ### 4.1 Extract one generic LRU
 
-- [ ] **Files:** `lib/services/adjacent_thumbnail_cache.dart`,
+- [x] **Files:** `lib/services/adjacent_thumbnail_cache.dart`,
   `lib/services/detail_preview_cache.dart`, new `lib/services/simple_lru.dart`
 - **Problem:** two structurally identical `LinkedHashMap` LRUs
   (get / put / move-to-MRU / evict-oldest), differing only in key shape and
@@ -507,11 +512,27 @@ they shrink the files those phases touch.
   imports, so it is domain-shaped and host-testable.
 - **Verify:** `flutter test test/services/adjacent_thumbnail_cache_test.dart test/services/detail_preview_cache_test.dart`
   passes **unmodified**. Add `test/services/simple_lru_test.dart` for the generic.
-- **Result:**
+- **Result:** Done. Added `lib/services/simple_lru.dart` —
+  `SimpleLru<K, V>(capacity)` with `get` / `put` / `clear` / `length` /
+  `contains`, same move-to-MRU-on-touch + evict-oldest-at-capacity policy as
+  both originals, no Flutter/plugin imports. Both caches now hold a
+  `SimpleLru<String, Uint8List?>` field and forward every method to it
+  one-line each; `DetailPreviewCache` still builds its own composite
+  `'$assetId:$maxEdge'` key before delegating. Public class names, method
+  signatures, doc comments and the `_capacity` constants (16 / 20) are
+  unchanged; `PhotoLibraryService` and `app.dart`'s lifecycle
+  clear-on-background calls needed no edits.
+  `flutter test test/services/adjacent_thumbnail_cache_test.dart
+  test/services/detail_preview_cache_test.dart` → both files' original tests
+  pass **unmodified** (16 tests total). Added
+  `test/services/simple_lru_test.dart` (7 tests: string/int keys, nullable-`V`
+  cached-null vs. miss, LRU eviction, re-put refreshing recency without
+  growing, clear). `tool/check.sh` → all checks passed (827 tests, up from
+  820).
 
 ### 4.2 Collapse the repeated IndexDao query shapes
 
-- [ ] **File:** `lib/core/database/daos/index_dao.dart` (634 lines)
+- [x] **File:** `lib/core/database/daos/index_dao.dart` (634 lines)
 - **Problem:** the four Library grouping axes (month / year / day / older) each
   have count, previews, paged and watched variants — roughly five near-identical
   query shapes repeated four times.
@@ -523,7 +544,32 @@ they shrink the files those phases touch.
 - **Verify:** `flutter test test/core/database/index_dao_test.dart` passes
   **unmodified**, and `tool/check.sh` is clean. Report the before/after line
   count.
-- **Result:**
+- **Result:** Done. Three private query builders added, all taking a
+  precomputed `Expression<bool> where` fragment (plus, for counts, the
+  STRFTIME bucket format and a row mapper) so the SQL each public method runs
+  is byte-for-byte the same as before:
+  - `_groupedCounts<T>(strftimeFormat, where, mapRow)` — the grouped-count
+    shape behind `watchMonthCounts`, `watchYearCounts`, `watchDayCounts`.
+  - `_previewIds(where, limit)` — the preview-strip shape behind
+    `watchMonthPreviews`, `watchYearPreviews`, `watchDayPreviews`,
+    `watchOlderPreviews`.
+  - `_watchGrowingWindow(where, limit)` — the reactive growing-window shape
+    behind `watchMonthAssets`, `watchYearAssets`, `watchDayAssets`,
+    `watchOlderAssets`, `watchRecentSince`.
+
+  Also added `_datedInYear`/`_datedInDay` alongside the pre-existing
+  `_datedInMonth`, and pointed `monthAssets`/`watchMonthAssets` at
+  `_datedInMonth` too (they previously duplicated its expression inline —
+  same SQL, now shared). `watchOlderCount` (a plain scalar count, not
+  grouped) and `monthAssets`'s `Future`+offset shape are each used once, so
+  neither was forced into a shared builder. No predicate was "improved" —
+  every `WHERE`/`ORDER BY`/`LIMIT`/`GROUP BY` fragment is copied verbatim
+  from its original call site.
+
+  634 → 575 lines (-59).
+  `flutter test test/core/database/index_dao_test.dart` → 53/53 pass,
+  **unmodified**. `tool/check.sh` → all checks passed (827 tests),
+  `flutter analyze` clean.
 
 ---
 
