@@ -333,7 +333,7 @@ class _TitleCard extends StatelessWidget {
               const SizedBox(height: AppSpace.s12),
               Text(
                 photoCountLabel(count),
-                style: text.caption.copyWith(color: Colors.white60),
+                style: text.caption.copyWith(color: AppOverMedia.glyphFaint),
               ),
             ],
           ),

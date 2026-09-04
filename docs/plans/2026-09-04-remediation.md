@@ -1,7 +1,7 @@
 # Remediation plan — findings from the 2026-09-04 audit
 
 **Status:** Phase 1 in progress.
-**Next step:** Task 1.2 — replace the bare `Colors.white60` in the memory player.
+**Next step:** Task 1.3 — resolve the orphaned `r8` / `br8` radius token.
 
 Written to be executed by a Sonnet-class agent, one task at a time. Every task is
 self-contained: it names the exact files, the exact change, and the command that
@@ -55,7 +55,7 @@ Small, independent, no structural risk. Each is a few minutes.
 
 ### 1.2 Replace the bare Material colour over media
 
-- [ ] **File:** `lib/features/memories/memory_player_screen.dart:336`
+- [x] **File:** `lib/features/memories/memory_player_screen.dart:336`
 - **Change:** the title-card subtitle uses `Colors.white60`. Every other glyph in
   this file uses an `AppOverMedia` token. Replace it with `AppOverMedia.glyphSoft`
   if that matches the rendered opacity closely enough; if it does not, add a
@@ -64,7 +64,12 @@ Small, independent, no structural risk. Each is a few minutes.
 - **Verify:** `grep -rn "Colors\.white" lib/features/ lib/widgets/` returns
   nothing, and the memory-player golden (if one covers this) still passes:
   `flutter test test/features/memories/`.
-- **Result:**
+- **Result:** Done. Used the existing `AppOverMedia.glyphFaint` (white54) rather
+  than `glyphSoft` (white70) or a new const: white54 is the closest existing
+  token to white60 (Δalpha ~6 vs ~25), and "faint" fits a tertiary photo-count
+  caption better than "soft" (the subtitle above it is `glyphSoft`). No new
+  token needed. `grep -rn "Colors\.white" lib/features/ lib/widgets/` returns
+  nothing; analyze clean; `flutter test test/features/memories/` → 45/45 pass.
 
 ### 1.3 Resolve the orphaned radius token
 
