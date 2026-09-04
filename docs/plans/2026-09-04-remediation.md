@@ -3,9 +3,11 @@
 **Status:** Phase 1 complete (1.1–1.7). Phase 2 complete (2.1 + 2.2 green on the
 physical iPhone; 2.3 done as a host widget test — see its Result). Phase 3 in
 progress: 3.1 done (host tests + one behaviour-preserving base-class fix — see
-its Result).
-**Next step:** Task 3.2 — People integration test on the Pixel 9 Pro XL
-(`46121FDAS008AA`), via patrol.
+its Result). 3.2 done — plain `integration_test` not patrol, second face is a
+StyleGAN photo not a synthetic draw (see its Result); green on the Samsung
+SM-S938B (`RZGYB1E58CV`).
+**Next step:** Task 3.3 — fill the widget-test gaps (`app_button.dart`,
+`settings_rows.dart`); host tests only.
 
 **Test device for Phase 2+ (2026-09-04):** a **physical iPhone 17 Pro Max**
 (`-d 00008150-0016388A1A43401C`, iOS 26.6.1), run as a plain `integration_test`
@@ -404,7 +406,7 @@ these tests **first** so that work has a safety net.
 
 ### 3.2 Add a People integration test
 
-- [ ] **File:** new `integration_test/people_test.dart`
+- [x] **File:** new `integration_test/people_test.dart`
 - **Problem:** People is the only feature with **no** on-device test. It is also
   the feature with the most intricate invariant — a user merge must survive the
   periodic global re-cluster, because the merge is stored as a redirect rather
@@ -417,7 +419,41 @@ these tests **first** so that work has a safety net.
   counterparts (`FakeMlWorker`).
 - **Verify:**
   `PATH="$HOME/Library/Android/sdk/platform-tools:$PATH" ~/.pub-cache/bin/patrol test -t integration_test/people_test.dart -d 46121FDAS008AA`
-- **Result:**
+- **Result:** Done — `→ All tests passed!` on the connected Samsung SM-S938B
+  (`RZGYB1E58CV`, Android 16). Prereq: `adb push test_assets/synthetic_face.jpg
+  test_assets/photo_face.jpg /sdcard/Android/data/com.zmeul.sologallery/files/`.
+
+  **Deviation — plain `integration_test`, not patrol (approved).** Patrol buys
+  nothing here: there is no native dialog to drive, and driving the real
+  `PeopleScreen` would need a `databaseProvider` override (no existing patrol
+  test does one) plus a real photo-library sweep that would pull camera-roll
+  faces into the cluster and break determinism. The test spawns the **real**
+  `MlWorkerController`, embeds the two fixture faces, then runs
+  `clusterAll` → `planClusters` → `rebuildClusters` (verbatim what
+  `_maybeGlobalRecluster` runs) against an in-memory Drift DB — no photo
+  library, no camera roll. Run with
+  `flutter test integration_test/people_test.dart -d <id> --no-uninstall`.
+
+  Asserts: real embeddings of the two fixtures are < `clusterMergeThreshold`
+  (0.45) apart; they cluster into **two** persons; rename one; `mergePersons`
+  folds them to one (name + `faceCount 2` preserved); a second global re-cluster
+  keeps it one person, `assetsForPerson(survivor)` still owns both assets,
+  `assetsForPerson(absorbed)` is empty, and `absorbed.mergedInto == survivor` —
+  the redirect chain still resolves. This is the on-device real-embedder
+  counterpart to the `FakeMlWorker` host tests
+  `faces_dao_test.dart` ("a global re-cluster does not undo the merge") and
+  `indexing_service_test.dart` ("…preserving the rename").
+
+  **Deviation — the second face is a photo, not a second `_syntheticFace()`
+  (approved).** Two *drawn* synthetic faces never embedded more than ~0.57
+  apart against the real MobileFaceNet (tried colour, aggressive geometry,
+  in-plane tilt across ~8 device runs); the occluders that moved them further
+  (beard, sunglasses) stopped ML Kit detecting a face at all. `photo_face.jpg`
+  is a StyleGAN (thispersondoesnotexist) face — no real person, EXIF stripped,
+  640×640, 132 KB. The prior session's uncommitted
+  `tool/gen_test_assets.dart` work (a `_FaceSpec` split to generate a second
+  synthetic face) was reverted; the generator is back to HEAD. Recorded in
+  `docs/gotchas.md` (Indexing / ML / faces) and `test_assets/README.md`.
 
 ### 3.3 Fill the widget-test gaps
 

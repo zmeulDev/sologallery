@@ -9,9 +9,9 @@ dart run tool/gen_test_assets.dart
 cd test_assets && sips -s format heic large_48mp.jpg --out large_48mp.heic
 ```
 
-Everything here is synthesized — no photos of real people, nothing copied from a
-real library. `large_48mp.jpg` is an intermediate for the HEIC and can be
-deleted after conversion.
+Nothing here is a photo of a real person or copied from a real library.
+`large_48mp.jpg` is an intermediate for the HEIC and can be deleted after
+conversion.
 
 | File | Covers | Status |
 |---|---|---|
@@ -20,7 +20,15 @@ deleted after conversion.
 | `gps_exif.jpg` (800×600) | GPS EXIF chips — tagged 47°22'35"N 8°32'26"E | generated |
 | `large_48mp.heic` (8000×6000) | HEIC OOM regression | generated (via `sips`) |
 | `synthetic_face.jpg` (600×800) | face detection + clustering | generated |
+| `photo_face.jpg` (640×640) | a *second* face identity for the People merge test | StyleGAN — see below |
 | a video | thumbnail + duration badge | **must be supplied by hand** |
+
+`photo_face.jpg` is a [thispersondoesnotexist.com](https://thispersondoesnotexist.com)
+face, downscaled and stripped of EXIF: not a real person, but photographic
+enough that the real MobileFaceNet embeds it well clear of `synthetic_face.jpg`
+(two *drawn* synthetic faces sit at ~0.6 cosine similarity — above the 0.45
+clustering threshold — so a merge test that needs two people can't use two of
+them). It is not generated; regenerate the rest without disturbing it.
 
 ## The face fixture is a positive control
 
@@ -38,13 +46,15 @@ MediaStore/PhotoKit-indexed, so it still never pollutes the real photo library):
 ```bash
 # Android — app-external files dir:
 adb shell mkdir -p /sdcard/Android/data/com.zmeul.sologallery/files
-adb push test_assets/synthetic_face.jpg test_assets/no_exif.jpg \
-  test_assets/large_48mp.heic /sdcard/Android/data/com.zmeul.sologallery/files/
+adb push test_assets/synthetic_face.jpg test_assets/photo_face.jpg \
+  test_assets/no_exif.jpg test_assets/large_48mp.heic \
+  /sdcard/Android/data/com.zmeul.sologallery/files/
 
 # iOS device — app data container's Documents dir:
 xcrun devicectl device copy to --device <udid> \
   --domain-type appDataContainer --domain-identifier com.zmeul.sologallery \
-  --source test_assets/synthetic_face.jpg --source test_assets/no_exif.jpg \
+  --source test_assets/synthetic_face.jpg --source test_assets/photo_face.jpg \
+  --source test_assets/no_exif.jpg \
   --source test_assets/large_48mp.heic --destination Documents
 ```
 

@@ -317,6 +317,17 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   appeared twice on the People screen, because the reference set was one of his
   old clusters and by construction held none of his sunglasses faces. The metric
   that matches the bug report is *how many People entries are this person*.
+- **Two *drawn* synthetic faces embed too close for the real MobileFaceNet to
+  tell apart.** `integration_test/people_test.dart` needs a library with two
+  distinct people; a second `_syntheticFace()` fixture — varied by colour,
+  proportions, in-plane tilt — never dropped below ~0.57 cosine similarity to
+  the first (threshold `clusterMergeThreshold` 0.45), and the occluders that
+  *did* move it far enough (beard, sunglasses) stopped ML Kit detecting a face
+  at all. Synthetic frontal faces collapse into one region of the embedder's
+  space — it is trained to be invariant to exactly what a 2-D drawing can vary.
+  The second identity is `test_assets/photo_face.jpg`, a StyleGAN
+  (thispersondoesnotexist) face: not a real person, no EXIF, but photographic
+  enough to embed clear of the drawn one.
 - **`IndexingService` toggle methods kick a pass fire-and-forget, so `await
   start()` right after one returns immediately** (`start()` no-ops while
   `_running`). The Settings switch must not block on a full re-index, so
