@@ -39,6 +39,11 @@ abstract class PagedAssetsNotifier extends AsyncNotifier<List<AssetRef>> {
     _loadingMore = true;
     try {
       final next = await fetchPage(_page + 1, pageSize);
+      // The grid is autoDispose and `loadMore` is fired from a scroll callback,
+      // so the screen can be gone by the time the page resolves. Bail rather
+      // than write `state` on a disposed notifier (an UnmountedRefException).
+      // WatchedAssetsNotifier gets this for free via its `ref.onDispose` cancel.
+      if (!ref.mounted) return;
       _page += 1;
       _hasMore = next.length == pageSize;
       state = AsyncData([...(state.value ?? const []), ...next]);

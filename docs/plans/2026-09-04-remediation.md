@@ -1,10 +1,11 @@
 # Remediation plan — findings from the 2026-09-04 audit
 
 **Status:** Phase 1 complete (1.1–1.7). Phase 2 complete (2.1 + 2.2 green on the
-physical iPhone; 2.3 done as a host widget test — see its Result). Phase 3 not
-started.
-**Next step:** Task 3.1 — unit-test the two pagination bases
-(`PagedAssetsNotifier`, `WatchedAssetsNotifier`). Host tests, no device.
+physical iPhone; 2.3 done as a host widget test — see its Result). Phase 3 in
+progress: 3.1 done (host tests + one behaviour-preserving base-class fix — see
+its Result).
+**Next step:** Task 3.2 — People integration test on the Pixel 9 Pro XL
+(`46121FDAS008AA`), via patrol.
 
 **Test device for Phase 2+ (2026-09-04):** a **physical iPhone 17 Pro Max**
 (`-d 00008150-0016388A1A43401C`, iOS 26.6.1), run as a plain `integration_test`
@@ -361,7 +362,7 @@ these tests **first** so that work has a safety net.
 
 ### 3.1 Unit-test the two pagination bases
 
-- [ ] **Files:** new `test/services/paged_assets_notifier_test.dart`,
+- [x] **Files:** new `test/services/paged_assets_notifier_test.dart`,
   `test/services/watched_assets_notifier_test.dart`
 - **Problem:** both base classes are covered only indirectly through subclasses.
   They own the pagination contract for every grid in the app.
@@ -372,7 +373,34 @@ these tests **first** so that work has a safety net.
   that a re-emission from the underlying stream replaces the window rather than
   appending to it.
 - **Verify:** `flutter test test/services/`
-- **Result:**
+- **Result:** Done. Two new files, each driving the base directly via a minimal
+  test subclass and a `ProviderContainer`:
+  - `paged_assets_notifier_test.dart` (7 tests): first-page load; `hasMore` true
+    on a full page / false on a short one; `loadMore` appends newest-first;
+    `loadMore` no-op once exhausted (asserts no further `fetchPage`); concurrent
+    `loadMore` calls coalesce to one fetch (the `_loadingMore` guard); a fetch
+    error surfaces as `AsyncValue.error`; disposal mid-fetch neither emits nor
+    throws.
+  - `watched_assets_notifier_test.dart` (7 tests): build subscribes to a
+    page-sized window and completes on first emission; `loadMore` grows the
+    window by a page and re-subscribes; a short window ends pagination (no
+    re-subscribe); **a stream re-emission replaces the window rather than
+    appending**; error on first emission → `AsyncValue.error`; a later stream
+    error → `AsyncValue.error`; disposal cancels the subscription (no post-dispose
+    emission).
+
+  **One behaviour-preserving fix, approved mid-task (scope-rule check).** The
+  disposal test caught a real defect: `PagedAssetsNotifier.loadMore` writes
+  `state` after its `await fetchPage(...)` with no `ref.mounted` check. It is
+  fired fire-and-forget from `AssetGrid`'s scroll callback against an
+  **autoDispose** provider (Search results, folder detail), so popping the
+  screen mid-fetch threw an unhandled `UnmountedRefException`. Added
+  `if (!ref.mounted) return;` after the await — a no-op for every live grid,
+  matches how `WatchedAssetsNotifier` already handles it (`ref.onDispose` cancels
+  its sub). Recorded in `docs/gotchas.md` under Riverpod.
+
+  **Verify:** `flutter test test/services/` → 106/106 pass (14 new).
+  `tool/check.sh` → All checks passed (796 tests), `flutter analyze` clean.
 
 ### 3.2 Add a People integration test
 

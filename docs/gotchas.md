@@ -788,6 +788,14 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   override it per screen. If a value truly must vary by screen, set it before
   the family provider is first watched (e.g. a `StateProvider` in the route
   argument parsing) rather than inside the family's own build path.
+- **An `AsyncNotifier` method that writes `state` after an `await` must guard
+  `ref.mounted` first.** `PagedAssetsNotifier.loadMore` is fired from
+  `AssetGrid`'s scroll callback (fire-and-forget) against an **autoDispose**
+  provider, so the screen can be popped while the page fetch is in flight; the
+  trailing `state = AsyncData(...)` then throws `UnmountedRefException` into the
+  void. Fix is `if (!ref.mounted) return;` after the `await`.
+  `WatchedAssetsNotifier` avoids it a different way — it cancels its stream sub
+  in `ref.onDispose`, so its completer never fires post-dispose.
 
 ---
 
