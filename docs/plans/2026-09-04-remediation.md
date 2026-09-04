@@ -710,7 +710,7 @@ for a person or an agent.
 
 ### 5.3 Split the Onboarding screen
 
-- [ ] **File:** `lib/features/onboarding/onboarding_screen.dart` (586 lines)
+- [x] **File:** `lib/features/onboarding/onboarding_screen.dart` (586 lines)
 - **Change:** this is the only feature with no `widgets/` folder. Create one and
   extract: the brand mark, the assurance rows, the permission step body, the
   consent step body, and the folder-scope card. Keep the `InheritedWidget` that
@@ -719,7 +719,71 @@ for a person or an agent.
 - **Verify:** `flutter test test/features/onboarding/`, then **manually re-run
   first-run onboarding on the device** — this screen gates the entire app and its
   consent write is transactional for a reason. Report the new line count.
-- **Result:**
+- **Result:** Done. Six new files under `lib/features/onboarding/widgets/`,
+  each keeping the moved doc comments verbatim:
+  - `brand_mark.dart` — `BrandMark` (from `_BrandMark`).
+  - `assurance.dart` — `Assurance` (from `_Assurance`).
+  - `access_step.dart` — `AccessStep` (from `_buildAccessStep`, a method on
+    `_OnboardingScreenState` promoted to a `StatelessWidget`). Computes its own
+    `denied` flag from `access`/`attempted` and picks `onRequestAccess` vs.
+    `onOpenSettings` internally, so the screen doesn't duplicate that branch.
+  - `consent_step.dart` — `ConsentStep` (from `_buildConsentStep`, same
+    method-to-widget promotion), plus the file-private `_ConsentToggle` (used
+    only here, so it stayed private — no cross-file boundary to justify making
+    it public, unlike 5.1/5.2's file-private helpers that had the same
+    treatment).
+  - `inherited_consent_scope.dart` — `InheritedConsentScope` (from
+    `_InheritedConsentScope`) — given its own file rather than folded into
+    `consent_step.dart` to avoid a two-file import cycle between it and
+    `folder_scope_card.dart` (`ConsentStep` needs `FolderScopeCard`,
+    `FolderScopeCard` needs the scope).
+  - `folder_scope_card.dart` — `FolderScopeCard` (from `_FolderScopeCard`).
+
+  Formerly file-private classes/methods had to become public to cross a file
+  boundary, matching the 5.1/5.2 precedent — each stays feature-scoped under
+  `onboarding/widgets/`. Each newly-public `StatelessWidget`/`ConsumerWidget`
+  picked up a `super.key` (the `use_key_in_widget_constructors` lint doesn't
+  fire on `InheritedWidget`, so `InheritedConsentScope` didn't need one).
+  `onboarding_screen.dart` now holds only `_OnboardingScreenState` (the two
+  step-2 field groups, `_run`/`_requestAccess`/`_recordConsent`/
+  `_openFolderPicker`, and the `KeyedSubtree` access-vs-consent branch), wiring
+  the extracted `AccessStep`/`ConsentStep` with plain callbacks — no new
+  provider or InheritedWidget was introduced beyond the one being preserved.
+
+  586 → **114 lines** (target was under 200). No logic changes; every doc
+  comment moved with its code (the long `_attempted` field comment stayed on
+  the field in the screen, since the field itself stays there; `AccessStep`'s
+  `attempted` param carries a one-line pointer back to it instead of a
+  duplicate).
+
+  `flutter test test/features/onboarding/` → 13/13 pass, **unmodified**.
+  `flutter analyze lib/features/onboarding/` → clean. `dart format` run on the
+  screen + the six new files (not the directory). `tool/check.sh` → all checks
+  passed (827 tests, same count — extraction only).
+
+  **Device check (Samsung SM-S938B, `RZGYB1E58CV`, connected via `adb`) — full
+  first-run walkthrough, no screenshots (semantics dumped via
+  `uiautomator dump` and read as text instead):** uninstalled the app for a
+  clean first run, `flutter install --debug`, launched. Confirmed via
+  semantics dump that `AccessStep` renders (brand mark, wordmark, headline, all
+  three `Assurance` rows, Continue). Tapped Continue → native
+  `GrantPermissionsActivity` came up (confirms `onRequestAccess` fired).
+  Dismissed it with back → `AccessStep`'s **denied branch** rendered correctly
+  ("Photo access is turned off.", "Open Settings", the Settings-specific
+  caption) — exercises the branch the plan's own text singles out. Granted
+  `READ_MEDIA_IMAGES`/`READ_MEDIA_VIDEO` via `pm grant` (equivalent to tapping
+  Allow; avoided guessing the system dialog's on-screen button coordinates
+  blind), force-stopped and relaunched so `PermissionNotifier.refresh()` picked
+  up the change. `ConsentStep` rendered: header, all three `_ConsentToggle`
+  rows, `FolderScopeCard` via `InheritedConsentScope` showing "All folders · No
+  on-device analysis is turned on." Tapped the CONTENT SEARCH switch → caption
+  live-updated to "All folders · 85 photos." (the device's real photo count),
+  proving the callback → `setState` → `InheritedConsentScope` → `FolderScopeCard`
+  chain survived the extraction. Tapped Continue → consent recorded, redirected
+  to the Library screen, indexing started ("Analyzing your photos — 80 left").
+  No `sologallery`-tagged exception/error/fatal in
+  `adb logcat -s flutter:V SoloGallery:V AndroidRuntime:E` or in
+  `dumpsys dropbox --print` across the whole run.
 
 ### 5.4 Trim the memory player
 
