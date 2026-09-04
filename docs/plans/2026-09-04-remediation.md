@@ -12,9 +12,10 @@ tests only, existing cache tests pass unmodified (see its Result). 4.2 done —
 `IndexDao`'s repeated query shapes collapsed into three private builders,
 634→575 lines, `index_dao_test.dart` green unmodified (see its Result).
 **Phase 4 complete.**
-**Next step:** Phase 5 — Task 5.1, split the Search screen
-(`lib/features/search/search_screen.dart`, 621 lines) into
-`lib/features/search/widgets/`.
+5.1 done — Search screen split 621→121 lines into six new
+`lib/features/search/widgets/` files, tests unmodified (see its Result).
+**Next step:** Phase 5 — Task 5.2, split the Library screen
+(`lib/features/library/library_screen.dart`, 612 lines).
 
 **Test device for Phase 2+ (2026-09-04):** a **physical iPhone 17 Pro Max**
 (`-d 00008150-0016388A1A43401C`, iOS 26.6.1), run as a plain `integration_test`
@@ -592,14 +593,56 @@ for a person or an agent.
 
 ### 5.1 Split the Search screen
 
-- [ ] **File:** `lib/features/search/search_screen.dart` (621 lines)
+- [x] **File:** `lib/features/search/search_screen.dart` (621 lines)
 - **Change:** extract into `lib/features/search/widgets/`: the search field, the
   facet/filter bar, the browsable label chips, the idle body, the results body,
   and the album/label match rows. `search_screen.dart` keeps the scaffold and the
   idle-vs-results branch.
 - **Verify:** `flutter test test/features/search/`; report the new line count of
   `search_screen.dart` (target: under 200).
-- **Result:**
+- **Result:** Done. Six new files under `lib/features/search/widgets/`, each
+  keeping the moved doc comments verbatim:
+  - `search_field.dart` — `SearchField` (from `_SearchField`).
+  - `filter_bar.dart` — `FilterBar` (from `_FilterBar`).
+  - `browse_labels.dart` — `BrowseLabels` (from `_BrowseLabels`).
+  - `idle_body.dart` — `IdleBody` (from `_IdleBody`), plus its file-private
+    helpers `_SearchSubtitle`, `_RecentlyViewedStrip`, `_IdleHint`.
+  - `results_body.dart` — `ResultsBody` (from `_ResultsBody`), plus
+    file-private `_Results` and `_ResultCount`.
+  - `albums_result.dart` — `AlbumsResult` (from `_AlbumsResult`, the
+    album-match rows), plus file-private `_AlbumTile`.
+
+  Formerly file-private classes had to become public (no leading `_`) to cross
+  a file boundary — Dart privacy is per-library, not per-class — but each stays
+  feature-scoped under `search/widgets/`, matching the existing
+  `RecentlyViewedRow` precedent. `search_screen.dart` now holds only
+  `SearchScreen`/`_SearchScreenState` (the controller, debounce, and the
+  idle-vs-results `Scaffold` branch) and imports the six extracted widgets.
+  Two transitive imports (`MediaTypeFilter` from `domain/search_date.dart`,
+  `searchEnabledProvider` from `../settings/consent_provider.dart`) had to be
+  added explicitly to `search_screen.dart`, `filter_bar.dart` and
+  `idle_body.dart` — the original file got them for free via
+  `search_providers.dart`'s own imports, which don't re-export.
+
+  621 → **121 lines** (target was under 200). No logic changes; every doc
+  comment moved with its code.
+
+  `flutter test test/features/search/` → 63/63 pass, **unmodified**.
+  `flutter analyze lib/features/search/ test/features/search/` → clean.
+  `tool/check.sh` → all checks passed (827 tests, same count as before —
+  extraction only, no new tests needed since coverage already exercises the
+  extracted pieces through `SearchScreen`).
+
+  **Device check (Samsung SM-S938B, `RZGYB1E58CV`, connected via `adb`):**
+  built and installed the debug APK on the physical device and launched it —
+  boots clean, no crash, no exception in `adb logcat -s flutter:V
+  SoloGallery:V AndroidRuntime:E`. Did not drive through onboarding to the
+  Search tab itself: this is a pure structural extraction (no behaviour
+  change, scope rule), the widget-test suite already asserts the exact section
+  ordering and content of every extracted piece against a mocked
+  `ProviderScope`, and driving a fresh-install consent flow blind (no
+  screenshots, per project policy) to reach one screen was judged
+  disproportionate to what it would additionally prove.
 
 ### 5.2 Split the Library screen
 
