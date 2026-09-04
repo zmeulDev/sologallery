@@ -7,6 +7,13 @@ part 'edit_instructions_dao.g.dart';
 
 /// Data-access for [EditInstructions]. Stores non-destructive edit JSON keyed
 /// by asset id; originals are never touched. Pure data layer.
+///
+/// **Knowingly uncalled.** This DAO is scaffolding for the planned
+/// non-destructive editor — the one sanctioned exception to the no-dead-code
+/// rule in AGENTS.md. The `edit_instructions` table ships in schema v1 and this
+/// DAO is registered on [AppDatabase], but there is deliberately no Riverpod
+/// provider and no caller in `lib/` until the editor is built. Do not delete it
+/// to satisfy the rule. See [PRD.md](../../../../PRD.md#planned-non-destructive-editor).
 @DriftAccessor(tables: [EditInstructions])
 class EditInstructionsDao extends DatabaseAccessor<AppDatabase>
     with _$EditInstructionsDaoMixin {

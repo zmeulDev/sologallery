@@ -1,7 +1,7 @@
 # Remediation plan — findings from the 2026-09-04 audit
 
 **Status:** Phase 1 in progress.
-**Next step:** Task 1.4 — mark `EditInstructionsDao` as editor scaffolding (do not delete).
+**Next step:** Task 1.5 — fix the stale `folders_providers.dart` doc comment.
 
 Written to be executed by a Sonnet-class agent, one task at a time. Every task is
 self-contained: it names the exact files, the exact change, and the command that
@@ -91,7 +91,7 @@ Small, independent, no structural risk. Each is a few minutes.
 
 ### 1.4 Mark the editor scaffolding explicitly
 
-- [ ] **Files:** `lib/core/database/daos/edit_instructions_dao.dart`,
+- [x] **Files:** `lib/core/database/daos/edit_instructions_dao.dart`,
   `lib/core/database/app_database.dart`
 - **Change:** `EditInstructionsDao` is registered in `@DriftDatabase(daos: [...])`
   but has no provider in `database_provider.dart` and no callers in `lib/`. It is
@@ -102,7 +102,13 @@ Small, independent, no structural risk. Each is a few minutes.
   `PRD.md#planned-non-destructive-editor`. **Do not delete it** — the table is
   schema v1 and the feature is planned.
 - **Verify:** the comment exists; `tool/check.sh` passes.
-- **Result:**
+- **Result:** Done. Added a "Knowingly uncalled" paragraph to
+  `EditInstructionsDao`'s class doc comment — states it is editor scaffolding,
+  the sanctioned exception to the no-dead-code rule, has no provider/caller by
+  design, must not be deleted, and links `PRD.md#planned-non-destructive-editor`.
+  Also added a two-line marker comment at its `@DriftDatabase(daos: [...])`
+  registration pointing back to that doc comment. **Not deleted.**
+  `tool/check.sh` → all checks passed.
 
 ### 1.5 Fix the stale provider doc comment
 

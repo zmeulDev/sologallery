@@ -74,6 +74,8 @@ part 'app_database.g.dart';
   daos: [
     FavoritesDao,
     AlbumsDao,
+    // Scaffolding for the planned non-destructive editor — knowingly has no
+    // provider and no caller yet. See EditInstructionsDao's doc comment.
     EditInstructionsDao,
     IndexDao,
     FacesDao,
