@@ -8,9 +8,6 @@ abstract final class AppRadius {
   /// Duration badge.
   static const double r4 = 4;
 
-  /// Buttons, chips, cards, banners, filled input fields.
-  static const double r8 = 8;
-
   /// Cards, banners, filled input fields, and every photo thumbnail — grid
   /// cells, previews and row covers all clip to this one radius.
   static const double r12 = 12;
@@ -23,7 +20,6 @@ abstract final class AppRadius {
   static const double r30 = 30;
 
   static const BorderRadius br4 = BorderRadius.all(Radius.circular(r4));
-  static const BorderRadius br8 = BorderRadius.all(Radius.circular(r8));
   static const BorderRadius br12 = BorderRadius.all(Radius.circular(r12));
   static const BorderRadius br20 = BorderRadius.all(Radius.circular(r20));
   static const BorderRadius br30 = BorderRadius.all(Radius.circular(r30));

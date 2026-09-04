@@ -1,7 +1,7 @@
 # Remediation plan — findings from the 2026-09-04 audit
 
 **Status:** Phase 1 in progress.
-**Next step:** Task 1.3 — resolve the orphaned `r8` / `br8` radius token.
+**Next step:** Task 1.4 — mark `EditInstructionsDao` as editor scaffolding (do not delete).
 
 Written to be executed by a Sonnet-class agent, one task at a time. Every task is
 self-contained: it names the exact files, the exact change, and the command that
@@ -73,7 +73,7 @@ Small, independent, no structural risk. Each is a few minutes.
 
 ### 1.3 Resolve the orphaned radius token
 
-- [ ] **File:** `lib/core/theme/app_radius.dart:12`
+- [x] **File:** `lib/core/theme/app_radius.dart:12`
 - **Change:** `r8` and `br8` are defined with **zero call sites** anywhere in
   `lib/`, and neither appears in the design system's radius table. Delete both —
   an unused token is dead code, and the scale is documented as
@@ -81,7 +81,13 @@ Small, independent, no structural risk. Each is a few minutes.
   and should be updated to a real token.
 - **Verify:** `grep -rn "r8\b\|br8\b" lib/ test/` returns nothing;
   `tool/check.sh` passes.
-- **Result:**
+- **Result:** Done. Deleted `r8` and `br8` (and `r8`'s doc comment) — no call
+  sites anywhere in `lib/`, `test/`, or `integration_test/`. No tests referenced
+  them, so none needed updating. Also updated `docs/design-system.md`: the
+  Radius section's token list still named `r8`/`br8` and carried a blockquote
+  note flagging them as uncalled — removed both; the radius table there already
+  omitted r8. `grep -rn "r8\b\|br8\b" lib/ test/` returns nothing;
+  `tool/check.sh` → all checks passed (779 tests).
 
 ### 1.4 Mark the editor scaffolding explicitly
 

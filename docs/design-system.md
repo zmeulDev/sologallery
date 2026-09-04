@@ -88,8 +88,8 @@ to agree.
 
 ## Radius — `AppRadius`
 
-Doubles `r2 r4 r8 r12 r20 r30`, plus matching `BorderRadius` consts
-`br4 br8 br12 br20 br30`.
+Doubles `r2 r4 r12 r20 r30`, plus matching `BorderRadius` consts
+`br4 br12 br20 br30`.
 
 | Token | Use |
 |---|---|
@@ -105,10 +105,6 @@ r12 is the rule for thumbnails, with one shape of exception: where a cover
 radius, because two different radii on the same edge read as a mistake. That is
 `AlbumCard` (cover and card both r30) and the People strip's card. A thumbnail
 inset *within* a card — `CoverRow`, folder tiles, every grid cell — stays r12.
-
-> `r8` / `br8` are defined but have **zero call sites**. Either adopt them or
-> delete them; tracked in
-> [plans/2026-09-04-remediation.md](plans/2026-09-04-remediation.md).
 
 ---
 
