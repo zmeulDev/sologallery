@@ -124,19 +124,25 @@ void main() {
 
   test('this week groups dated assets into day counts, newest first', () async {
     final container = await containerWith();
+    // `thisWeekDayCountsProvider` is a rolling last-7-days window resolved
+    // against the real clock, so the seeded days have to be the real today and
+    // yesterday — hard-coded dates pass on the day they are written and fail
+    // once they age out of the window.
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
     await cache([
-      AssetRef(id: 'today-1', createdAt: DateTime(2026, 8, 28, 14, 0)),
-      AssetRef(id: 'today-2', createdAt: DateTime(2026, 8, 28, 9, 0)),
-      AssetRef(id: 'today-3', createdAt: DateTime(2026, 8, 28, 3, 0)),
-      AssetRef(id: 'yesterday-1', createdAt: DateTime(2026, 8, 27, 18, 0)),
-      AssetRef(id: 'yesterday-2', createdAt: DateTime(2026, 8, 27, 10, 0)),
+      AssetRef(id: 'today-1', createdAt: today),
+      AssetRef(id: 'today-2', createdAt: today.add(const Duration(seconds: 1))),
+      AssetRef(id: 'today-3', createdAt: today.add(const Duration(seconds: 2))),
+      AssetRef(id: 'yesterday-1', createdAt: yesterday),
+      AssetRef(
+          id: 'yesterday-2',
+          createdAt: yesterday.add(const Duration(seconds: 1))),
     ]);
 
     final counts = await readData(container, thisWeekDayCountsProvider);
-    expect(counts.map((e) => e.day).toList(), [
-      DateTime(2026, 8, 28),
-      DateTime(2026, 8, 27),
-    ]);
+    expect(counts.map((e) => e.day).toList(), [today, yesterday]);
     expect(counts.map((e) => e.count).toList(), [3, 2]);
   });
 

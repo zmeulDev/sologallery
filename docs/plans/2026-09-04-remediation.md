@@ -1,7 +1,7 @@
 # Remediation plan — findings from the 2026-09-04 audit
 
-**Status:** not started.
-**Next step:** Task 1.7 — it is the only currently failing test; do it first.
+**Status:** Phase 1 in progress.
+**Next step:** Task 1.1 — spacing-token-as-radius misuse in the onboarding brand mark.
 
 Written to be executed by a Sonnet-class agent, one task at a time. Every task is
 self-contained: it names the exact files, the exact change, and the command that
@@ -116,7 +116,7 @@ Small, independent, no structural risk. Each is a few minutes.
 
 ### 1.7 Fix the time-bomb test in the Library providers
 
-- [ ] **File:** `test/features/library/library_providers_test.dart:125-140`
+- [x] **File:** `test/features/library/library_providers_test.dart:125-140`
 - **Problem:** the test `this week groups dated assets into day counts, newest
   first` seeds **hardcoded** dates (`2026-08-28`, `2026-08-27`) and asserts they
   both fall inside `thisWeekDayCountsProvider`, which is a **rolling last-7-days
@@ -140,7 +140,16 @@ Small, independent, no structural risk. Each is a few minutes.
   wrong.
 - **Verify:** `flutter test test/features/library/library_providers_test.dart`
   passes, then `flutter test` — the whole suite must be green.
-- **Result:**
+- **Result:** Done. Rebased the seeded days on `DateTime.now()` — `today` =
+  midnight today, `yesterday` = `today - 1 day` — with intra-day spread via
+  `+1s`/`+2s` offsets, and asserted against those two `DateTime`s directly.
+  `thisWeekDayCountsProvider` was left untouched (it is correct). Swept the rest
+  of the file and `test/features/library/`: the only other rolling-window
+  provider is `thisWeekDayCountsProvider`; the `isEmpty`-without-access test at
+  line 119 asserts the access gate, not dates, so it was left as-is, and
+  `day_grid_screen_test.dart` already rebases on the real clock.
+  `flutter test test/features/library/library_providers_test.dart` → 9/9 pass.
+  `flutter test` → 779/779 pass, suite fully green.
 
 ---
 
