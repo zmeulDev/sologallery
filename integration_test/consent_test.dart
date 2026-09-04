@@ -13,7 +13,7 @@ import 'support/fixture_file.dart';
 /// Host tests gate a `FakeMlWorker`, which can only prove the flag was passed.
 /// Only a device can show that the real isolate honours it — that no face
 /// detector or tflite interpreter runs, and that no embeddings reach the
-/// database — which is the whole point of the consent (CLAUDE.md fake-pairing
+/// database — which is the whole point of the consent (AGENTS.md fake-pairing
 /// rule).
 ///
 /// Requires photo access already granted. Run with:

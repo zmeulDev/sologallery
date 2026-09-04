@@ -48,7 +48,7 @@ void main() {
   });
 
   /// A real turn, not a microtask — Riverpod batches recomputes on its own
-  /// scheduler (CLAUDE.md gotcha).
+  /// scheduler (docs/gotchas.md gotcha).
   Future<void> settle() =>
       Future<void>.delayed(const Duration(milliseconds: 10));
 

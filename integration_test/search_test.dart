@@ -8,7 +8,7 @@ import 'package:sologallery/services/photo_library_service.dart';
 /// columns: media-type (`RequestType`) partitioning and capture-date windowing.
 ///
 /// Paired real-path counterpart to the host tests that use
-/// `FakePhotoLibraryService` (CLAUDE.md "fake-pairing rule") — the fake filters
+/// `FakePhotoLibraryService` (AGENTS.md "fake-pairing rule") — the fake filters
 /// an in-memory list and can't exercise the native `RequestType`/`DATE_TAKEN`
 /// path the production query uses.
 ///

@@ -151,7 +151,7 @@ void main() {
 
     // Positive control: the v10 index actually landed. migrateAndValidate
     // checks the schema dump, but a dropped `m.create` would silently pass
-    // if the dump were stale — assert the index row itself (CLAUDE.md
+    // if the dump were stale — assert the index row itself (AGENTS.md
     // "positive control" rule).
     final indexRows = await db
         .customSelect(

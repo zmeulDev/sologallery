@@ -552,7 +552,7 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
     required Set<String> allow,
     int limit = 10,
   }) {
-    // The aggregate has to be selected explicitly to be readable (CLAUDE.md).
+    // The aggregate has to be selected explicitly to be readable (AGENTS.md).
     final count = photoLabels.assetId.count(distinct: true);
     final q = selectOnly(photoLabels)
       ..addColumns([photoLabels.label, count])

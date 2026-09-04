@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// The named typographic roles from CLAUDE.md "Design system". These are
+/// The named typographic roles from docs/design-system.md. These are
 /// semantic (page title, EXIF key, …) rather than Material's size-named slots,
 /// so widgets ask for meaning, not size. Read via
 /// `Theme.of(context).extension<AppTextStyles>()!`.

@@ -131,7 +131,7 @@ void main() {
       await $.tester.flingFrom(centre, const Offset(0, -600), 3000);
       // Let the ballistic simulation finish and the newly-revealed rows load,
       // in bounded pumps — a spinner anywhere on screen makes pumpAndSettle
-      // hang forever (CLAUDE.md).
+      // hang forever (AGENTS.md).
       for (var p = 0; p < 12; p++) {
         await $.tester.pump(const Duration(milliseconds: 100));
       }
@@ -172,7 +172,7 @@ void main() {
     // children beyond the visible area — `kPhotoGridCacheExtent` makes that a
     // whole screenful — and `find.byType` returns those too, sitting far below
     // the capsule by construction. Measuring them would fail no matter how
-    // correct the padding is (CLAUDE.md: measure against the viewport, never
+    // correct the padding is (AGENTS.md: measure against the viewport, never
     // against "the last widget found").
     final screenHeight = $.tester.getSize(find.byType(MaterialApp)).height;
     var lowest = 0.0;
@@ -229,7 +229,7 @@ void main() {
   // The dial's geometry only exists on a real screen: host tests can't prove it
   // clears the capsule at the device's actual width, inside its safe area.
   // Paired with the negative case below — "no dial" means nothing unless a
-  // same-file run shows the dial does appear when there is work (CLAUDE.md:
+  // same-file run shows the dial does appear when there is work (AGENTS.md:
   // a device-only assertion needs a positive control).
   patrolTest('the indexing dial rides right of the capsule while analysing',
       ($) async {

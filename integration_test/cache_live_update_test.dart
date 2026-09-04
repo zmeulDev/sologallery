@@ -6,7 +6,7 @@ import 'package:sologallery/services/photo_library_service.dart';
 
 /// On-device proof that the **real** `photo_manager` change notification
 /// reaches [PhotoLibraryService.startLibraryChangeNotify] — the path the host
-/// `FakePhotoLibraryService` stands in for (CLAUDE.md "fake-pairing rule").
+/// `FakePhotoLibraryService` stands in for (AGENTS.md "fake-pairing rule").
 /// The host `indexing_service_test` fires the callback synthetically; only a
 /// device can prove the native MediaStore/PhotoKit observer actually fires it.
 ///

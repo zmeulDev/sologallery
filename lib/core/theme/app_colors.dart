@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 ///
 /// The palette is intentionally monochromatic warm-grey with no accent color:
 /// in a photo app the photographs supply all the color, so the chrome stays
-/// quiet. Values come straight from CLAUDE.md "Design system".
+/// quiet. Values come straight from docs/design-system.md.
 /// Colors drawn *over photos and video* — scrims, glyphs, progress segments.
 ///
 /// Deliberately theme-invariant (media is the background, not the chrome), so

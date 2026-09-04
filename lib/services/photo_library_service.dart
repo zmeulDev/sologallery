@@ -16,7 +16,7 @@ import 'thumbnail_gate.dart';
 
 /// Coarse photo-library access state, mapped from `photo_manager`'s
 /// [PermissionState]. This is the only permission vocabulary the domain/UI
-/// layers see — they never import `photo_manager` (see docs/spec.md#architecture).
+/// layers see — they never import `photo_manager` (see ARCHITECTURE.md#layers).
 enum PhotoAccess {
   /// The user has not been asked yet (iOS `.notDetermined`).
   notDetermined,
@@ -114,7 +114,7 @@ class AssetDetail {
 
 /// The single wrapper around `photo_manager`. All permission handling, asset
 /// and album queries, and thumbnail requests go through here — UI and other
-/// layers never import `photo_manager` directly (see docs/spec.md#architecture).
+/// layers never import `photo_manager` directly (see ARCHITECTURE.md#layers).
 class PhotoLibraryService {
   PhotoLibraryService({ThumbnailDiskCache? thumbnailDiskCache})
       : _thumbnailDiskCache =
@@ -222,7 +222,7 @@ class PhotoLibraryService {
   // metadata sweep), not `photo_manager` directly. This service supplies the
   // sweep's source ([libraryMetadataPage]), metadata Search, and thumbnails —
   // full metadata for a whole library is never loaded, and originals are never
-  // decoded for grid cells (CLAUDE.md Absolute rules).
+  // decoded for grid cells (AGENTS.md Absolute rules).
   //
   // Assets are windowed by *capture date* — the same axis the grid orders and
   // groups by. On Android that is `DATE_TAKEN`; the classic `createTimeCond`

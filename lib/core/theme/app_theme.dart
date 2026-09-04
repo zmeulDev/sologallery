@@ -10,8 +10,8 @@ export 'app_radius.dart';
 export 'app_space.dart';
 export 'app_text_styles.dart';
 
-/// Light and dark [ThemeData] for SoloGallery, built from the CLAUDE.md
-/// "Design system" tokens. The palette is monochromatic warm-grey with no
+/// Light and dark [ThemeData] for SoloGallery, built from the
+/// docs/design-system.md tokens. The palette is monochromatic warm-grey with no
 /// accent — photos carry the color, chrome stays neutral.
 abstract final class AppTheme {
   static ThemeData get light => _build(

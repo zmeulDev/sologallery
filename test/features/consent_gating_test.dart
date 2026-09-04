@@ -74,7 +74,7 @@ void main() {
   test('people stay hidden while face detection is off, then appear', () async {
     await seedFace();
     // Keep the stream alive rather than awaiting `.future` on an autoDispose
-    // StreamProvider (CLAUDE.md Riverpod trap #1).
+    // StreamProvider (AGENTS.md Riverpod trap #1).
     container.listen(personSummariesProvider, (_, _) {});
     await settle();
 

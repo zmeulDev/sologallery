@@ -2,7 +2,7 @@
 
 Hard-won traps, kept verbatim (bold lead-ins preserved so existing `grep`
 habits still work) and grouped by area for findability. **Add new ones
-here**, not in `CLAUDE.md`; `CLAUDE.md` keeps only the handful that touch
+here**, not in `AGENTS.md`; `AGENTS.md` keeps only the handful that touch
 almost every change. Full postmortems, when a gotcha deserves one, live
 alongside the completed plan docs in `docs/plans/`.
 

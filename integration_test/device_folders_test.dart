@@ -4,7 +4,7 @@ import 'package:sologallery/services/photo_library_service.dart';
 
 /// On-device proof of the real `photo_manager` path behind the Search screen's
 /// Folders section. This is the paired counterpart to the host tests that use
-/// `FakePhotoLibraryService` (CLAUDE.md "fake-pairing rule") — the fake returns
+/// `FakePhotoLibraryService` (AGENTS.md "fake-pairing rule") — the fake returns
 /// canned [DeviceFolder]s and cannot exercise what actually breaks here:
 ///
 ///  * whether `getAssetPathList` accepts the Android [AdvancedCustomFilter]
@@ -39,7 +39,7 @@ void main() {
     expect(
       folders,
       isNotEmpty,
-      reason: 'Seed at least one photo on the device (see CLAUDE.md '
+      reason: 'Seed at least one photo on the device (see AGENTS.md '
           '"Deterministic test assets").',
     );
 

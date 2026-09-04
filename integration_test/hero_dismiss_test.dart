@@ -14,7 +14,7 @@ import 'package:sologallery/widgets/asset_thumbnail.dart';
 /// exercised the real `Navigator.maybePop()` (its `onDismissed` was a plain
 /// flag), nor a real [InteractiveViewer] (its `detailImageProvider` was
 /// stubbed to null bytes). This is the paired real-device check of both,
-/// under actual touch input (CLAUDE.md "fake-pairing rule").
+/// under actual touch input (AGENTS.md "fake-pairing rule").
 ///
 /// Decorative motion was removed app-wide (Part 1): the open is a hard cut
 /// (no Hero flight) and the drag no longer visually tracks the finger — it

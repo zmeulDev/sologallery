@@ -4,7 +4,7 @@ import 'package:drift/drift.dart';
 ///
 /// Keyed by the `photo_manager` asset id (a stable string), NOT a foreign key
 /// into an indexed-asset table — favorites must work before ML indexing
-/// populates any asset cache. See docs/spec.md#data-model.
+/// populates any asset cache. See ARCHITECTURE.md#data-model.
 class Favorites extends Table {
   /// `photo_manager` asset id.
   TextColumn get assetId => text()();
@@ -52,7 +52,7 @@ class AlbumEntries extends Table {
 
 /// Non-destructive edit instructions, one row per photo. Originals are never
 /// modified; edits are stored as a JSON instruction blob (Absolute rule:
-/// non-destructive edits only). See docs/spec.md#data-model.
+/// non-destructive edits only). See ARCHITECTURE.md#data-model.
 class EditInstructions extends Table {
   /// `photo_manager` asset id.
   TextColumn get assetId => text()();
@@ -82,7 +82,7 @@ class AppSettings extends Table {
 }
 
 /// One row per asset that the background indexer has processed — the indexing
-/// cursor and a small cached-metadata table (docs/spec.md#data-model, ML phase).
+/// cursor and a small cached-metadata table (ARCHITECTURE.md#data-model, ML phase).
 /// A row's presence means "already indexed"; the orchestrator subtracts these
 /// ids from the library to find remaining work. Kept lean: only the fields
 /// indexing and label search consume today (GPS/modified/duration deferred until

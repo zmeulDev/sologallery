@@ -5,7 +5,7 @@ import 'package:sologallery/services/ml_service.dart';
 /// In-memory [MlWorker] for host tests — returns canned analysis without
 /// spawning an isolate or touching ML Kit. Paired with the on-device
 /// `integration_test/ml_indexing_test.dart` exercising the real worker
-/// (CLAUDE.md fake-pairing rule — the isolate binding + bundled models can't run
+/// (AGENTS.md fake-pairing rule — the isolate binding + bundled models can't run
 /// on the host).
 class FakeMlWorker implements MlWorker {
   FakeMlWorker({

@@ -117,7 +117,7 @@ void main() {
   }
 
   /// Dispose the tree and elapse time so the debounce / cursor-blink timers
-  /// don't trip the pending-timer teardown invariant (CLAUDE.md gotcha).
+  /// don't trip the pending-timer teardown invariant (docs/gotchas.md gotcha).
   Future<void> settle(WidgetTester tester) async {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));

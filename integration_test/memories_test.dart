@@ -9,7 +9,7 @@ import 'package:sologallery/services/photo_library_service.dart';
 
 /// On-device proof that memory generation works against the **real** photo
 /// library and the real Drift connection — the path host tests only see
-/// through `FakePhotoLibraryService` (CLAUDE.md fake-pairing rule).
+/// through `FakePhotoLibraryService` (AGENTS.md fake-pairing rule).
 ///
 /// Host tests plan memories from synthetic dates. Only a device can show that
 /// `photo_manager`'s reported capture dates actually cluster (the Android

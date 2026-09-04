@@ -41,7 +41,7 @@ class IndexingStatus {
 /// labels each via the background [MlWorker] on a downsized thumbnail (never the
 /// original), and writes `photo_asset` + `photo_label` rows.
 ///
-/// Runs only in the foreground and pauses when the app goes idle (CLAUDE.md:
+/// Runs only in the foreground and pauses when the app goes idle (AGENTS.md:
 /// pause on `inactive`/`paused`, resume on `resumed`). Orchestration is on the
 /// main isolate; only the ML runs off-thread (in [MlWorker]).
 class IndexingService {

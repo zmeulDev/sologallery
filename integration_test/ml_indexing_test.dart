@@ -12,7 +12,7 @@ import 'package:sologallery/services/photo_library_service.dart';
 /// checks content search finds a labeled photo.
 ///
 /// The paired real-path counterpart to the host tests using `FakeMlWorker`
-/// (CLAUDE.md fake-pairing rule) — the isolate binding hang and the real model
+/// (AGENTS.md fake-pairing rule) — the isolate binding hang and the real model
 /// can't run under `flutter test`.
 ///
 /// Requires photo access already granted and at least one photo. Run:

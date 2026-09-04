@@ -1,5 +1,5 @@
 /// Flattening the Library home's grouped timeline into display rows. Pure Dart
-/// — no Flutter or plugin imports (see docs/spec.md#architecture).
+/// — no Flutter or plugin imports (see ARCHITECTURE.md#layers).
 library;
 
 import 'library_filter.dart';

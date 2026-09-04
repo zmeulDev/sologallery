@@ -1,6 +1,6 @@
 /// A calendar month, the grouping unit for the Library grid.
 ///
-/// Pure Dart — no Flutter or plugin imports (see docs/spec.md#architecture), so
+/// Pure Dart — no Flutter or plugin imports (see ARCHITECTURE.md#layers), so
 /// it is unit-testable on the host with zero mocking.
 class YearMonth implements Comparable<YearMonth> {
   const YearMonth(this.year, this.month)

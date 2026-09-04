@@ -1,5 +1,5 @@
 /// Pure display formatting for the EXIF sheet. No Flutter or plugin imports —
-/// host-unit-testable (see docs/spec.md#architecture). Keeps the number/date
+/// host-unit-testable (see ARCHITECTURE.md#layers). Keeps the number/date
 /// vocabulary out of the widgets so the sheet just lays out key/value pairs.
 library;
 

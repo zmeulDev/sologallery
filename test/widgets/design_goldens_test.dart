@@ -39,7 +39,7 @@ import 'package:sologallery/widgets/segmented_control.dart';
 import '../support/fake_photo_library_service.dart';
 
 /// Golden coverage for the design-system widgets introduced in Phase 2, in both
-/// light and dark themes (see CLAUDE.md Test strategy → Golden tests).
+/// light and dark themes (see AGENTS.md Test strategy → Golden tests).
 void main() {
   /// One scenario per theme, each on its theme's own background.
   GoldenTestGroup themedGroup(Widget child) {

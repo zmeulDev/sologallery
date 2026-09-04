@@ -11,7 +11,7 @@ import 'package:sologallery/services/photo_library_service.dart';
 /// real-shaped data source without the plugin.
 ///
 /// This fake is paired with an on-device patrol test exercising the real
-/// `photo_manager` path (CLAUDE.md "fake-pairing rule").
+/// `photo_manager` path (AGENTS.md "fake-pairing rule").
 class FakePhotoLibraryService extends PhotoLibraryService {
   FakePhotoLibraryService({
     this.access = PhotoAccess.granted,

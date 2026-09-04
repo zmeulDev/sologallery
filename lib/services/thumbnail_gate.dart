@@ -49,7 +49,7 @@ class ThumbnailGate {
   ///
   /// Background indexing awaits this before submitting its own decode so it
   /// yields the shared native decode pool (Android: Glide's thread pool) to an
-  /// active grid, per CLAUDE.md's "speed and UX come first / move work to
+  /// active grid, per AGENTS.md's "speed and UX come first / move work to
   /// background when idle". A single indexing decode may still overlap the next
   /// grid cell — the burst refills faster than this races — which is harmless;
   /// what it prevents is a whole indexing pass grinding against a "View all"

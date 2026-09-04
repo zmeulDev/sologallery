@@ -9,7 +9,7 @@ import 'package:video_player/video_player.dart';
 
 /// On-device video playback, driving the *real* `photo_manager` video query and
 /// `video_player` controller — the paired counterpart to the host tests that
-/// stub `FakePhotoLibraryService.videoFile` (CLAUDE.md "fake-pairing rule").
+/// stub `FakePhotoLibraryService.videoFile` (AGENTS.md "fake-pairing rule").
 /// This is the path that would hide a native controller-init or codec failure
 /// from `flutter test`.
 ///

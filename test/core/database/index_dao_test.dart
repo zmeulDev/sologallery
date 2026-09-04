@@ -781,7 +781,7 @@ void main() {
     addTearDown(sub.cancel);
 
     // Let the initial (empty) result land before mutating, or the two
-    // emissions coalesce (CLAUDE.md gotcha).
+    // emissions coalesce (docs/gotchas.md gotcha).
     await Future<void>.delayed(const Duration(milliseconds: 20));
     await seedLabeled(1, ['Dog']);
     await Future<void>.delayed(const Duration(milliseconds: 20));

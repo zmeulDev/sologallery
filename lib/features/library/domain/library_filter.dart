@@ -1,5 +1,5 @@
 /// How the Library home groups the timeline. Pure Dart — no Flutter or plugin
-/// imports (see docs/spec.md#architecture).
+/// imports (see ARCHITECTURE.md#layers).
 library;
 
 /// The Library's time filter: how coarsely the grid is grouped.

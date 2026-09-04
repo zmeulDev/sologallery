@@ -12,7 +12,7 @@ import 'package:sologallery/widgets/asset_thumbnail.dart';
 
 /// On-device detail viewer + actions, driving the *real* `photo_manager`,
 /// `share_plus`, and Drift paths — the paired counterpart to the host tests that
-/// use `FakePhotoLibraryService` (CLAUDE.md "fake-pairing rule").
+/// use `FakePhotoLibraryService` (AGENTS.md "fake-pairing rule").
 ///
 /// Run with: `patrol test -t integration_test/detail_actions_test.dart`.
 /// Requires seeded photos on the device (asserts against the real library);
@@ -172,7 +172,7 @@ void main() {
 
   patrolTest('delete a seeded photo removes it and purges rows', ($) async {
     // Destructive — must target a throwaway *seeded* asset, never the device's
-    // own photos. Seed first (CLAUDE.md deterministic-assets):
+    // own photos. Seed first (AGENTS.md deterministic-assets):
     //   adb push test_assets/ /sdcard/Pictures/SoloGalleryTest/
     // Then open that asset, tap delete, confirm our dialog, drive the OS trash
     // dialog, and assert it leaves the grid. Left skipped until test_assets/ is

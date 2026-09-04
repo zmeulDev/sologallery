@@ -307,7 +307,7 @@ void main() {
       }
     }
 
-    /// Subscribes (never awaits an autoDispose stream's `.future` — CLAUDE.md)
+    /// Subscribes (never awaits an autoDispose stream's `.future` — AGENTS.md)
     /// and returns the emitted chip list.
     Future<List<String>> read() async {
       final container = ProviderContainer(

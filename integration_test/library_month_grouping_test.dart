@@ -13,7 +13,7 @@ import 'package:sologallery/services/photo_library_service.dart';
 /// and asserts the DAO's month grouping over real device metadata.
 ///
 /// This is the paired real-path counterpart to the host tests that use
-/// `FakePhotoLibraryService` (CLAUDE.md "fake-pairing rule"): the fake can't
+/// `FakePhotoLibraryService` (AGENTS.md "fake-pairing rule"): the fake can't
 /// exercise photo_manager's native filter columns, so the DATE_ADDED/DATE_TAKEN
 /// bug was invisible to `flutter test`.
 ///

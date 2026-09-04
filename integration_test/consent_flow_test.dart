@@ -9,7 +9,7 @@ import 'package:sologallery/app.dart';
 /// dialog.
 ///
 /// Host widget tests cover the same screens against an in-memory database;
-/// this is the paired real-path run (CLAUDE.md fake-pairing rule). It is also
+/// this is the paired real-path run (AGENTS.md fake-pairing rule). It is also
 /// what makes the flow verifiable without screenshots: Flutter is invisible to
 /// `uiautomator`, so patrol's Flutter finders are the only reliable way to
 /// press these controls on a device.

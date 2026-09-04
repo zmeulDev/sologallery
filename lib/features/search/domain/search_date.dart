@@ -1,6 +1,6 @@
 // Pure-Dart search-query parsing for the metadata Search screen. No Flutter or
 // photo_manager imports — the service maps MediaTypeFilter onto a RequestType,
-// keeping plugin types out of the domain (docs/spec.md#architecture).
+// keeping plugin types out of the domain (ARCHITECTURE.md#layers).
 
 /// A half-open capture-date window `[start, endExclusive)` parsed from a text
 /// query. Used to scope photo results to a year or a month.

@@ -20,7 +20,7 @@ import 'package:sologallery/widgets/folder_list.dart';
 void main() {
   /// Bounded pumps, never [PatrolIntegrationTester.pumpAndSettle]: an
   /// `AsyncValue` loading branch renders a [CircularProgressIndicator], which
-  /// schedules a frame forever and so never settles (CLAUDE.md gotcha).
+  /// schedules a frame forever and so never settles (docs/gotchas.md gotcha).
   Future<void> settle(PatrolIntegrationTester $) async {
     for (var i = 0; i < 10; i++) {
       await $.tester.pump(const Duration(milliseconds: 200));

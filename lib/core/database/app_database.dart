@@ -16,7 +16,7 @@ part 'app_database.g.dart';
 ///
 /// 100% on-device — no network, no cloud sync (Absolute rules). Schema is
 /// versioned; every upgrade path is covered by a `SchemaVerifier` migration
-/// test (see docs/spec.md#data-model and test/core/database/).
+/// test (see ARCHITECTURE.md#data-model and test/core/database/).
 ///
 /// v1 holds only user-authored state that must exist before ML indexing:
 /// favorites, albums + membership, and non-destructive edit instructions.

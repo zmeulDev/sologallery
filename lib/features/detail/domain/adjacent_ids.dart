@@ -1,5 +1,5 @@
 /// Pure neighbour math for preloading around the visible page. No Flutter
-/// imports — see `docs/spec.md#architecture`.
+/// imports — see `ARCHITECTURE.md#layers`.
 library;
 
 /// The ids up to [ahead] positions after and [behind] positions before

@@ -9,7 +9,7 @@ import 'package:sologallery/services/photo_library_service.dart';
 /// On-device proof of the bounded thumbnail pipeline, against real
 /// `photo_manager`. This is the paired counterpart to
 /// `test/services/thumbnail_gate_test.dart`, which exercises the gate's
-/// bookkeeping with synthetic tasks (CLAUDE.md "fake-pairing rule"). The host
+/// bookkeeping with synthetic tasks (AGENTS.md "fake-pairing rule"). The host
 /// test cannot see what actually matters here:
 ///
 ///  * that a burst larger than `maxConcurrent` still resolves *every* request
@@ -18,7 +18,7 @@ import 'package:sologallery/services/photo_library_service.dart';
 ///  * that cancelling some requests does not starve or corrupt the rest;
 ///  * that the edges [avatarThumbEdge] picks come back as real decodable
 ///    images, since `thumbnail(id, N, N)` is aspect-*fill* (short edge N, long
-///    edge larger — the CLAUDE.md gotcha) and the face-box maths depends on it.
+///    edge larger — the docs/gotchas.md gotcha) and the face-box maths depends on it.
 ///
 /// Requires photo-library access already granted and at least a few photos.
 /// Run with:
@@ -32,7 +32,7 @@ void main() {
     expect(
       access.canReadLibrary,
       isTrue,
-      reason: 'Grant photo access before running (see CLAUDE.md — pm grant '
+      reason: 'Grant photo access before running (see AGENTS.md — pm grant '
           'READ_MEDIA_IMAGES et al. between install and run).',
     );
     return service;

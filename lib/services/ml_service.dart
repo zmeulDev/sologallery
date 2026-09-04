@@ -43,7 +43,7 @@ const _faceModelAsset = 'assets/models/mobilefacenet.tflite';
 
 /// Runs on-device image analysis (labels + OCR + face embeddings). An interface
 /// so the background-isolate implementation can be swapped for a fake in host
-/// tests (CLAUDE.md fake-pairing rule — the real path is covered by an on-device
+/// tests (AGENTS.md fake-pairing rule — the real path is covered by an on-device
 /// integration test).
 abstract class MlWorker {
   /// Analyzes [bytes] (a downsized JPEG thumbnail — never an original) for

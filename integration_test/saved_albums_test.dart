@@ -7,7 +7,7 @@ import 'package:sologallery/features/detail/widgets/detail_action_bar.dart';
 import 'package:sologallery/widgets/asset_thumbnail.dart';
 
 /// On-device Saved + Albums flows, driving the *real* `photo_manager` + Drift
-/// paths — the paired counterpart to the host widget tests (CLAUDE.md
+/// paths — the paired counterpart to the host widget tests (AGENTS.md
 /// "fake-pairing rule"). Run with:
 ///   `patrol test -t integration_test/saved_albums_test.dart -d DEVICE`
 /// Requires seeded photos on the device (see phase2 plan).

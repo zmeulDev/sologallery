@@ -9,7 +9,7 @@ import 'package:sologallery/widgets/limited_access_banner.dart';
 ///
 /// These drive the *real* `photo_manager` permission flow and grid — the paired
 /// on-device counterpart to the host tests that use `FakePhotoLibraryService`
-/// (CLAUDE.md "fake-pairing rule"). `clearPackageData=true` in the JUnit runner
+/// (AGENTS.md "fake-pairing rule"). `clearPackageData=true` in the JUnit runner
 /// resets app data and permissions between cases, so each starts fresh.
 ///
 /// Run with: `patrol test -t integration_test/permission_matrix_test.dart`.

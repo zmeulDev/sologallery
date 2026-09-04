@@ -28,7 +28,7 @@ import '../../widgets/app_shell.dart';
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
 /// App-wide [GoRouter], kept alive for the app's lifetime. Routing structure
-/// is documented in docs/spec.md#routing.
+/// is documented in ARCHITECTURE.md#routing.
 ///
 /// A [redirect] gates the whole app on photo-library access **and** on the
 /// on-device analysis consent prompt: without either the user is held on
