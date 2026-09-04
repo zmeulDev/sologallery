@@ -42,10 +42,23 @@ real onboarding UI, patrol) green on the Samsung device (see its Result).
 `Isolate.run` offloads preserved exactly, 113/113 host tests unmodified,
 `ml_indexing_test.dart`/`memories_test.dart`/`people_test.dart` all green on
 the Samsung device.
-**Next step:** Phase 6 — Task 6.4, assess `lib/services/ml_service.dart` (668
-lines) — **assess before acting**. If a split can't keep the isolate spawn /
-handoff / shutdown protocol in one readable unit, the task itself says to
-recommend leaving it alone and record why, rather than force a split.
+6.4 done — assessed `ml_service.dart`, **not split** (recommended and
+recorded, no code changed): the controller/worker-entrypoint split is exactly
+the isolate-protocol risk the task warns about, and the one low-risk
+extraction candidate (a ~135-line pure face-quality/embedding pocket) was
+considered and rejected as not worth a new file for a non-structural trim.
+**Phase 6 complete — every task in every phase of this document is now
+checked off.** `tool/check.sh` is green (827/827) as of 6.3; the on-device
+verification actually run this session covered the files each Phase 6 task
+touched (`thumbnail_gate_test.dart`, `consent_test.dart`,
+`consent_flow_test.dart`, `ml_indexing_test.dart`, `memories_test.dart`,
+`people_test.dart` — 6 of the 17 `integration_test/` files), not the full
+suite the top-level **Completion** section calls for.
+**Next step:** the **Completion** checklist at the bottom of this document —
+run the remaining `integration_test/` files not touched this session, then
+update Status here, move this file to `docs/archived/`, and update
+`PRD.md#known-gaps`. Not started — confirm scope with the user before
+running an hour-plus, one-file-per-run device suite and editing `PRD.md`.
 
 **Test device for Phase 2+ (2026-09-04):** a **physical iPhone 17 Pro Max**
 (`-d 00008150-0016388A1A43401C`, iOS 26.6.1), run as a plain `integration_test`
@@ -1145,7 +1158,7 @@ consent transaction becomes unclear mid-task, stop and ask rather than guessing.
 
 ### 6.4 Assess `ml_service.dart`
 
-- [ ] **File:** `lib/services/ml_service.dart` (668 lines)
+- [x] **File:** `lib/services/ml_service.dart` (668 lines)
 - **Change:** roughly half isolate plumbing, half analysis logic. **Assess before
   acting.** This file is a single cohesive isolate boundary, and the spawn /
   handoff / shutdown protocol is correct in ways that are easy to break — the
@@ -1156,7 +1169,72 @@ consent transaction becomes unclear mid-task, stop and ask rather than guessing.
   pair.
 - **Verify:** if split, `flutter test test/services/ml_worker_shutdown_test.dart`
   plus the full on-device ML suite. If not split, record the reasoning.
-- **Result:**
+- **Result:** Assessed — **not split**. No code touched by this task.
+
+  The file has three parts, not cleanly two:
+  1. **`MlWorkerController`** (lines 79–302) — spawn, message routing,
+     `dispose()`'s ack-then-grace-then-kill teardown (`_shutdownAckTimer`,
+     `_shutdownExitTimer`, `_onShutdownAck`, `_onWorkerExited`,
+     `_completeDispose`).
+  2. **`_workerMainImpl`** (304–437) — the worker isolate's own entrypoint:
+     `BackgroundIsolateBinaryMessenger.ensureInitialized` (must run before any
+     ML Kit call), the sequential `commands.listen` loop that guarantees
+     `_ShutdownJob` is only processed after any in-flight `_AnalyzeJob` has
+     returned, and — inline in the same handler — the actual ML Kit/tflite
+     driving code (labeler/recognizer/detector/embedder, lazily built,
+     closed over by the listener).
+  3. **A small pure pocket** (439–573): `faceIsLargeEnough`, `faceIsUsable`,
+     `_embedFace`, and three tuned constants (`minFaceFraction`,
+     `maxFaceYaw`, `maxFaceRoll`) — geometry/quality-gate math with no
+     isolate, SendPort, or plugin dependency at all.
+
+  **Rejected: splitting controller from worker entrypoint.** This is the
+  literal "isolate plumbing" split the task warns about, and it is exactly
+  as risky as described. The shutdown handshake is one protocol with two
+  ends that must stay synchronized — `_ShutdownJob` sent →
+  `_workerMainImpl` finishes any in-flight job, closes every model, sends
+  `_ShutdownAck` → controller cancels the ack timer and arms a 5s grace
+  timer → the isolate exits naturally → `onExit` fires →
+  `_completeDispose()`. Putting the two ends in different files means a
+  future edit to one side (the ack payload shape, or the guarantee that
+  `_ShutdownJob` can't jump the queue ahead of an `_AnalyzeJob`) can drift
+  from its counterpart with nothing forcing the two files to be read or
+  reviewed together — the drift would surface on-device as a hang or a
+  premature kill mid-native-call, not as a compile error or a host test
+  failure. Leaving both ends in one file makes that coupling visible by
+  construction.
+
+  **Considered and rejected: extracting the pure pocket (part 3, ~135
+  lines) into its own file.** Unlike the controller/worker split, this one
+  is genuinely low-risk — `faceIsLargeEnough`/`faceIsUsable`/`_embedFace`
+  touch no isolate state, and the existing host test
+  (`test/services/face_size_filter_test.dart`) already exercises them as
+  ordinary top-level functions regardless of which file they live in.
+  Rejected anyway, for reasons short of protocol risk:
+  - It would not change the file's actual character — the remaining
+    ~534 lines are still `MlWorkerController` plumbing plus
+    `_workerMainImpl`'s analysis-driving loop, i.e. still "isolate
+    plumbing + analysis orchestration," just shorter. It doesn't resolve
+    the two-halves shape the task describes, only trims it.
+  - `_embedFace`/`faceIsUsable`'s thresholds carry heavy, specific, measured
+    commentary (a real-library false-positive count, a 42°-vs-32° yaw
+    measurement) about *why* they're tuned the way they are, directly
+    beside their one and only call site inside `_workerMainImpl`'s job
+    handler. Moving them adds a file hop for a reader following "what does
+    `analyze()` actually do to one image," for a line-count win with no
+    correctness or protocol benefit.
+  - Unlike 6.1–6.3, this task sets no line-count target — there is no bar
+    to clear that a ~20% trim would satisfy, only the task's own
+    readability/risk question, which a partial split doesn't improve.
+
+  **Conclusion: `ml_service.dart` stays as one 668-line file.** No `lib/`
+  change; nothing to run beyond confirming this — `flutter analyze
+  lib/services/ml_service.dart` was already clean before this task (last
+  touched in Phase 6.3, unrelated) and `tool/check.sh` is green from 6.3.
+  `test/services/ml_worker_shutdown_test.dart` (part of the `test/services/`
+  suite already green above) is the host-side proof the shutdown protocol
+  behaves correctly as one unit; no further device run needed since nothing
+  changed.
 
 ---
 
