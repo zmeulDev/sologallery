@@ -12,6 +12,7 @@ import '../core/database/database_provider.dart';
 import '../features/memories/domain/memory_builder.dart';
 import '../features/memories/domain/planned_memory.dart';
 import '../features/people/domain/face_clustering.dart';
+import 'indexing_consent.dart';
 import 'ml_service.dart';
 import 'permission_provider.dart';
 import 'photo_library_service.dart';
@@ -55,9 +56,24 @@ class IndexingService {
     this.resweepDebounce = const Duration(seconds: 2),
     this.reclusterThreshold = 20,
     this.memoryRefreshThreshold = 50,
-  });
+  }) {
+    // Built in the constructor body, not the initializer list: it needs a
+    // tear-off of `start`, an instance method, which isn't available yet
+    // during initializer-list evaluation.
+    _consent = IndexingConsent(
+      dao: dao,
+      faces: faces,
+      memories: memories,
+      settings: settings,
+      start: start,
+    );
+  }
 
   static final _log = Logger('SoloGallery.ml');
+
+  /// Owns the consent-toggle side effects (onboarding's [applyConsent] and
+  /// each Settings toggle) — see [IndexingConsent].
+  late final IndexingConsent _consent;
 
   /// Thumbnail edge (px) for the OCR-only pass — larger than the 512 label/face
   /// thumbnail so small/distant text is recognized. Still a bounded thumbnail
@@ -71,15 +87,9 @@ class IndexingService {
   final PhotoLibraryService photos;
   final MlWorker worker;
 
-  /// `app_settings` key holding the face count at the last global re-cluster.
-  static const _reclusterBaselineKey = 'faces_at_last_recluster';
-
-  /// `app_settings` key + value identifying the clustering algorithm the stored
-  /// person assignments were produced by. Bump the version whenever grouping
-  /// changes so existing installs re-cluster once instead of keeping the groups
-  /// the old algorithm decided on.
-  static const _clusterAlgoKey = 'cluster_algo_version';
-  static const _clusterAlgoVersion = '2';
+  // reclusterBaselineKey and clusterAlgoKey/clusterAlgoVersion (below) are
+  // defined in indexing_consent.dart, shared with [IndexingConsent] which
+  // resets them on a consent change.
 
   /// `app_settings` key + value identifying the face *pipeline* — detector
   /// options, quality gate, crop — that produced the stored embeddings. Bump it
@@ -95,10 +105,8 @@ class IndexingService {
   /// in tests.
   final int reclusterThreshold;
 
-  /// `app_settings` keys for the memory-regeneration baseline: the local date
-  /// memories were last generated on, and the cache size at that moment.
-  static const _memoriesDateKey = 'memories_generated_on';
-  static const _memoriesCountKey = 'memories_asset_baseline';
+  // memoriesDateKey/memoriesCountKey (below) are also defined in
+  // indexing_consent.dart, shared with [IndexingConsent].
 
   /// New cached assets since the last regeneration before one is forced
   /// mid-day. Small in tests.
@@ -250,8 +258,8 @@ class IndexingService {
       // drop them so the carousel doesn't hold stale titles, and clear the
       // baselines so the next pass regenerates immediately.
       await memories.clearMemories();
-      await settings.put(_memoriesDateKey, '');
-      await settings.put(_memoriesCountKey, '0');
+      await settings.put(memoriesDateKey, '');
+      await settings.put(memoriesCountKey, '0');
       _setSwept(false);
       _emit(const IndexingStatus.idle());
       _log.info('Rebuilding index from scratch');
@@ -263,170 +271,44 @@ class IndexingService {
 
   // --- Consent toggles ------------------------------------------------------
   //
-  // Both live here rather than in the UI because withdrawing consent has to
-  // delete the derived data, and enabling has to arrange for it to be derived —
-  // and this service owns the baseline keys, the DAOs, and the pass lifecycle.
+  // Implementation lives in [IndexingConsent] (indexing_consent.dart) — this
+  // service still owns the DAOs and the pass lifecycle it needs, injected in
+  // via the constructor. Kept as plain delegates here because this is the
+  // surface the UI (and its tests) calls.
 
   /// Applies all three consent answers and the folder scope at once —
-  /// onboarding's single entry point.
-  ///
-  /// Deliberately *not* three [setSearchEnabled] / [setMemoriesEnabled] /
-  /// [setFacesEnabled] calls in a row. Each of those persists its own flag and
-  /// then kicks a pass, so the first one starts a pass that reads the other two
-  /// flags before they have been written. Faces lost that race on first run:
-  /// the pass ran with `facesEnabled: false`, still stamped `indexed_at` on
-  /// every asset, and since [IndexDao.pendingMlIds] only returns unstamped rows
-  /// nothing ever revisited them — People stayed empty until the user toggled
-  /// face detection in Settings. Here the flags and folder scope land in one
-  /// transaction before any pass can observe them, and exactly one pass is kicked
-  /// at the end.
+  /// onboarding's single entry point. See [IndexingConsent.applyConsent].
   Future<void> applyConsent({
     required bool searchEnabled,
     required bool memoriesEnabled,
     required bool facesEnabled,
     required Set<String> excludedFolderIds,
-  }) async {
-    final previousExcluded = await settings.readExcludedFolderIds();
+  }) => _consent.applyConsent(
+    searchEnabled: searchEnabled,
+    memoriesEnabled: memoriesEnabled,
+    facesEnabled: facesEnabled,
+    excludedFolderIds: excludedFolderIds,
+  );
 
-    await settings.setConsent(
-      search: searchEnabled,
-      memories: memoriesEnabled,
-      faces: facesEnabled,
-      excludedFolderIds: excludedFolderIds,
-    );
+  /// Enables or disables content search (ML labels + OCR text). See
+  /// [IndexingConsent.setSearchEnabled].
+  Future<void> setSearchEnabled(bool enabled) =>
+      _consent.setSearchEnabled(enabled);
 
-    final needsMl = searchEnabled || facesEnabled;
+  /// Enables or disables auto-curated Memories. See
+  /// [IndexingConsent.setMemoriesEnabled].
+  Future<void> setMemoriesEnabled(bool enabled) =>
+      _consent.setMemoriesEnabled(enabled);
 
-    // Enabling either ML feature re-queues the whole cache: anything indexed
-    // while it was off carries an `indexed_at` stamp that would otherwise hide
-    // it from pendingMlIds forever.
-    if (needsMl) await dao.resetMlPending();
+  /// Enables or disables face detection / People. See
+  /// [IndexingConsent.setFacesEnabled].
+  Future<void> setFacesEnabled(bool enabled) =>
+      _consent.setFacesEnabled(enabled);
 
-    // Declining deletes what was already derived. An upgrading user reaches
-    // this step with labels, faces, persons and memories already on disk from
-    // before consent existed, and "no" has to mean the inferences go — not
-    // merely that the UI stops showing them.
-    if (!searchEnabled) await dao.clearContent();
-    if (!facesEnabled) {
-      await faces.clearFaces();
-      await faces.clearPersons();
-      await settings.put(_reclusterBaselineKey, '0');
-    }
-    if (!memoriesEnabled) await memories.clearMemories();
-
-    // If the folder scope changed while ML features remain on, derived data may
-    // now cover assets that should be excluded. Wipe it so the next pass
-    // re-analyzes only the included folders.
-    if (needsMl && previousExcluded != excludedFolderIds) {
-      await dao.clearContent();
-      await faces.clearFaces();
-      await faces.clearPersons();
-      await settings.put(_reclusterBaselineKey, '0');
-      await settings.put(_clusterAlgoKey, _clusterAlgoVersion);
-      await memories.clearMemories();
-    }
-
-    // Memories are planned from labels and clusters, so every branch above
-    // invalidates the current plan: clear the baselines and the pass replans
-    // immediately rather than waiting for the once-a-day trigger.
-    await settings.put(_memoriesDateKey, '');
-    await settings.put(_memoriesCountKey, '0');
-
-    // One pass, after everything is durable. If the permission-grant pass is
-    // still in flight, [start] folds this into it (_dirty) instead of dropping
-    // it, and that pass re-reads the flags on its next round.
-    unawaited(start());
-  }
-
-  /// Enables or disables content search (ML labels + OCR text).
-  ///
-  /// Disabling deletes every label and OCR row — consent withdrawn means the
-  /// inferences go, not just the search box. Enabling re-queues the whole cache
-  /// for analysis (assets indexed while it was off are stamped `indexed_at`, so
-  /// they would otherwise never be revisited).
-  Future<void> setSearchEnabled(bool enabled) async {
-    await settings.setSearchEnabled(enabled);
-    if (enabled) {
-      await dao.resetMlPending();
-      unawaited(start());
-    } else {
-      await dao.clearContent();
-      // Theme memories were built from those labels; replan without them.
-      await settings.put(_memoriesDateKey, '');
-      _log.info('Content search disabled — cleared labels and OCR text');
-    }
-  }
-
-  /// Enables or disables auto-curated Memories.
-  ///
-  /// Disabling drops every memory row (consent withdrawn = data gone). Enabling
-  /// clears the regeneration baseline so the next pass rebuilds immediately
-  /// rather than waiting for the once-a-day trigger; memories are planned from
-  /// already-cached data, so no re-analysis is needed.
-  Future<void> setMemoriesEnabled(bool enabled) async {
-    await settings.setMemoriesEnabled(enabled);
-    if (enabled) {
-      await settings.put(_memoriesDateKey, '');
-      await settings.put(_memoriesCountKey, '0');
-      unawaited(start());
-    } else {
-      await memories.clearMemories();
-      await settings.put(_memoriesDateKey, '');
-      await settings.put(_memoriesCountKey, '0');
-      _log.info('Memories disabled — cleared curated memories');
-    }
-  }
-
-  /// Enables or disables face detection / People.
-  ///
-  /// Disabling deletes every face embedding *and* person cluster. Enabling has
-  /// to backfill: assets indexed while the feature was off have `indexed_at`
-  /// set, so [IndexDao.pendingMlIds] would skip them forever — [resetMlPending]
-  /// re-queues the whole cache (labels/OCR survive, `upsertIndexed` replaces
-  /// them in place).
-  Future<void> setFacesEnabled(bool enabled) async {
-    await settings.setFacesEnabled(enabled);
-    if (enabled) {
-      await dao.resetMlPending();
-      unawaited(start());
-    } else {
-      await faces.clearFaces();
-      await faces.clearPersons();
-      await settings.put(_reclusterBaselineKey, '0');
-      // Person-kind memories were built from those clusters; drop the baseline
-      // so the next pass replans without them.
-      await settings.put(_memoriesDateKey, '');
-      _log.info('Face detection disabled — cleared faces and persons');
-    }
-  }
-
-  /// Applies a new set of folder ids excluded from analysis.
-  ///
-  /// Correctly identifying only the newly excluded/included assets requires the
-  /// same expensive folder paging the indexer already does, and the setting
-  /// changes rarely — so a full derived-data reset is the right trade-off.
-  Future<void> setExcludedFolderIds(Set<String> ids) async {
-    await settings.setExcludedFolderIds(ids);
-
-    // Wipe every inference that the new scope invalidates.
-    await dao.clearContent();
-    await faces.clearFaces();
-    await faces.clearPersons();
-    await settings.put(_reclusterBaselineKey, '0');
-    // The next pass should not treat this as an algorithm change; stamp the
-    // current version so the small post-reset face count doesn't force a global
-    // re-cluster immediately.
-    await settings.put(_clusterAlgoKey, _clusterAlgoVersion);
-    await memories.clearMemories();
-    await settings.put(_memoriesDateKey, '');
-    await settings.put(_memoriesCountKey, '0');
-
-    // Re-queue everything so the next pass re-analyzes only included folders.
-    await dao.resetMlPending();
-
-    _log.info('Excluded folder set changed — reset derived data');
-    unawaited(start());
-  }
+  /// Applies a new set of folder ids excluded from analysis. See
+  /// [IndexingConsent.setExcludedFolderIds].
+  Future<void> setExcludedFolderIds(Set<String> ids) =>
+      _consent.setExcludedFolderIds(ids);
 
   Future<void> dispose() async {
     _cancelled = true;
@@ -719,14 +601,14 @@ class IndexingService {
     await _awaitNotPaused();
     if (_cancelled) return;
     final total = await faces.faceCount();
-    final baselineRaw = await settings.read(_reclusterBaselineKey);
+    final baselineRaw = await settings.read(reclusterBaselineKey);
     final baseline = int.tryParse(baselineRaw ?? '') ?? 0;
     // A clustering-algorithm change makes every stored grouping stale, so the
     // first pass after an upgrade re-clusters regardless of the baseline. Only
     // for an install that has actually clustered before (baseline written) —
     // a fresh one has nothing to heal and reaches the threshold on its own.
     final staleAlgo = baselineRaw != null &&
-        await settings.read(_clusterAlgoKey) != _clusterAlgoVersion;
+        await settings.read(clusterAlgoKey) != clusterAlgoVersion;
     if (!staleAlgo && total - baseline < reclusterThreshold) return;
 
     final all = await faces.allFacesForClustering();
@@ -752,8 +634,8 @@ class IndexingService {
     );
     if (_cancelled) return;
     await faces.rebuildClusters(plan);
-    await settings.put(_reclusterBaselineKey, total.toString());
-    await settings.put(_clusterAlgoKey, _clusterAlgoVersion);
+    await settings.put(reclusterBaselineKey, total.toString());
+    await settings.put(clusterAlgoKey, clusterAlgoVersion);
     _log.info(
       'Global re-cluster: ${all.length} face(s) -> ${plan.length} person(s)',
     );
@@ -777,9 +659,9 @@ class IndexingService {
         '${now.day.toString().padLeft(2, '0')}';
 
     final total = await memories.cachedAssetCount();
-    final lastDate = await settings.read(_memoriesDateKey);
+    final lastDate = await settings.read(memoriesDateKey);
     final baseline =
-        int.tryParse(await settings.read(_memoriesCountKey) ?? '') ?? 0;
+        int.tryParse(await settings.read(memoriesCountKey) ?? '') ?? 0;
 
     final newDay = lastDate != todayKey;
     final enoughNew = total - baseline >= memoryRefreshThreshold;
@@ -795,8 +677,8 @@ class IndexingService {
     if (_cancelled) return;
 
     await memories.applyPlan(plan);
-    await settings.put(_memoriesDateKey, todayKey);
-    await settings.put(_memoriesCountKey, total.toString());
+    await settings.put(memoriesDateKey, todayKey);
+    await settings.put(memoriesCountKey, total.toString());
     _log.info('Regenerated ${plan.length} memory/memories');
   }
 

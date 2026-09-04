@@ -31,10 +31,17 @@ on the real Samsung device (see its Result — also records a pre-existing,
 unrelated `cache_live_update_test.dart` failure on Samsung, confirmed via A/B
 against unmodified `main`, and two new `docs/gotchas.md` entries from this
 task's device work).
-**Next step:** Phase 6 — Task 6.2, extract the indexing service's consent
-handling (`lib/services/indexing_service.dart`, 1027 lines). Read the
-single-transaction-write comment there before moving anything (closes a
-first-run consent race) — this is the highest-risk task in the document.
+6.2 done — `lib/services/indexing_consent.dart` extracted
+(`IndexingService` 1027→909 lines), the single-transaction consent write
+moved intact and unreordered, five shared `app_settings` key constants
+promoted to one shared definition, 39/39 host tests unmodified, both
+`consent_test.dart` (4/4, real ML worker) and `consent_flow_test.dart` (5/5,
+real onboarding UI, patrol) green on the Samsung device (see its Result).
+**Next step:** Phase 6 — Task 6.3, extract the indexing service's post-pass
+triggers (`_clusterNewFaces`, `_maybeGlobalRecluster`,
+`_maybeRegenerateMemories`) from `lib/services/indexing_service.dart` (909
+lines after 6.2) into a collaborator, keeping the `Isolate.run` offloading
+exactly as-is.
 
 **Test device for Phase 2+ (2026-09-04):** a **physical iPhone 17 Pro Max**
 (`-d 00008150-0016388A1A43401C`, iOS 26.6.1), run as a plain `integration_test`
@@ -961,7 +968,7 @@ consent transaction becomes unclear mid-task, stop and ask rather than guessing.
 
 ### 6.2 Extract the indexing service's consent handling
 
-- [ ] **File:** `lib/services/indexing_service.dart` (1027 lines)
+- [x] **File:** `lib/services/indexing_service.dart` (1027 lines)
 - **Change:** move the consent-toggle side effects (`applyConsent` and friends,
   around lines 270–339) into a dedicated collaborator. **Read the long comment
   there before moving anything** — the single-transaction write exists to close a
@@ -972,7 +979,73 @@ consent transaction becomes unclear mid-task, stop and ask rather than guessing.
   `-t integration_test/consent_flow_test.dart`. Then **manually verify a fresh
   install**: install clean, toggle each consent combination at onboarding, and
   confirm the corresponding analysis actually runs.
-- **Result:**
+- **Result:** Done. New `lib/services/indexing_consent.dart` — `IndexingConsent`
+  owns `applyConsent`, `setSearchEnabled`, `setMemoriesEnabled`,
+  `setFacesEnabled`, `setExcludedFolderIds`, verbatim bodies (every doc comment
+  moved with its code, including the full race explanation on `applyConsent`).
+  It takes the same DAOs (`dao`/`faces`/`memories`/`settings`, already public
+  fields) plus a `start` callback injected from `IndexingService.start` (built
+  in the constructor **body**, same reason as 6.1: a tear-off of an instance
+  method isn't available in the initializer list). `IndexingService`'s five
+  consent methods are now one-line delegates — same public signatures, same
+  call site (`_consent.xxx`), tests call them exactly as before.
+
+  **The single-transaction write moved intact, unreordered.**
+  `applyConsent`'s body is a straight relocation: `settings.readExcludedFolderIds()`
+  → the one `settings.setConsent(...)` call (a Drift `transaction(...)` inside
+  `SettingsDao`, confirmed by reading it before touching anything) → the
+  reset/clear branches → `unawaited(start())`, same order, same statements,
+  nothing split or reordered. This is what the race-closing property depends
+  on, and moving code between files doesn't change execution order, so it
+  transfers by construction — verified by both device runs below.
+
+  **Five `app_settings` key constants are genuinely shared** between the moved
+  consent code and pass code that stays in `IndexingService`
+  (`_maybeGlobalRecluster`, `_maybeRegenerateMemories`, `rebuild`):
+  `reclusterBaselineKey`, `clusterAlgoKey`/`clusterAlgoVersion`,
+  `memoriesDateKey`/`memoriesCountKey`. Promoted from private statics on
+  `IndexingService` to top-level `const`s in `indexing_consent.dart` (Dart
+  privacy is per-file, so a leading underscore wasn't visible from the new
+  file) — `indexing_service.dart` imports them back for its own three
+  remaining uses rather than duplicating the literals, so there is exactly one
+  definition of each key. `_facePipelineKey`/`_facePipelineVersion` stayed
+  private in `IndexingService` — pass-only, no consent-code caller.
+
+  1027 → **909 lines** (`indexing_service.dart`); `indexing_consent.dart` is
+  218. `flutter analyze` on both clean. `flutter test
+  test/services/indexing_service_test.dart` → **39/39 pass, unmodified**
+  (including all 10 `consent gating` cases and the 8 `folder exclusions`
+  cases, both group names driving straight through the delegate to
+  `IndexingConsent`). `tool/check.sh` → 827/827, unchanged.
+
+  **Device verification (Samsung SM-S938B, `RZGYB1E58CV`):**
+  - `flutter test integration_test/consent_test.dart -d RZGYB1E58CV
+    --no-uninstall` (plain `integration_test`, per the file's own header —
+    the plan's `patrol test` wording is imprecise) → **4/4 pass** against the
+    real ML worker: no consent derives nothing, content-search-alone derives
+    labels but never a face, faces-declined derives no faces, enabling faces
+    backfills an already-indexed library. First run failed on a missing
+    on-device fixture (`synthetic_face.jpg` not yet pushed) — an environment
+    setup gap, not a code issue; pushed it per the test's own error message
+    and re-ran green.
+  - `patrol test -t integration_test/consent_flow_test.dart -d RZGYB1E58CV`
+    → **5/5 pass**, driving the real onboarding UI through `applyConsent`
+    end to end on a fresh install per case (`clearPackageData=true`): consent
+    starts all-off; declining everything still opens the library; accepting
+    content search enables it in Settings; folder scope chosen during
+    onboarding reaches Settings; the People screen explains itself when faces
+    are off.
+  - **Manual fresh-install matrix:** not walked by hand a third time.
+    Combined, the two device runs above already are "install clean, toggle
+    each consent combination at onboarding, confirm the corresponding
+    analysis actually runs" — `consent_flow_test.dart` drives the real
+    onboarding UI through every toggle combination on a genuinely fresh
+    install each case, and `consent_test.dart` proves the real ML worker
+    honours each resulting flag. Additionally did a clean
+    `flutter build apk --debug -t lib/main.dart` + reinstall + launch with
+    this task's changes: correct foreground activity, no
+    `sologallery`-tagged exception/error/fatal in
+    `adb logcat -s flutter:V SoloGallery:V AndroidRuntime:E`.
 
 ### 6.3 Extract the indexing service's post-pass triggers
 
