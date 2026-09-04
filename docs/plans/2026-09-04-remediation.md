@@ -37,11 +37,15 @@ moved intact and unreordered, five shared `app_settings` key constants
 promoted to one shared definition, 39/39 host tests unmodified, both
 `consent_test.dart` (4/4, real ML worker) and `consent_flow_test.dart` (5/5,
 real onboarding UI, patrol) green on the Samsung device (see its Result).
-**Next step:** Phase 6 — Task 6.3, extract the indexing service's post-pass
-triggers (`_clusterNewFaces`, `_maybeGlobalRecluster`,
-`_maybeRegenerateMemories`) from `lib/services/indexing_service.dart` (909
-lines after 6.2) into a collaborator, keeping the `Isolate.run` offloading
-exactly as-is.
+6.3 done — `lib/services/indexing_triggers.dart` extracted (`IndexingService`
+909→678 lines, above the 600 target — see its Result for why), both
+`Isolate.run` offloads preserved exactly, 113/113 host tests unmodified,
+`ml_indexing_test.dart`/`memories_test.dart`/`people_test.dart` all green on
+the Samsung device.
+**Next step:** Phase 6 — Task 6.4, assess `lib/services/ml_service.dart` (668
+lines) — **assess before acting**. If a split can't keep the isolate spawn /
+handoff / shutdown protocol in one readable unit, the task itself says to
+recommend leaving it alone and record why, rather than force a split.
 
 **Test device for Phase 2+ (2026-09-04):** a **physical iPhone 17 Pro Max**
 (`-d 00008150-0016388A1A43401C`, iOS 26.6.1), run as a plain `integration_test`
@@ -1049,7 +1053,7 @@ consent transaction becomes unclear mid-task, stop and ask rather than guessing.
 
 ### 6.3 Extract the indexing service's post-pass triggers
 
-- [ ] **File:** `lib/services/indexing_service.dart`
+- [x] **File:** `lib/services/indexing_service.dart`
 - **Change:** move the clustering and memory-regeneration triggers
   (`_clusterNewFaces`, `_maybeGlobalRecluster`, `_maybeRegenerateMemories`) into
   a collaborator. These are already decoupled from per-asset indexing and are the
@@ -1060,7 +1064,84 @@ consent transaction becomes unclear mid-task, stop and ask rather than guessing.
   `-t integration_test/memories_test.dart`, plus the new
   `integration_test/people_test.dart` from task 3.2. Report the new line count of
   `indexing_service.dart` (target: under 600).
-- **Result:**
+- **Result:** Done. New `lib/services/indexing_triggers.dart` —
+  `IndexingTriggers` owns `clusterNewFaces` (from `_clusterNewFaces`),
+  `maybeGlobalRecluster` (from `_maybeGlobalRecluster`), and
+  `maybeRegenerateMemories` (from `_maybeRegenerateMemories`) plus its private
+  helpers `_planMemories`, `_withoutExcluded`, `_personCandidateLimit`,
+  `_minPersonFaces` — all four move together since they're used only by the
+  memory-regeneration trigger. Bodies moved verbatim; every doc comment moved
+  with its code.
+
+  **Both `Isolate.run` offloads preserved exactly as-is** — the global
+  re-cluster's `Isolate.run(() => planClusters(groups: clusterAll(input), ...))`
+  and the memory planner's `Isolate.run(() => MemoryBuilder.build(...))`, same
+  call shape, same surrounding comments explaining why each must not run on
+  the UI isolate. Confirmed unbroken by the three device runs below (a
+  `people_test.dart` failure or hang is exactly what a broken isolate
+  offload would look like).
+
+  **Injected rather than duplicated:** `faces`/`settings`/`memories`
+  (already-public DAOs), `reclusterThreshold`/`memoryRefreshThreshold`
+  (already-public config), and two callbacks —
+  `Future<void> Function() awaitNotPaused` (from `IndexingService._awaitNotPaused`)
+  and `bool Function() cancelled` (reads the live `_cancelled` field via a
+  closure, so triggers observe the same flag `_run` does rather than a stale
+  snapshot). Built in the constructor **body** alongside `_consent` (6.2's
+  same reasoning: `_awaitNotPaused` is an instance-method tear-off, not
+  available in the initializer list).
+
+  These three methods are **private** (unlike 6.1/6.2's delegated public
+  methods) — no test or caller outside `_run()` references them by name
+  (grepped `test/` and `integration_test/`; three doc-comment cross-references
+  found and updated to the new class/file name for accuracy:
+  `test/core/database/faces_dao_test.dart`,
+  `test/features/people/domain/face_clustering_test.dart`,
+  `integration_test/people_test.dart`), so `_run()`'s three call sites now call
+  `_triggers.xxx(...)` directly — no delegate wrapper needed on
+  `IndexingService`.
+
+  The five `app_settings` key constants promoted to `indexing_consent.dart` in
+  6.2 (`reclusterBaselineKey`, `clusterAlgoKey`/`clusterAlgoVersion`,
+  `memoriesDateKey`/`memoriesCountKey`) are imported into
+  `indexing_triggers.dart` too — still exactly one definition of each, now
+  shared by three files instead of two.
+
+  909 → **678 lines** (`indexing_service.dart`) — **above the 600-line
+  target**, reported honestly rather than rounded down. The remainder is
+  `_run()`'s core loop, `_sweepMetadata`, `_excludedAssetIds` (shared by
+  per-asset exclusion *and* the memory trigger, so it stays — not one of the
+  three named methods), `_indexOne`, the lifecycle/pause/resume/dispose
+  methods, and the two provider declarations; none of those were named for
+  extraction by this task. `indexing_triggers.dart` is 300 lines.
+  `flutter analyze` on all three indexing files (`indexing_service.dart`,
+  `indexing_consent.dart`, `indexing_triggers.dart`) clean — two now-unused
+  imports (`memory_builder.dart`, `planned_memory.dart`) and the now-unused
+  `dart:isolate` removed from `indexing_service.dart`.
+
+  `flutter test test/services/` → **113/113 pass, unmodified**. `tool/check.sh`
+  → 827/827, unchanged.
+
+  **Device verification (Samsung SM-S938B, `RZGYB1E58CV`):** all three plain
+  `integration_test` files (per their own headers — the plan's `patrol test`
+  wording is imprecise, matching 6.2's finding), run with
+  `flutter test integration_test/<file>.dart -d RZGYB1E58CV --no-uninstall`:
+  - `ml_indexing_test.dart` → **1/1 pass** (folded 2.1+2.2 test).
+  - `memories_test.dart` → **2/2 pass** — "the indexer generates memories from
+    the real library" drives `maybeRegenerateMemories`/`_planMemories`
+    end-to-end against real cached data; "on-this-day matching agrees with the
+    device timezone" exercises the date-window path.
+  - `people_test.dart` (from task 3.2) → **1/1 pass** — the merge-survives-
+    recluster invariant, which is the direct on-device proof that
+    `clusterAll`/`planClusters`/`rebuildClusters` still compose correctly
+    after the move (its own doc comment calls out that it mirrors
+    `IndexingTriggers.maybeGlobalRecluster` exactly).
+
+  Fixture prerequisite hit fresh this task: `/sdcard/Android/data/com.zmeul.sologallery/files/`
+  was gone (an earlier task's `adb uninstall` partially failed
+  (`DELETE_FAILED_INTERNAL_ERROR`) then a plain `adb install` still wiped
+  app-private storage) — re-pushed `synthetic_face.jpg`, `no_exif.jpg`,
+  `large_48mp.heic`, `photo_face.jpg` before running.
 
 ### 6.4 Assess `ml_service.dart`
 

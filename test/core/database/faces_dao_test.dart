@@ -415,10 +415,11 @@ void main() {
     });
   });
 
-  // The incremental clustering batch: `_clusterNewFaces` decides every face's
-  // person in memory, then applies the whole plan in one transaction so the
-  // People strip's `watchPersonSummaries` emits once for the pass instead of
-  // once per face. This proves the emission collapse at the DAO layer.
+  // The incremental clustering batch: `IndexingTriggers.clusterNewFaces`
+  // decides every face's person in memory, then applies the whole plan in one
+  // transaction so the People strip's `watchPersonSummaries` emits once for
+  // the pass instead of once per face. This proves the emission collapse at
+  // the DAO layer.
   test('applyIncrementalClusters mints new persons and assigns in one batch',
       () async {
     for (final id in const ['a', 'b', 'c']) {

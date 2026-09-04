@@ -210,10 +210,10 @@ void main() {
   });
 
   group('clusterAll + planClusters composition', () {
-    // `_maybeGlobalRecluster` in indexing_service.dart moves the whole
-    // planning pass — `planClusters(groups: clusterAll(input), ...)` — into a
-    // single Isolate.run, rather than running clusterAll in the isolate and
-    // planClusters back on the caller. Both functions are pure and
+    // `IndexingTriggers.maybeGlobalRecluster` in indexing_triggers.dart moves
+    // the whole planning pass — `planClusters(groups: clusterAll(input), ...)`
+    // — into a single Isolate.run, rather than running clusterAll in the
+    // isolate and planClusters back on the caller. Both functions are pure and
     // deterministic, so composing them nested (as the isolate closure now
     // does) must produce exactly the same plan as calling them as two
     // separate steps (as the old two-call code did). This is the seam that

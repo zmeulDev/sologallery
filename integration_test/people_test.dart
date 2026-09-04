@@ -23,9 +23,10 @@ import 'support/fixture_file.dart';
 /// two clusters — and that the redirect still resolves after a real re-cluster.
 ///
 /// The `clusterAll` → `planClusters` → `rebuildClusters` trio driven here is
-/// exactly what `IndexingService._maybeGlobalRecluster` runs internally
-/// (`indexing_service.dart`), minus the `Isolate.run` offload and the metadata
-/// sweep — so this needs no photo library and never touches the camera roll.
+/// exactly what `IndexingTriggers.maybeGlobalRecluster` runs internally
+/// (`indexing_triggers.dart`), minus the `Isolate.run` offload and the
+/// metadata sweep — so this needs no photo library and never touches the
+/// camera roll.
 ///
 /// **Fixtures.** `synthetic_face.jpg` (a drawn face) and `photo_face.jpg` (a
 /// StyleGAN-generated face — no real person, no EXIF) are pushed to the app's
@@ -116,7 +117,8 @@ void main() {
         ]);
       }
 
-      // The global re-cluster, verbatim from `_maybeGlobalRecluster`.
+      // The global re-cluster, verbatim from
+      // `IndexingTriggers.maybeGlobalRecluster`.
       Future<int> recluster() async {
         final all = await db.facesDao.allFacesForClustering();
         final groups = clusterAll(
