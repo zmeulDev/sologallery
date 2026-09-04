@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_radius.dart';
 import '../../core/theme/app_space.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../services/permission_provider.dart';
@@ -518,7 +519,7 @@ class _BrandMark extends StatelessWidget {
       height: _height,
       decoration: BoxDecoration(
         color: colors.surface2,
-        borderRadius: BorderRadius.circular(AppSpace.s12),
+        borderRadius: AppRadius.br12,
         border: Border.all(color: colors.border, width: 0.5),
       ),
       // Clip the rounded corners on the mark itself — the asset's transparent

@@ -1,7 +1,7 @@
 # Remediation plan — findings from the 2026-09-04 audit
 
 **Status:** Phase 1 in progress.
-**Next step:** Task 1.1 — spacing-token-as-radius misuse in the onboarding brand mark.
+**Next step:** Task 1.2 — replace the bare `Colors.white60` in the memory player.
 
 Written to be executed by a Sonnet-class agent, one task at a time. Every task is
 self-contained: it names the exact files, the exact change, and the command that
@@ -38,7 +38,7 @@ Small, independent, no structural risk. Each is a few minutes.
 
 ### 1.1 Fix the spacing-token-as-radius misuse
 
-- [ ] **File:** `lib/features/onboarding/onboarding_screen.dart:521`
+- [x] **File:** `lib/features/onboarding/onboarding_screen.dart:521`
 - **Change:** the brand mark's `BoxDecoration` uses
   `BorderRadius.circular(AppSpace.s12)` — a *spacing* token in a *radius* slot.
   The value is numerically identical, so this is not a visual change. Replace it
@@ -46,7 +46,12 @@ Small, independent, no structural risk. Each is a few minutes.
   there.
 - **Verify:** `flutter analyze` clean, and
   `grep -rn "AppSpace\.s[0-9]*)" lib/ | grep -i radius` returns nothing.
-- **Result:**
+- **Result:** Done. `_BrandMark`'s `BoxDecoration.borderRadius` now uses
+  `AppRadius.br12` (the doc comment there already said "at r12"); added the
+  `app_radius.dart` import. `r12 == s12 == 12`, so no visual change.
+  `flutter analyze lib/features/onboarding/onboarding_screen.dart` clean; the
+  grep returns nothing; `flutter test test/features/onboarding/` → 13/13 pass
+  (brand-mark goldens included).
 
 ### 1.2 Replace the bare Material colour over media
 
