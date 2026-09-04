@@ -30,20 +30,28 @@ deleted after conversion.
 without faces — which is most small ones. (A probe over a real camera roll found
 faces in only 6 of 60 photos.)
 
-It lives in `assets/test_fixtures/` but is **not** bundled into the app — a file
-called `synthetic_face.jpg` inside a shipped privacy-first photo app invites the
-wrong question. Push it to the app-private external directory before running the
-face tests (that path is **not** MediaStore-indexed, so it still never pollutes
-the real photo library):
+It is **not** bundled into the app — a file called `synthetic_face.jpg` inside a
+shipped privacy-first photo app invites the wrong question. Push the fixtures to
+app-private storage before running the ML tests (that path is **not**
+MediaStore/PhotoKit-indexed, so it still never pollutes the real photo library):
 
 ```bash
+# Android — app-external files dir:
 adb shell mkdir -p /sdcard/Android/data/com.zmeul.sologallery/files
-adb push assets/test_fixtures/synthetic_face.jpg \
-  /sdcard/Android/data/com.zmeul.sologallery/files/
+adb push test_assets/synthetic_face.jpg test_assets/no_exif.jpg \
+  test_assets/large_48mp.heic /sdcard/Android/data/com.zmeul.sologallery/files/
+
+# iOS device — app data container's Documents dir:
+xcrun devicectl device copy to --device <udid> \
+  --domain-type appDataContainer --domain-identifier com.zmeul.sologallery \
+  --source test_assets/synthetic_face.jpg --source test_assets/no_exif.jpg \
+  --source test_assets/large_48mp.heic --destination Documents
 ```
 
-`integration_test/support/fixture_file.dart` resolves it and fails with this
-exact command if it is missing.
+`integration_test/support/fixture_file.dart` resolves them and fails with these
+exact commands if missing. (`ml_indexing_test.dart` also copies
+`large_48mp.heic` into the real photo library once, via `PhotoManager.editor`,
+for the HEIC-thumbnail case — it is reused across runs and removed by hand.)
 
 **A drawn face is not automatically detectable.** The first version — flat
 shapes, hard edges — was not detected by ML Kit at all. What made it work was
@@ -62,8 +70,9 @@ thumbnail/duration-badge tests, not by the consent tests.
 
 ## Seeding a device (only for library-level tests)
 
-The consent and fixture tests do **not** need this — they read the bundled
-asset. Only tests that go through `photo_manager` need the files in MediaStore:
+The consent, fixture and ML tests do **not** need this — they read the pushed
+files (see above). Only tests that go through `photo_manager`'s library queries
+need the files in MediaStore:
 
 ```bash
 adb push test_assets/ /sdcard/Pictures/SoloGalleryTest/

@@ -1,11 +1,43 @@
 # Remediation plan — findings from the 2026-09-04 audit
 
-**Status:** Phase 1 complete (1.1–1.7 done). Phases 2–6 not started.
-**Next step:** Task 2.1 — make the ML smoke test deterministic. Needs a device;
-this session was scoped to stop at the end of Phase 1. Note: testing device for
-this backlog is the **iPhone 17 simulator** (per user, 2026-09-04), not the
-Pixel 9 Pro XL / `-d 46121FDAS008AA` that the Phase 2+ verify commands name —
-adjust `-d` accordingly, and Patrol/Android-manifest steps do not apply on iOS.
+**Status:** Phase 1 complete (1.1–1.7). Phase 2: 2.1 + 2.2 done and green on the
+physical iPhone; 2.3 not started.
+**Next step:** Task 2.3 — host-side EXIF fixture coverage for
+`lib/features/detail/domain/asset_detail_display.dart`. Pure Dart, no device.
+
+**Test device for Phase 2+ (2026-09-04):** a **physical iPhone 17 Pro Max**
+(`-d 00008150-0016388A1A43401C`, iOS 26.6.1), run as a plain `integration_test`
+via `flutter test integration_test/<file>.dart -d <id> --no-uninstall` (not
+patrol — see below). The **iPhone 17 simulator can't run any `integration_test/`
+file on this Apple Silicon Mac**: `google_mlkit_image_labeling`'s iOS frameworks
+have no arm64-simulator slice, so Flutter sets
+`EXCLUDED_ARCHS[sdk=iphonesimulator*]=arm64` in `ios/Flutter/Generated.xcconfig`
+and the arm64 sim has no buildable architecture. Phase 1 was unaffected (host
+tests only).
+
+**Why not patrol on iOS (2026-09-04):** patrol-on-iOS was never wired here
+(`gotchas.md` documents only the Android side). Getting there needs: a
+`RunnerUITests` UI-test target, patrol as an SPM package on that target (the
+project has SPM enabled, so patrol attaches only to `Runner`), and patrol_cli
+`--release` on a physical device (4.6.1 restriction; 4.7.0 needs `patrol` ≥4.9.0
+— a two-minor bump across the 17 existing patrol tests). Abandoned after four
+successive blockers; the ML smoke test runs fine as a plain `integration_test`.
+One artifact kept: `DEVELOPMENT_TEAM = 8K2SU5BZ2Z` on the `RunnerTests`
+Debug/Release configs in `project.pbxproj` (matches its existing Profile config;
+lets `RunnerTests` sign for a device). Note Xcode 26 rewrites `objectVersion`
+60→54 in `project.pbxproj` on every `xcodebuild` — restore to 60 before
+committing.
+
+**iOS fixture seeding (no repo path existed — all docs were Android `adb`):**
+push fixtures into the app data container with
+`xcrun devicectl device copy to --device <udid> --domain-type appDataContainer
+--domain-identifier com.zmeul.sologallery --source test_assets/<f> --destination
+Documents`, then `fixtureFile()` resolves them. The container survives a
+`flutter test` reinstall but **not** `flutter install` (it uninstalls first);
+the photo-permission (TCC) grant survives both. A **debug** Flutter build cannot
+be launched from the home screen on a physical device (crashes in
+`VSyncClient`) — grant permissions from a `flutter run --release` / release
+build.
 
 Written to be executed by a Sonnet-class agent, one task at a time. Every task is
 self-contained: it names the exact files, the exact change, and the command that
@@ -201,7 +233,7 @@ the test that stands in for it violates the determinism rule.
 
 ### 2.1 Make the ML smoke test deterministic
 
-- [ ] **File:** `integration_test/ml_indexing_test.dart:32-51`
+- [x] **File:** `integration_test/ml_indexing_test.dart:32-51`
 - **Problem:** the test pulls up to 5 **arbitrary photos off whatever is on the
   connected device**. `ARCHITECTURE.md#deterministic-test-assets` says never to
   do this. Results vary by device, and a device with no faces silently passes a
@@ -215,12 +247,34 @@ the test that stands in for it violates the determinism rule.
   - If the device has none of the seeded assets, the test must **fail with a
     clear message**, not skip.
 - **Verify:**
-  `PATH="$HOME/Library/Android/sdk/platform-tools:$PATH" ~/.pub-cache/bin/patrol test -t integration_test/ml_indexing_test.dart -d 46121FDAS008AA`
-- **Result:**
+  `flutter test integration_test/ml_indexing_test.dart -d 00008150-0016388A1A43401C --no-uninstall`
+  (device swapped to the physical iPhone; plain `integration_test`, not patrol —
+  see the header). Prereq once per fresh install: push the three fixtures with
+  `xcrun devicectl device copy to … appDataContainer … --destination Documents`,
+  and grant Full Photos access.
+- **Result:** Done — `→ All tests passed!` on the iPhone. Rewrote the file: it
+  no longer touches the camera roll. **2.1 needs no photo library** — it reads
+  `synthetic_face.jpg` and `no_exif.jpg` bytes via `fixtureFile()` and feeds
+  them straight to the real `MlWorkerController` (same path as
+  `test_fixtures_test.dart`), into an in-memory Drift DB, and asserts: for the
+  face fixture, ≥1 `face_embeddings` row with all four box edges in `[0, 1]`,
+  `left<right`/`top<bottom`, and a non-zero embedding; content search for the
+  written label finds the asset.
+  **Deviation from the plan:** `small_png.png` (a 64×64 XOR gradient) produces
+  **zero** ML Kit labels ≥ 0.6 — measured on device — so it cannot back a
+  "content was derived" assertion. `no_exif.jpg` reliably yields `Pattern`
+  (~0.90) / `Tile` (~0.74); the label assertion uses `no_exif.jpg` → contains
+  `Pattern`. Missing fixture → `fail()` with the push command (now
+  cross-platform).
+  **Also fixed** `integration_test/support/fixture_file.dart`:
+  `getExternalStorageDirectories()` **throws** `UnsupportedError` on iOS (the
+  code assumed it returned null), so `fixtureFile()` — and every test that uses
+  it — was broken on iOS. Now guarded; the iOS fixture is resolved from
+  `getApplicationDocumentsDirectory()`.
 
 ### 2.2 Add the mandated HEIC regression assertion
 
-- [ ] **File:** `integration_test/ml_indexing_test.dart` (same test, new case)
+- [x] **File:** `integration_test/ml_indexing_test.dart` (same test, new case)
 - **Problem:** `test_assets/large_48mp.heic` exists, is generated by
   `tool/gen_test_assets.dart`, is documented in `test_assets/README.md` — and is
   referenced by **no test**. It was created for a real production OOM bug. The
@@ -231,7 +285,21 @@ the test that stands in for it violates the determinism rule.
   thumbnail rather than the original.
 - **Verify:** same command as 2.1; the run must not crash and the new case must
   pass.
-- **Result:**
+- **Result:** Done — folded into the one test in 2.1's file (`→ All tests
+  passed!` on the iPhone). `_seedOrReuseHeic` copies `large_48mp.heic` into the
+  photo library via `PhotoManager.editor.saveImageWithPath`, **reusing** a copy
+  from an earlier run (matched by its unique 8000×6000 dimensions) so runs don't
+  pile up HEICs. It is **not deleted** — `deleteWithIds` raises an OS
+  confirmation a plain `integration_test` can't tap (same reason
+  `cache_live_update_test.dart` is a patrol test); remove the `sg_ml_heic` asset
+  by hand when the backlog is done. Asserts: `assetIndexMeta` resolves at
+  ≥7000×5000; the `indexing: true` thumbnail decodes to strictly-smaller-than-
+  source dimensions and < 2048 px per edge (proves ML gets a downsized image,
+  not the 8000×6000 original — the OOM path); the real worker completes;
+  `photo_assets.indexedAt` is stamped. (`thumb.lengthInBytes` was tried as the
+  guard first — iOS returns ~625 KB for the 512 request, well under the ~3 MB
+  original but not a stable threshold, so the check is on decoded dimensions
+  instead.)
 
 ### 2.3 Use the EXIF fixtures
 

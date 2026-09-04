@@ -385,6 +385,36 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   dialog via `$.platform.mobile.grantPermissionWhenInUse()`. Symptom of a missed
   grant is a *silent* one: `PhotoManager` returns **empty** lists (zero folders,
   zero assets) rather than throwing, so an under-asserted test passes vacuously.
+- **iOS: `integration_test` runs only on a *physical* device, and only as plain
+  `flutter test` — not the simulator, not `patrol`.** (1) The **simulator can't
+  build at all** on an Apple Silicon Mac: `google_mlkit_image_labeling`'s iOS
+  frameworks ship no arm64-simulator slice, so `flutter pub get` writes
+  `EXCLUDED_ARCHS[sdk=iphonesimulator*]=arm64` into `ios/Flutter/Generated.xcconfig`
+  and the arm64 sim has no buildable arch (`flutter test -d <sim>` → "Unable to
+  find a destination matching…"). (2) **patrol on iOS is not wired** here — no
+  `RunnerUITests` target, and the project has SPM enabled so patrol attaches as
+  a Swift package to `Runner` only; `patrol_cli` 4.6.1 also forces `--release`
+  on a physical device. Run iOS integration tests as
+  `flutter test integration_test/<file>.dart -d <id> --no-uninstall`.
+- **iOS fixture seeding + a debug build that won't launch.** No `/sdcard`; push
+  fixtures into the app data container with
+  `xcrun devicectl device copy to --device <id> --domain-type appDataContainer
+  --domain-identifier com.zmeul.sologallery --source test_assets/<f> --destination
+  Documents` — `fixtureFile()` resolves them from
+  `getApplicationDocumentsDirectory()`. `getExternalStorageDirectories()`
+  **throws** `UnsupportedError` on iOS (not null) — guard it. The container
+  survives a `flutter test` reinstall but **not** `flutter install` (which
+  uninstalls first and wipes it); the photo-permission (TCC) grant survives
+  both. To grant photo access you need the *real* app, but a **debug** Flutter
+  build crashes on a home-screen launch (`EXC_BAD_ACCESS` in
+  `-[VSyncClient initWithTaskRunner:callback:]` under `viewDidLoad`) — install a
+  **release** build (`flutter run --release`) for the manual grant, then the
+  grant persists for the test-runner build.
+- **`small_png.png` produces no ML Kit label.** The 64×64 XOR-gradient PNG
+  returns zero image labels ≥ 0.6 on device — the README's "labeling fast path"
+  billing is aspirational. `no_exif.jpg` (the 800×600 gradient JPEG) reliably
+  yields `Pattern` (~0.90) / `Tile` (~0.74); `ml_indexing_test.dart` asserts
+  against that.
 - **Flutter is invisible to `uiautomator`/adb UI dumps** unless an
   accessibility service is active (semantics tree built lazily). For
   on-device verification, tap at computed coordinates and read
@@ -432,12 +462,15 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   and fail loudly when the control can't be established. Same shape as the
   missed-permission trap above: `PhotoManager` returns empty rather than
   throwing, so under-asserted device tests go green for the wrong reason.
-- **Use the bundled fixtures, not the camera roll — and note that a *drawn* face
+- **Use the seeded fixtures, not the camera roll — and note that a *drawn* face
   is not detectable by default.** `tool/gen_test_assets.dart` generates
-  `test_assets/` (see its README); `assets/test_fixtures/synthetic_face.jpg` is
-  also bundled via `pubspec.yaml` so tests can `rootBundle.load` it without
-  seeding MediaStore and polluting a real photo library. ML Kit did **not**
-  detect the first synthetic face (flat shapes, hard edges). What made it work:
+  `test_assets/` (see its README). The fixtures are **pushed to app-private
+  storage, not bundled** — `integration_test/support/fixture_file.dart` resolves
+  them and `fail()`s with the push command if absent (they used to ride along in
+  `pubspec.yaml` `assets:`, but shipping `synthetic_face.jpg` inside a released
+  privacy app invited the wrong question — the `rootBundle.load` claim that was
+  here is stale). ML Kit did **not** detect the first synthetic face (flat
+  shapes, hard edges). What made it work:
   correct proportions (eyes on the horizontal midline ~one eye-width apart),
   directional shading, and a final `gaussianBlur` so nothing has vector-sharp
   edges. `integration_test/test_fixtures_test.dart` re-asserts detectability on
