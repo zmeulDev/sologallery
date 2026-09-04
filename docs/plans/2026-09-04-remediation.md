@@ -1,9 +1,10 @@
 # Remediation plan — findings from the 2026-09-04 audit
 
-**Status:** Phase 1 complete (1.1–1.7). Phase 2: 2.1 + 2.2 done and green on the
-physical iPhone; 2.3 not started.
-**Next step:** Task 2.3 — host-side EXIF fixture coverage for
-`lib/features/detail/domain/asset_detail_display.dart`. Pure Dart, no device.
+**Status:** Phase 1 complete (1.1–1.7). Phase 2 complete (2.1 + 2.2 green on the
+physical iPhone; 2.3 done as a host widget test — see its Result). Phase 3 not
+started.
+**Next step:** Task 3.1 — unit-test the two pagination bases
+(`PagedAssetsNotifier`, `WatchedAssetsNotifier`). Host tests, no device.
 
 **Test device for Phase 2+ (2026-09-04):** a **physical iPhone 17 Pro Max**
 (`-d 00008150-0016388A1A43401C`, iOS 26.6.1), run as a plain `integration_test`
@@ -303,7 +304,7 @@ the test that stands in for it violates the determinism rule.
 
 ### 2.3 Use the EXIF fixtures
 
-- [ ] **Files:** `test_assets/gps_exif.jpg`, `test_assets/no_exif.jpg`; new or
+- [x] **Files:** `test_assets/gps_exif.jpg`, `test_assets/no_exif.jpg`; new or
   existing test under `test/features/detail/`
 - **Problem:** both fixtures are generated and documented but referenced by no
   test, so EXIF rendering has no coverage for its two interesting cases.
@@ -314,7 +315,42 @@ the test that stands in for it violates the determinism rule.
   throwing or showing blanks. This is pure-Dart domain logic, so it needs no
   device.
 - **Verify:** `flutter test test/features/detail/`
-- **Result:**
+- **Result:** Done, but **not as written** — the task's premise doesn't hold.
+  `asset_detail_display.dart` contains **no EXIF parsing**; it is pure primitive
+  formatting (`int`, `DateTime`, nullable `double` lat/lng, mime string) and is
+  **already fully unit-tested** by `test/features/detail/domain/
+  asset_detail_display_test.dart` — every function, both the GPS-present and
+  GPS-absent branch of `formatCoordinates`. The app only ever reads a JPEG's
+  EXIF through `photo_manager` on a device (`entity.latlngAsync()`,
+  `entity.mimeTypeAsync` in `photo_library_service.dart`); there is **no
+  host-side EXIF reader anywhere in `lib/`**, so the `.jpg` fixtures cannot feed
+  a host test of this file (decoding them with `package:image` would test
+  DMS→decimal logic that doesn't exist in the app — a fake path, the exact thing
+  Phase 2 removes).
+
+  The genuinely untested surface is `_Chips` in
+  `lib/features/detail/widgets/exif_sheet.dart` — which chips render for which
+  `AssetDetail` shape. Added **`test/features/detail/widgets/exif_sheet_test.dart`**
+  (widget test, host, no device — deviation from the task's "pure Dart domain"
+  wording, approved) covering the two shapes the fixtures carry:
+  - **full record + GPS** (tagged at `gps_exif.jpg`'s Zurich coords) → all seven
+    chips render with formatted values (Taken / Dimensions / Resolution / Size /
+    Type / Location).
+  - **empty record** (every optional field null, like `no_exif.jpg`) → the three
+    always-present chips still render, the four optional chips are **absent
+    entirely** (not shown blank), no empty-string `Text` leaks in, no exception.
+  - **null projection** → the "Details aren't available for this photo." note,
+    not a broken sheet.
+
+  Pre-existing coverage of the same behaviour left in place: `detail_screen_test.dart`
+  (LOCATION chip shown with GPS / absent without; formatted fields) and
+  `detail_goldens_test.dart` (populated `ExifSheet` golden). The `.jpg` EXIF
+  fixtures remain unconsumed by any test — closing that needs an on-device
+  integration test through `photo_manager` (out of scope for a Phase 2 host
+  task; noted here for a future backlog).
+
+  **Verify:** `flutter test test/features/detail/` → 77/77 pass (3 new).
+  `flutter analyze test/features/detail/widgets/exif_sheet_test.dart` → clean.
 
 ---
 
