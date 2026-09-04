@@ -1,7 +1,11 @@
 # Remediation plan — findings from the 2026-09-04 audit
 
-**Status:** Phase 1 in progress.
-**Next step:** Task 1.6 — remove committed golden-failure artifacts and expand `.gitignore`.
+**Status:** Phase 1 complete (1.1–1.7 done). Phases 2–6 not started.
+**Next step:** Task 2.1 — make the ML smoke test deterministic. Needs a device;
+this session was scoped to stop at the end of Phase 1. Note: testing device for
+this backlog is the **iPhone 17 simulator** (per user, 2026-09-04), not the
+Pixel 9 Pro XL / `-d 46121FDAS008AA` that the Phase 2+ verify commands name —
+adjust `-d` accordingly, and Patrol/Android-manifest steps do not apply on iOS.
 
 Written to be executed by a Sonnet-class agent, one task at a time. Every task is
 self-contained: it names the exact files, the exact change, and the command that
@@ -128,7 +132,7 @@ Small, independent, no structural risk. Each is a few minutes.
 
 ### 1.6 Remove committed golden-failure artifacts
 
-- [ ] **Files:** `test/widgets/failures/*.png`
+- [x] **Files:** `test/widgets/failures/*.png`
 - **Change:** these are alchemist failure-comparison outputs (`isolatedDiff`,
   `maskedDiff`, `masterImage`, `testImage` for album_card, month_header,
   recently_viewed_row, year_header) left in the tree by a past failing run.
@@ -140,7 +144,15 @@ Small, independent, no structural risk. Each is a few minutes.
   (out of scope, see above).
 - **Verify:** `git status --porcelain test/widgets/failures/` is empty and
   `git check-ignore -v test/widgets/failures` matches a rule.
-- **Result:**
+- **Result:** Done. `git rm -r test/widgets/failures/` (10 alchemist diff PNGs);
+  added `failures/` to `.gitignore` under a comment. `git check-ignore -v` →
+  `.gitignore:48:failures/`. No test or tool references the path.
+  The standard Flutter/Dart entries (`/build/`, `.dart_tool/`, `*.iml`,
+  `.flutter-plugins-dependencies`, `/coverage/`, …) were **already present** —
+  the "only `.DS_Store`" claim in AGENTS.md line 233 and in this plan's
+  out-of-scope note is stale. `.gitignore` still does **not** ignore the signing
+  material (out of scope; left untouched). Left the AGENTS.md correction for the
+  user to make. `flutter test test/widgets/` → 106/106 pass.
 
 ### 1.7 Fix the time-bomb test in the Library providers
 
