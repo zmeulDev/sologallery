@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 /// Design-system color tokens that don't map cleanly onto Material's
 /// [ColorScheme]. Read via `Theme.of(context).extension<AppColors>()!`.
 ///
-/// The palette is intentionally monochromatic warm-grey with no accent color:
-/// in a photo app the photographs supply all the color, so the chrome stays
-/// quiet. Values come straight from docs/design-system.md.
+/// The palette is intentionally monochromatic warm-grey, with [AppColors.accent]
+/// as the one deliberate exception: in a photo app the photographs supply all
+/// the color, so the chrome stays quiet. Values come straight from
+/// docs/design-system.md.
 /// Colors drawn *over photos and video* — scrims, glyphs, progress segments.
 ///
 /// Deliberately theme-invariant (media is the background, not the chrome), so
