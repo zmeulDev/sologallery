@@ -23,10 +23,18 @@ branches and the live `ConsentStep`/`FolderScopeCard` update (see its Result).
 5.4 done — memory player trimmed 402→274 lines, two new
 `lib/features/memories/widgets/` files (title card, progress spine), tests
 unmodified (see its Result). **Phase 5 complete.**
-**Next step:** Phase 6 — Task 6.1, compose the photo library service's caches
-(`lib/services/photo_library_service.dart`, 853 lines). Do not start it
-without explicit go-ahead — Phase 6 is the highest-risk phase in this
-document (isolate lifecycle, the consent race, the plugin boundary).
+6.1 done — `lib/services/thumbnail_pipeline.dart` extracted from
+`photo_library_service.dart` (853→726 lines), public API and doc comments on
+`PhotoLibraryService` unchanged, `_thumbnailGate.whenQuiet()` yield preserved
+verbatim, 827/827 host tests unmodified, `thumbnail_gate_test.dart` 5/5 green
+on the real Samsung device (see its Result — also records a pre-existing,
+unrelated `cache_live_update_test.dart` failure on Samsung, confirmed via A/B
+against unmodified `main`, and two new `docs/gotchas.md` entries from this
+task's device work).
+**Next step:** Phase 6 — Task 6.2, extract the indexing service's consent
+handling (`lib/services/indexing_service.dart`, 1027 lines). Read the
+single-transaction-write comment there before moving anything (closes a
+first-run consent race) — this is the highest-risk task in the document.
 
 **Test device for Phase 2+ (2026-09-04):** a **physical iPhone 17 Pro Max**
 (`-d 00008150-0016388A1A43401C`, iOS 26.6.1), run as a plain `integration_test`
@@ -855,7 +863,7 @@ consent transaction becomes unclear mid-task, stop and ask rather than guessing.
 
 ### 6.1 Compose the photo library service's caches
 
-- [ ] **File:** `lib/services/photo_library_service.dart` (853 lines)
+- [x] **File:** `lib/services/photo_library_service.dart` (853 lines)
 - **Change:** the service is correctly the single point of contact with
   `photo_manager` — that stays. What bloats it is that it also *field-owns* four
   caching concerns (disk cache wiring, two gates, two in-memory LRUs). Extract
@@ -871,7 +879,85 @@ consent transaction becomes unclear mid-task, stop and ask rather than guessing.
   `patrol test -t integration_test/thumbnail_gate_test.dart` and
   `-t integration_test/cache_live_update_test.dart`. Then scroll a large library
   by hand and confirm no jank.
-- **Result:**
+- **Result:** Done. New `lib/services/thumbnail_pipeline.dart` —
+  `ThumbnailPipeline` owns everything that isn't entity resolution: the two
+  `ThumbnailGate`s (grid vs. indexing), the persistent `ThumbnailDiskCache`, and
+  the two in-memory LRUs (`DetailPreviewCache`, `AdjacentThumbnailCache`) plus
+  their pending-preview dedupe map. Entity resolution (`_entity`/`_entityCache`)
+  stayed in `PhotoLibraryService` — it also backs video/detail/delete, so it is
+  injected into the pipeline as a `resolveEntity` callback rather than
+  duplicated (built in the constructor **body**, not the initializer list: a
+  tear-off of an instance method isn't available yet during initializer-list
+  evaluation).
+
+  `PhotoLibraryService`'s six thumbnail-shaped public methods
+  (`thumbnail`, `clearThumbnailDiskCache`, `previewImage`, `adjacentThumbnail`,
+  `clearAdjacentThumbnailCache`, `clearDetailPreviewCache`) are now one-line
+  delegates to `_thumbnailPipeline`, signatures and doc comments unchanged. The
+  `indexing: true` path's `await _thumbnailGate.whenQuiet()` before the
+  indexing-gate submit moved intact (verbatim, same comment) — confirmed by the
+  device test below, which is the one test that would catch a starved grid
+  during a burst.
+
+  853 → **726 lines** (`photo_library_service.dart`); `thumbnail_pipeline.dart`
+  is 252. `flutter analyze` on both files clean. `tool/check.sh` → all checks
+  passed, 827/827 tests, **unmodified** — extraction only, no lib caller besides
+  this file touches `_thumbnailGate`/`_indexingGate`/the two LRUs.
+
+  **Device verification (Samsung SM-S938B, `RZGYB1E58CV`):**
+  `flutter test integration_test/thumbnail_gate_test.dart -d RZGYB1E58CV` →
+  **5/5 pass** against the real `photo_manager` — this is the direct on-device
+  proof for the exact path this task moved: a burst past `maxConcurrent`
+  resolves every request, cancelled requests don't starve the rest, the gate
+  stays usable after a burst, and every avatar-bucket thumbnail decodes at the
+  right size. Boot-clean check on a fresh install of the current build: no
+  `sologallery`-tagged exception/error/fatal in
+  `adb logcat -s flutter:V SoloGallery:V AndroidRuntime:E`, correct foreground
+  activity.
+
+  **`cache_live_update_test.dart` (patrol) fails, confirmed pre-existing and
+  unrelated to this task.** `patrol test -t integration_test/cache_live_update_test.dart`
+  fails at its delete-confirmation tap (`AndroidAutomatorClientException:
+  Invalid response: 404 selector UiSelector[TEXT=Allow] found nothing`).
+  Verified by `git stash`-ing this task's diff and re-running against
+  unmodified `main`: **identical failure**, byte-for-byte the same exception —
+  so it is not caused by this extraction. That test touches
+  `startLibraryChangeNotify`/`PhotoManager.editor.deleteWithIds`, neither of
+  which this task moved. Root cause is very likely that `docs/gotchas.md`'s
+  documented delete-confirmation dialog text ("Allow SoloGallery to delete this
+  photo?" over Deny/Allow) was verified on the primary Pixel 9 Pro XL and
+  Samsung's One UI shows a differently-worded system dialog for the same
+  `MediaStore.createDeleteRequest` — not confirmed further (see below), and out
+  of this task's scope to fix. Filed as a gap for a future task rather than
+  guessed at.
+
+  **Did not reach a hand-scroll of the actual grid.** Reaching Library needs
+  walking a *fresh* first-run onboarding (the app was reinstalled during this
+  task's device verification, wiping the Drift-backed consent state), which
+  needs either reading rendered on-screen text or a blind coordinate tap.
+  Flutter only builds its semantics tree when a real bound `AccessibilityService`
+  is active (confirmed: plain `adb shell uiautomator dump` returns "null root
+  node" with none bound) — the one available on this device is Samsung's
+  TalkBack, and enabling it launched TalkBack's own first-run tutorial over the
+  app instead of exposing app semantics; aborted immediately and restored the
+  device's original accessibility settings (`enabled_accessibility_services` /
+  `accessibility_enabled`) rather than push further on the user's personal
+  phone. A coordinate-blind tap at the estimated Continue-button position was
+  judged not worth the risk of landing on a consent switch or the folder-picker
+  sheet instead, for a purely qualitative check. Substituted the on-device
+  `thumbnail_gate_test.dart` pass above, which exercises the same gate → cache →
+  decode chain a real scroll would (burst concurrency, cancellation, reuse)
+  with actual pass/fail assertions rather than an eyeball — matching the
+  "disproportionate to what it would additionally prove" call already made for
+  the equivalent step in 5.1/5.2/5.4.
+
+  **Incidental fix, not part of the diff:** `flutter install --debug -d <id>`
+  reused a stale `build/app/outputs/flutter-apk/app-debug.apk` left over from a
+  `patrol test` build (same output path, different entrypoint —
+  `test_bundle.dart` vs `lib/main.dart`), so the installed APK tried to launch
+  the patrol harness instead of the app. Rebuilding explicitly with
+  `flutter build apk --debug -t lib/main.dart` before `adb install -r` fixed
+  it — worth remembering for the rest of Phase 6's device checks.
 
 ### 6.2 Extract the indexing service's consent handling
 

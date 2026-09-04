@@ -446,6 +446,22 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   Patrol's Flutter finders (`$('text')`, `$(Switch).at(n)`,
   `find.byTooltip(...)`) make all of this a non-issue and double as the
   end-to-end verification artifact.
+  **Do not reach for `adb shell settings put secure enabled_accessibility_services`
+  to force the semantics tree open either.** A plain `adb shell uiautomator
+  dump` alone gets `ERROR: null root node returned by UiTestAutomationBridge` —
+  Flutter's `AccessibilityBridge` only activates for a real **bound**
+  `AccessibilityService`, not a transient `UiAutomation` instrumentation
+  connection. Enabling Samsung's TalkBack this way does bind a real service,
+  but on a device where TalkBack has never been turned on before it launches
+  **TalkBack's own first-run tutorial** full-screen over the app instead of
+  exposing app semantics — a disruptive, persistent settings change on
+  someone's real device for no payoff (restore
+  `enabled_accessibility_services`/`accessibility_enabled` to their prior
+  values immediately if this happens). Separately: never run a manual `adb
+  shell uiautomator dump` while a `patrol test` is executing — both are clients
+  of the same singleton `UiAutomation` service, and driving them concurrently
+  hangs the patrol run (the `patrol` CLI process and its `adb shell` child both
+  sit un-killed until you `kill` them by hand).
 - **On-device manual verification: `pm grant` does not get you past onboarding, and
   the app DB is the only readable state.** `PhotoManager` reports the permission
   as *not yet requested* until the in-app request flow actually runs, so an
@@ -860,6 +876,20 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   Phase-5 icon-family swap left every golden byte-identical (md5-verified),
   which is the *expected* outcome, not a missed regen. Goldens verify layout/
   color only; verify glyph shapes on device (or by eye in the running app).
+- **`flutter install --debug` can install a stale patrol test bundle instead of
+  the app.** `patrol test` and `flutter build apk --debug -t lib/main.dart`
+  write to the **same** output path
+  (`build/app/outputs/flutter-apk/app-debug.apk`), keyed only by mtime, not
+  entrypoint. Run a `patrol test`, then later `flutter install --debug -d <id>`
+  without an intervening plain build, and `flutter install` sees an
+  up-to-date-looking artifact and skips rebuilding — installing the **patrol
+  harness** (entrypoint `patrol_test/test_bundle.dart`) under the app's own
+  launcher icon. It launches, then immediately throws `ClientException with
+  SocketException: Connection refused … uri=http://localhost:8081/initialize`
+  (the harness trying to reach a patrol server that isn't there) instead of
+  showing the app. Fix: `flutter build apk --debug -t lib/main.dart` explicitly
+  before `adb install -r`, any time a `patrol test` ran more recently than the
+  last plain install.
 
 ---
 
