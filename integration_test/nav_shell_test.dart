@@ -35,8 +35,8 @@ void main() {
     expect(find.byTooltip('Settings'), findsOneWidget,
         reason: 'Settings should be the Library app-bar action.');
 
-    // The Search field only takes focus once its tab is selected — a keyboard
-    // on the Library tab would mean the branch grabbed focus at boot.
+    // The field doesn't exist at all until Search is visited — a keyboard on
+    // the Library tab would mean the branch grabbed focus at boot.
     final field = find.byType(TextField, skipOffstage: false);
     expect(field, findsNothing);
 
@@ -44,7 +44,18 @@ void main() {
     // Bounded pumps from here: a focused TextField's cursor never settles.
     await $.tester.pump();
     await $.tester.pump(const Duration(milliseconds: 500));
-    expect($.tester.widget<TextField>(field).focusNode?.hasFocus, isTrue);
+    // search_screen.dart deliberately does not autofocus on entry, so the
+    // idle screen opens calm — see its doc comment on `searchTabActiveProvider`.
+    expect($.tester.widget<TextField>(field).focusNode?.hasFocus, isFalse,
+        reason: 'The field should not auto-focus when its tab is selected.');
+
+    // Focus it by hand, the way a person would, before checking that
+    // leaving the tab dismisses it rather than leaving it lingering.
+    await $.tester.tap(field);
+    await $.tester.pump();
+    await $.tester.pump(const Duration(milliseconds: 500));
+    expect($.tester.widget<TextField>(field).focusNode?.hasFocus, isTrue,
+        reason: 'Tapping the field should focus it.');
 
     await $.tester.tap(find.byTooltip('Saved'));
     await $.tester.pump();

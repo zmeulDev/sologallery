@@ -214,27 +214,12 @@ Requirements when it is built:
 The 2026-09-04 audit's findings were closed by
 [docs/archived/2026-09-04-remediation.md](docs/archived/2026-09-04-remediation.md)
 (test determinism, the People integration test, the missing video fixture, the
-red host test, and the eight oversized files — see that document for detail).
-Three more were found while closing it out; two remain below. The third —
-`cache_live_update_test.dart` failing on the Samsung SM-S938B — turned out to
-be a locale bug, not a device one: its delete-confirmation-dialog tap matched
-on localized button text (`Selector(text: 'Allow')`), which doesn't hold on a
-device set to a non-English locale. Fixed by matching the dialog's stable
-framework resource id instead (`Selector(resourceId: 'android:id/button1')`);
-see `docs/gotchas.md` ("Patrol / on-device testing") for the diagnosis method.
+red host test, the eight oversized files, and three more found while closing
+the backlog out — a locale-dependent dialog selector in
+`cache_live_update_test.dart`, and two on-device tests
+(`nav_shell_test.dart`, `video_playback_test.dart`) asserting UI behaviour that
+had changed six weeks earlier — see that document for detail on all three).
 
-- **Two on-device Patrol/`integration_test` files assert removed UI behaviour.**
-  `integration_test/nav_shell_test.dart`'s "bottom nav" case expects the Search
-  field to autofocus when its tab is selected; that behaviour was deliberately
-  removed on 2026-07-23 (the doc comment in `search_screen.dart` still explains
-  why: "do not auto-focus on entry so the idle screen opens calm"), six weeks
-  before the remediation. `integration_test/video_playback_test.dart` looks for
-  a `SectionHeader` widget to open the newest month's full grid; Library moved
-  to its own `MonthHeader`/`YearHeader` widgets the same day. Neither test was
-  updated after that UI change, so both fail reproducibly, unrelated to any
-  other code. Confirmed via `git log -L` against the pre-remediation commit
-  that changed each behaviour. Needs the test bodies updated to match current
-  UI, not a product fix.
 - **Signing material is committed to the repository.**
   `android/key.properties` (plaintext store and key passwords) and
   `android/app/upload-keystore.jks` are tracked in git and pushed to the remote;

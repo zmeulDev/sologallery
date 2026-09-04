@@ -67,12 +67,23 @@ delete-confirmation dialog's stable framework resource id
 `tool/check.sh` still 827/827. Detail on 6.1's Result (addendum) and in
 `docs/gotchas.md`.
 
-**Follow-ups left for a future task** (recorded in
-[PRD.md#known-gaps](../../PRD.md#known-gaps)): update `nav_shell_test.dart`'s
-stale autofocus assertion and `video_playback_test.dart`'s stale
-`SectionHeader` finder, both against UI behaviour that changed on 2026-07-23,
-six weeks before this backlog; bump AGENTS.md's "17 on-device Patrol tests"
-line to 18 (`people_test.dart`, added by task 3.2, was never counted).
+**All follow-ups closed (2026-09-04, same day):**
+- `nav_shell_test.dart`'s "bottom nav" case rewritten to match current
+  behaviour instead of the pre-2026-07-23 one: asserts the field does **not**
+  autofocus on tab entry, then focuses it by hand (`$.tester.tap(field)`)
+  before checking that leaving the tab dismisses it — keeps the original
+  "leaving the tab dismisses the keyboard" coverage while no longer asserting
+  the removed autofocus. 5/5 pass on the Samsung SM-S938B.
+- `video_playback_test.dart` retargeted from `find.byType(SectionHeader)` to
+  `find.byType(MonthHeader)` — Library's actual month-header widget, which
+  (unlike the shared `SectionHeader`) is always the newest month whether or
+  not a `YearHeader` precedes it. 1/1 pass on the same device.
+- AGENTS.md's "17 on-device Patrol tests" line bumped to 18.
+
+`tool/check.sh` still 827/827 after both test-file edits.
+[PRD.md#known-gaps](../../PRD.md#known-gaps) updated — the audit's findings
+line now folds all three same-day fixes into one summary instead of listing
+them as open.
 
 **Test device for Phase 2+ (2026-09-04):** a **physical iPhone 17 Pro Max**
 (`-d 00008150-0016388A1A43401C`, iOS 26.6.1), run as a plain `integration_test`

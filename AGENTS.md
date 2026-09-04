@@ -101,7 +101,7 @@ The authoritative tree is in
 `lib/features` (10 feature folders, each with optional `domain/` and `widgets/`) ·
 `lib/services` (11 files — the `photo_manager` wrapper, the caching stack, the ML
 isolate, indexing) · `lib/widgets` (20 shared design-system components) ·
-`test` mirrors `lib` · `integration_test` (17 on-device Patrol tests) ·
+`test` mirrors `lib` · `integration_test` (18 on-device Patrol tests) ·
 `drift_schemas` (v1 … v10) · `tool/check.sh`.
 
 ---
