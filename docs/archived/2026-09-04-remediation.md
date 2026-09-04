@@ -48,17 +48,23 @@ the isolate-protocol risk the task warns about, and the one low-risk
 extraction candidate (a ~135-line pure face-quality/embedding pocket) was
 considered and rejected as not worth a new file for a non-structural trim.
 **Phase 6 complete — every task in every phase of this document is now
-checked off.** `tool/check.sh` is green (827/827) as of 6.3; the on-device
-verification actually run this session covered the files each Phase 6 task
-touched (`thumbnail_gate_test.dart`, `consent_test.dart`,
-`consent_flow_test.dart`, `ml_indexing_test.dart`, `memories_test.dart`,
-`people_test.dart` — 6 of the 17 `integration_test/` files), not the full
-suite the top-level **Completion** section calls for.
-**Next step:** the **Completion** checklist at the bottom of this document —
-run the remaining `integration_test/` files not touched this session, then
-update Status here, move this file to `docs/archived/`, and update
-`PRD.md#known-gaps`. Not started — confirm scope with the user before
-running an hour-plus, one-file-per-run device suite and editing `PRD.md`.
+checked off.**
+
+**Status: COMPLETE (2026-09-04).** The **Completion** checklist at the bottom
+of this document is done: `tool/check.sh` green (827/827); all 18
+`integration_test/` files run on the Samsung SM-S938B, one per run (15 green,
+3 confirmed pre-existing and unrelated to this backlog — see the Completion
+section's Result for the full breakdown and root causes); `PRD.md#known-gaps`
+updated; this file moved to `docs/archived/`.
+
+**Follow-ups left for a future task** (all recorded in
+[PRD.md#known-gaps](../../PRD.md#known-gaps)): update `nav_shell_test.dart`'s
+stale autofocus assertion and `video_playback_test.dart`'s stale
+`SectionHeader` finder, both against UI behaviour that changed on 2026-07-23,
+six weeks before this backlog; find the real Samsung One UI
+delete-confirmation dialog text so `cache_live_update_test.dart` can pass on
+that device too (known since Phase 6.1); bump AGENTS.md's "17 on-device Patrol
+tests" line to 18 (`people_test.dart`, added by task 3.2, was never counted).
 
 **Test device for Phase 2+ (2026-09-04):** a **physical iPhone 17 Pro Max**
 (`-d 00008150-0016388A1A43401C`, iOS 26.6.1), run as a plain `integration_test`
@@ -1249,3 +1255,80 @@ When every box is ticked:
 4. Move this file to `docs/archived/`.
 5. Update [PRD.md](../../PRD.md#known-gaps) — remove the gaps that are now
    closed, and leave the ones that are not.
+
+**Result (2026-09-04), run on the connected Samsung SM-S938B
+(`RZGYB1E58CV`, Android 16):**
+
+1. `tool/check.sh` → **all checks passed, 827/827** (no `lib/`/`test/` changes
+   this session — nothing to regress).
+2. Ran the 12 `integration_test/` files not already covered by Phase 6's own
+   device work (the file count is **18**, not the "17" AGENTS.md's project-
+   structure line states — `people_test.dart` was added by task 3.2 and the
+   line was never bumped; a one-line doc fix, left for the user), one file per
+   run, fixtures re-pushed first (`adb push … synthetic_face.jpg photo_face.jpg
+   no_exif.jpg large_48mp.heic /sdcard/Android/data/com.zmeul.sologallery/files/`
+   — the app-private dir was empty again, same wipe pattern 6.3 hit):
+   - `test_fixtures_test.dart` → 2/2 pass.
+   - `device_folders_test.dart` → 4/4 pass.
+   - `library_month_grouping_test.dart` → 1/1 pass.
+   - `search_test.dart` → 3/3 pass.
+   - `nav_shell_test.dart` (patrol) → **4/5 pass** — see finding below.
+   - `permission_matrix_test.dart` (patrol) → 2/2 pass, 1 skipped (the
+     Android-14 limited-access case, `skip: true` per-device as documented).
+   - `cache_live_update_test.dart` (patrol) → **0/1, reproduced 2×** — the
+     same pre-existing failure 6.1 already root-caused and confirmed
+     unrelated via A/B against unmodified `main` (Samsung One UI's
+     delete-confirmation dialog text mismatch). Not re-investigated;
+     re-confirmed only.
+   - `detail_actions_test.dart` (patrol) → 3/3 pass, 2 skipped.
+   - `folders_ui_test.dart` (patrol) → 1/1 pass.
+   - `hero_dismiss_test.dart` (patrol) → 1/1 pass.
+   - `saved_albums_test.dart` (patrol) → 2/2 pass.
+   - `video_playback_test.dart` (patrol) → **0/1** — see finding below.
+
+   **Two new pre-existing, unrelated failures found, both traced to the same
+   commit — six weeks before this remediation started, not caused by any task
+   in it:**
+   - **`nav_shell_test.dart`**, case "bottom nav: Library, Search, Saved,
+     Albums": asserts `focusNode.hasFocus == true` after tapping the Search
+     tab. `search_screen.dart` deliberately does **not** autofocus on tab
+     entry — its own doc comment says so ("do not auto-focus on entry so the
+     idle screen opens calm"). `git log -L` on those lines shows the
+     `requestFocus()` call was **removed** in commit `26a5084`
+     (2026-07-23, "Add new golden images for month header and recently viewed
+     row") — this test's own comment ("The Search field only takes focus once
+     its tab is selected") still describes the pre-`26a5084` behaviour and was
+     never updated. Reproduced 2× identically; the other 4 cases in the same
+     file pass every time.
+   - **`video_playback_test.dart`**: taps `find.byType(SectionHeader).first`
+     to open the newest month's full grid, then waits for a `DurationBadge`.
+     `SectionHeader` (`lib/widgets/section_header.dart`) is used by Search,
+     Albums, Memories and the people strip — **not** by Library, which has used
+     its own `MonthHeader`/`YearHeader` widgets
+     (`lib/features/library/widgets/{month,year}_header.dart`) since the same
+     commit, `26a5084`, which is also where `MonthSectionHeader` was split
+     into the two current types. `git log -1` on the test file shows its last
+     real edit predates that split; its one 2026-09-04 touch
+     (`376e7e4`) only changed a comment's `CLAUDE.md`→`AGENTS.md` reference,
+     not the assertion. `$(SectionHeader).first` finds zero widgets and the
+     10s `waitUntilVisible` inside the tap times out.
+
+   Both are genuine bugs in the *tests*, not the product — real UI decisions
+   from six weeks before this backlog that the on-device suite was never
+   re-run against until now. Fixing the test bodies (retarget the tap to
+   `MonthHeader`/`YearHeader`; drop or repoint the stale focus assertion) is
+   out of this document's scope (extraction/coverage/hygiene, not
+   test-content changes) and is recorded in
+   [PRD.md#known-gaps](../../PRD.md#known-gaps) instead.
+
+   **Net: 15 of 18 `integration_test/` files fully green; 3 fail, all three
+   confirmed pre-existing and unrelated to every task in this document** (one
+   already known from 6.1, two newly found and root-caused above). No
+   `lib/`/`test/` change was made to chase them — per the scope rule, fixing
+   test content is outside this backlog.
+3. **Status updated below.**
+4. **This file is being moved to `docs/archived/2026-09-04-remediation.md`.**
+5. **`PRD.md#known-gaps` updated** — the five closed gaps (test determinism,
+   the People integration test, the missing video fixture, the red host test,
+   the eight oversized files) removed; the signing-material gap kept
+   (out of scope, unchanged); the three test/device findings above added.

@@ -211,25 +211,36 @@ Requirements when it is built:
 
 ### Known gaps
 
-Found by the 2026-09-04 audit. Full detail and an execution order live in
-[docs/plans/2026-09-04-remediation.md](docs/plans/2026-09-04-remediation.md).
+The 2026-09-04 audit's findings were closed by
+[docs/archived/2026-09-04-remediation.md](docs/archived/2026-09-04-remediation.md)
+(test determinism, the People integration test, the missing video fixture, the
+red host test, and the eight oversized files — see that document for detail).
+What remains, including three found while closing it out:
 
-- **Test determinism.** The mandated HEIC ML smoke test does not exist.
-  `test_assets/large_48mp.heic`, `gps_exif.jpg` and `no_exif.jpg` are generated
-  and documented but referenced by no test; `ml_indexing_test.dart` reads
-  arbitrary device photos instead, which violates the determinism rule.
-- **People has no integration test.** No on-device test drives real face
-  clustering through to the People UI and the merge flow.
-- **A video test asset is still missing** — thumbnail and duration badge are
-  unverified on device.
-- **The host test suite is red.** `library_providers_test.dart` seeds hardcoded
-  dates against a rolling 7-day window; it has been failing since 2026-09-03. The
-  provider is correct, the test is not.
-- **Eight source files exceed 400 lines**, four of them well past it, which makes
-  them expensive to reason about and edit reliably.
+- **Two on-device Patrol/`integration_test` files assert removed UI behaviour.**
+  `integration_test/nav_shell_test.dart`'s "bottom nav" case expects the Search
+  field to autofocus when its tab is selected; that behaviour was deliberately
+  removed on 2026-07-23 (the doc comment in `search_screen.dart` still explains
+  why: "do not auto-focus on entry so the idle screen opens calm"), six weeks
+  before the remediation. `integration_test/video_playback_test.dart` looks for
+  a `SectionHeader` widget to open the newest month's full grid; Library moved
+  to its own `MonthHeader`/`YearHeader` widgets the same day. Neither test was
+  updated after that UI change, so both fail reproducibly, unrelated to any
+  other code. Confirmed via `git log -L` against the pre-remediation commit
+  that changed each behaviour. Needs the test bodies updated to match current
+  UI, not a product fix.
+- **`integration_test/cache_live_update_test.dart` fails on the Samsung
+  SM-S938B (One UI).** Its delete-confirmation-dialog tap
+  (`Selector(text: 'Allow')`) times out with a 404 selector error. Confirmed
+  pre-existing and unrelated to the remediation via an A/B run against
+  unmodified `main` (see the archived plan, Phase 6.1's Result). Root cause is
+  suspected to be a One UI-specific dialog wording that differs from the
+  Pixel 9 Pro XL's, on which `docs/gotchas.md`'s dialog text was verified —
+  not confirmed further. Needs the actual dialog text captured on a Samsung
+  device.
 - **Signing material is committed to the repository.**
   `android/key.properties` (plaintext store and key passwords) and
   `android/app/upload-keystore.jks` are tracked in git and pushed to the remote;
-  `.gitignore` contains only `.DS_Store`. Anyone with read access to the
+  `.gitignore` does not exclude either. Anyone with read access to the
   repository can sign builds as this developer. Recorded here as a known issue;
   remediation is being handled outside the engineering backlog.
