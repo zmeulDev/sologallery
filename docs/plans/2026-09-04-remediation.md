@@ -1,13 +1,15 @@
 # Remediation plan — findings from the 2026-09-04 audit
 
 **Status:** Phase 1 complete (1.1–1.7). Phase 2 complete (2.1 + 2.2 green on the
-physical iPhone; 2.3 done as a host widget test — see its Result). Phase 3 in
-progress: 3.1 done (host tests + one behaviour-preserving base-class fix — see
+physical iPhone; 2.3 done as a host widget test — see its Result). Phase 3
+complete: 3.1 done (host tests + one behaviour-preserving base-class fix — see
 its Result). 3.2 done — plain `integration_test` not patrol, second face is a
 StyleGAN photo not a synthetic draw (see its Result); green on the Samsung
-SM-S938B (`RZGYB1E58CV`).
-**Next step:** Task 3.3 — fill the widget-test gaps (`app_button.dart`,
-`settings_rows.dart`); host tests only.
+SM-S938B (`RZGYB1E58CV`). 3.3 done — host widget tests for `app_button.dart`
+and `settings_rows.dart` (see its Result). **Phase 3 complete.**
+**Next step:** Task 4.1 — extract one generic `SimpleLru<K, V>` and reimplement
+`adjacent_thumbnail_cache.dart` / `detail_preview_cache.dart` on it; host tests
+only, existing cache tests must pass unmodified.
 
 **Test device for Phase 2+ (2026-09-04):** a **physical iPhone 17 Pro Max**
 (`-d 00008150-0016388A1A43401C`, iOS 26.6.1), run as a plain `integration_test`
@@ -457,13 +459,32 @@ these tests **first** so that work has a safety net.
 
 ### 3.3 Fill the widget-test gaps
 
-- [ ] **Files:** new tests under `test/widgets/` and `test/features/settings/`
+- [x] **Files:** new tests under `test/widgets/` and `test/features/settings/`
 - **Change:** add behavioural widget tests (not just goldens) for
   `lib/widgets/app_button.dart` (all three voices, `compact`, leading icon, tap
   and disabled) and `lib/features/settings/widgets/settings_rows.dart` (all five
   row primitives, which are used by three screens and have no direct test).
 - **Verify:** `flutter test test/widgets/ test/features/settings/`
-- **Result:**
+- **Result:** Done. Two new host widget-test files, no device needed.
+  - **`test/widgets/app_button_test.dart`** (14 tests). `.primary`: tap fires the
+    callback; `onPressed: null` leaves `InkWell.onTap` null (disabled); `busy`
+    replaces the label with a `CircularProgressIndicator`; `compact` → outer
+    height 40, default → 52; `expand: true` stretches to the parent width (300);
+    a leading `icon` renders. `.secondary`: tap fires; null disables; leading
+    icon renders; height 40. `.quiet`: tap fires; null disables; the trailing
+    `chevron_right_rounded` shows only with `chevron: true`.
+  - **`test/features/settings/settings_rows_test.dart`** (10 tests, all five
+    primitives). `SettingsGroup` uppercases the label and renders its child.
+    `SettingsInfoRow` shows the trailing value when set, and renders exactly one
+    `Text` (no blank) when `value` is null. `SettingsCaptionRow` renders its
+    text. `SettingsSwitchRow` renders label + caption, reports the negated value
+    on tap, and passes the row label to `ConsentSwitch.semanticLabel`.
+    `SettingsActionRow` fires `onTap`, shows a caption only when given one, and
+    always carries the trailing chevron.
+  - `flutter test test/widgets/ test/features/settings/` → 154/154 pass (24
+    new). `flutter analyze` on both files clean. `tool/check.sh` → all checks
+    passed (820 tests, up from 796). No `lib/` changes — no user-visible
+    behaviour touched.
 
 ---
 
