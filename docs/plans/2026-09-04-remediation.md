@@ -14,8 +14,10 @@ tests only, existing cache tests pass unmodified (see its Result). 4.2 done —
 **Phase 4 complete.**
 5.1 done — Search screen split 621→121 lines into six new
 `lib/features/search/widgets/` files, tests unmodified (see its Result).
-**Next step:** Phase 5 — Task 5.2, split the Library screen
-(`lib/features/library/library_screen.dart`, 612 lines).
+5.2 done — Library screen split 612→71 lines into eight new
+`lib/features/library/widgets/` files, tests unmodified (see its Result).
+**Next step:** Phase 5 — Task 5.3, split the Onboarding screen
+(`lib/features/onboarding/onboarding_screen.dart`, 586 lines).
 
 **Test device for Phase 2+ (2026-09-04):** a **physical iPhone 17 Pro Max**
 (`-d 00008150-0016388A1A43401C`, iOS 26.6.1), run as a plain `integration_test`
@@ -646,7 +648,7 @@ for a person or an agent.
 
 ### 5.2 Split the Library screen
 
-- [ ] **File:** `lib/features/library/library_screen.dart` (612 lines)
+- [x] **File:** `lib/features/library/library_screen.dart` (612 lines)
 - **Change:** extract the four filter-scoped bodies (`_MonthTimeline`,
   `_ThisWeekList`, `_YearList`, and the day sections) plus the section and
   preview-grid widgets into `lib/features/library/widgets/`. The screen keeps the
@@ -654,7 +656,57 @@ for a person or an agent.
 - **Verify:** `flutter test test/features/library/`, including
   `library_spacing_test.dart` — the s20 inter-section rhythm is easy to break
   during extraction, and that test is what catches it. Report the new line count.
-- **Result:**
+- **Result:** Done. Eight new files under `lib/features/library/widgets/`, each
+  keeping the moved doc comments verbatim:
+  - `month_timeline.dart` — `MonthTimeline` (from `_MonthTimeline`), plus
+    file-private `_MonthList` and `_MonthSection` (both used only here) and
+    `_OlderSection` (the trailing "Older" bucket).
+  - `year_list.dart` — `YearList` (from `_YearList`), plus file-private
+    `_YearSection`.
+  - `this_week_list.dart` — `ThisWeekList` (from `_ThisWeekList`), plus
+    file-private `_DaySection`.
+  - `library_section.dart` — `LibrarySection` (from `_LibrarySection`, the
+    labelled-header-over-preview-grid shape shared by day sections and Older).
+  - `preview_grid.dart` — `PreviewGrid` (from `_PreviewGrid`, the six-thumbnail
+    tap-to-detail grid).
+  - `refreshable_body.dart` — `RefreshableBody` (from `_RefreshableBody`, the
+    pull-to-refresh wrapper).
+  - `library_bottom_padding.dart` — `libraryBottomPadding` (from the top-level
+    `_libraryBottomPadding` function), the nav-capsule-clearing padding shared
+    by all three filter bodies.
+
+  Formerly file-private classes and the one top-level helper function had to
+  become public (no leading `_`) to cross a file boundary — Dart privacy is
+  per-library, not per-class — matching the 5.1 precedent. Each newly-public
+  widget picked up a `super.key` constructor param (absent before, since the
+  `use_key_in_widget_constructors` lint only fires on public widgets) to keep
+  `flutter analyze` at zero issues, also matching 5.1. One doc-comment cross-
+  reference in `year_list.dart` (`_YearSection`'s "Like `_LibrarySection`...")
+  was updated to the new name `LibrarySection` to stay accurate; no other
+  comment text changed. `library_screen.dart` now holds only `LibraryScreen`
+  (the scaffold, app bar, and the filter-switch `Expanded`/`KeyedSubtree`) and
+  imports the three filter-scoped widgets.
+
+  612 → **71 lines** (target was under 200).  No logic changes; every doc
+  comment moved with its code.
+
+  `flutter test test/features/library/` → 83/83 pass, **unmodified**, including
+  `library_spacing_test.dart` (the s20 rhythm assertions). `flutter analyze
+  lib/features/library/` → clean (zero issues, after adding the `super.key`
+  params above — see note). `tool/check.sh` → all checks passed (827 tests,
+  same count as before — extraction only, no new tests needed since coverage
+  already exercises the extracted pieces through `LibraryScreen`).
+
+  **Device check (Samsung SM-S938B, `RZGYB1E58CV`, connected via `adb`):**
+  `flutter install --debug -d RZGYB1E58CV`, then launched via `monkey`. Boots
+  clean, foreground activity confirmed
+  (`com.zmeul.sologallery/.MainActivity`), no exception in `adb logcat -s
+  flutter:V SoloGallery:V AndroidRuntime:E` and no `sologallery`-tagged
+  exception/error/fatal anywhere in the full log. As with 5.1, did not drive
+  onboarding to the Library tab by hand — pure structural extraction, no
+  behaviour change (scope rule), and the widget-test suite already asserts the
+  exact section ordering and content of every extracted piece against a mocked
+  `ProviderScope`.
 
 ### 5.3 Split the Onboarding screen
 
