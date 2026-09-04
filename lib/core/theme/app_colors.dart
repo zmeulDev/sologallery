@@ -55,6 +55,7 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.pillActiveBg,
     required this.pillActiveText,
     required this.border,
+    required this.accent,
   });
 
   /// Recessed surface (e.g. filter track, inactive pill).
@@ -75,6 +76,12 @@ class AppColors extends ThemeExtension<AppColors> {
   /// Hairline border (7% ink).
   final Color border;
 
+  /// The one spot colour, scoped strictly to state (an active filter, a
+  /// favourited photo, an "on" toggle, the live indexing ring, the memory
+  /// player's current segment) — never decoration. Identical value in light
+  /// and dark: red reads fine on both a white and a near-black ground.
+  final Color accent;
+
   static const light = AppColors(
     surface2: Color(0xFFEBEBEB),
     textSecondary: Color(0xFF6E6E6A),
@@ -82,6 +89,7 @@ class AppColors extends ThemeExtension<AppColors> {
     pillActiveBg: Color(0xFF1A1A18),
     pillActiveText: Color(0xFFF0F0EE),
     border: Color(0x12000000), // rgba(0,0,0,0.07)
+    accent: Color(0xFFEB0000),
   );
 
   static const dark = AppColors(
@@ -91,6 +99,7 @@ class AppColors extends ThemeExtension<AppColors> {
     pillActiveBg: Color(0xFFF0F0EE),
     pillActiveText: Color(0xFF111110),
     border: Color(0x12FFFFFF), // rgba(255,255,255,0.07)
+    accent: Color(0xFFEB0000),
   );
 
   @override
@@ -101,6 +110,7 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? pillActiveBg,
     Color? pillActiveText,
     Color? border,
+    Color? accent,
   }) {
     return AppColors(
       surface2: surface2 ?? this.surface2,
@@ -109,6 +119,7 @@ class AppColors extends ThemeExtension<AppColors> {
       pillActiveBg: pillActiveBg ?? this.pillActiveBg,
       pillActiveText: pillActiveText ?? this.pillActiveText,
       border: border ?? this.border,
+      accent: accent ?? this.accent,
     );
   }
 
@@ -122,6 +133,7 @@ class AppColors extends ThemeExtension<AppColors> {
       pillActiveBg: Color.lerp(pillActiveBg, other.pillActiveBg, t)!,
       pillActiveText: Color.lerp(pillActiveText, other.pillActiveText, t)!,
       border: Color.lerp(border, other.border, t)!,
+      accent: Color.lerp(accent, other.accent, t)!,
     );
   }
 }

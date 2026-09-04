@@ -27,19 +27,19 @@ class AppTextStyles extends ThemeExtension<AppTextStyles> {
   /// Screen title in the app bar. 22 / 700.
   final TextStyle pageTitle;
 
-  /// Uppercase group header. 11 / 600, tracked out (the typographic signature).
+  /// Uppercase group header. 11 / 400, tracked out (the typographic signature).
   final TextStyle sectionLabel;
 
-  /// Filter/segment pill label. 12 / 500.
+  /// Filter/segment pill label. 12 / 400.
   final TextStyle filterPill;
 
   /// Default body & list text. 14 / 400.
   final TextStyle body;
 
-  /// Primary action label (CTA pill). 15 / 600.
+  /// Primary action label (CTA pill). 15 / 700.
   final TextStyle button;
 
-  /// EXIF metadata value. 12 / 600.
+  /// EXIF metadata value. 12 / 400.
   final TextStyle exifValue;
 
   /// EXIF metadata key (uppercase). 9 / 400.
@@ -58,14 +58,14 @@ class AppTextStyles extends ThemeExtension<AppTextStyles> {
     pageTitle: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, height: 1.1),
     sectionLabel: TextStyle(
       fontSize: 11,
-      fontWeight: FontWeight.w600,
+      fontWeight: FontWeight.w400,
       letterSpacing: 0.88, // ~0.08em at 11sp
       height: 1.2,
     ),
-    filterPill: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+    filterPill: TextStyle(fontSize: 12, fontWeight: FontWeight.w400),
     body: TextStyle(fontSize: 14, fontWeight: FontWeight.w400, height: 1.4),
-    button: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-    exifValue: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+    button: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+    exifValue: TextStyle(fontSize: 12, fontWeight: FontWeight.w400),
     exifKey: TextStyle(
       fontSize: 9,
       fontWeight: FontWeight.w400,
