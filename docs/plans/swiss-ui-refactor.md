@@ -175,8 +175,10 @@ conversations/PRs, each starting from this doc.
 - [ ] **Phase 3 — Memories player third state** (separate session, has a
       logic component; planning complete 2026-09-05, concrete tasks below,
       not yet started)
-- [ ] **Phase 4 — Onboarding poster treatment** (separate session, highest
-      subjectivity — consider a preview/checkpoint before wiring in)
+- [ ] **Phase 4 — Onboarding poster treatment** (built and reviewed clean
+      2026-09-05, branch `worktree-swiss-ui-refactor-phase4`, Tasks 0-3
+      executed via `superpowers:subagent-driven-development`; on-device pass
+      still outstanding, not a blocker — see Phase 4's Definition of Done)
 - [ ] **Phase 5 — Remaining screens** (Albums, Saved, Settings, Search,
       Library apply Phase 0/1 tokens — mostly inherited automatically, spot
       verify each)
@@ -1399,28 +1401,377 @@ to close it out.
 
 ## Phase 4 — Onboarding poster treatment
 
-**Files:** `lib/features/onboarding/widgets/access_step.dart`,
-possibly a new `lib/features/onboarding/widgets/access_ring.dart` for the
-graphic element.
+**Status:** planning complete, concrete tasks below, not yet started.
+**Files:** new `lib/features/onboarding/widgets/access_ring.dart` (the ring
+widget + its `CustomPainter`) · `lib/features/onboarding/widgets/access_step.dart`
+(138 lines, full file read during planning — wire the ring in) ·
+`test/widgets/design_goldens_test.dart` (one new golden entry — this repo
+funnels every design-system golden through this single file, no per-widget
+golden file convention exists, confirmed during planning) · new
+`test/widgets/access_ring_test.dart` · new
+`test/features/onboarding/widgets/access_step_test.dart` (no existing test
+for this widget — confirmed via `find test/features/onboarding` during
+planning, which only turned up `onboarding_screen_test.dart`).
 
-This is the only phase introducing new decoration rather than recolouring
-existing structure — treat it accordingly:
-- Build the ring as an isolated widget with its own preview
-  (`dart-flutter:flutter-add-widget-preview`) before wiring it into
-  `access_step.dart`, so it can be reviewed on its own.
-- The headline (`text.display`, currently 34/700) growing larger and the
-  ring bleeding off-screen both need to be checked against real device
-  widths, not just the phone-frame mockup's fixed aspect ratio — verify on
-  both a small and a large device in the simulator/emulator matrix
-  (`docs/gotchas.md` / `AGENTS.md` environment section for device details).
-- Reduced-motion/accessibility: the ring is static (no motion at all), so
-  this should be a non-issue, but confirm no implicit animation gets pulled
-  in by whatever draws it (e.g. avoid `AnimatedContainer` for a shape that
-  never changes).
+**Open decision — flag at plan approval, not something the code can resolve
+on its own:** `docs/design-system.md` (line 8-10) states the app's one
+accent colour is "reserved for state, never decoration," and
+`AppColors.accent`'s own doc comment says the same. This phase's ring is
+*purely decorative* — `AccessStep` doesn't vary it by `denied`/`busy`/
+`attempted`, so there's no state it's marking. There's no other red token in
+`AppColors` and no decorative-red equivalent in `AppOverMedia` (that group
+is all white/black scrims and glyphs). **Proposed resolution:** ship it as
+`colors.accent` anyway — this plan doc's own "Decisions this plan is
+making" #5 (top of this doc) already frames Phase 4 as "the single biggest
+visual departure... the only phase introducing new decoration," and the
+uncommitted research spike evidently specified a red ring, so this
+exception reads as already accepted when Phase 4 was scoped. Making it
+explicit here so it isn't silently inconsistent with `design-system.md`'s
+stated rule — Phase 6 (Docs) should add a one-line carve-out once this
+ships ("accent is state-only, except the onboarding poster ring, named
+here"). **If this doesn't match intent, redirect before Task 0.**
 
-**Tests:** widget test for `access_step.dart` (loading/denied/first-run
-states per the existing `access_step.dart` branching), golden for the new
-ring widget in isolation, light and dark.
+**No mockup available to build against** — the research spike that produced
+this plan isn't committed to the repo (see this doc's "Source" line at the
+very top), so there's no image to match pixel-for-pixel. Task 0's concrete
+widget below (a single thin stroked circle bleeding off the top-right
+corner, sized as a fraction of screen width) is this plan's best proposal
+from the brief's own language ("ring," "poster treatment," "bleeding
+off-screen") — **this is exactly what the isolated preview in Task 0 is
+for**: review it via `flutter-add-widget-preview` before Task 1 wires it
+in, and adjust diameter/stroke/position then, not by re-guessing now.
+
+**Tooling gap:** no file in this repo uses `flutter-add-widget-preview`
+today — confirmed via a repo-wide search during planning: no `@Preview`
+usage, no `previews.dart`, no `widget_preview` pubspec dependency, no
+preview entrypoint. Task 0 is a first-time bootstrap of this tooling, not
+"add one more preview" — expect it to need more hand-holding than a normal
+task.
+
+**"Loading/denied/first-run" naming, reconciled against the live file:**
+`AccessStep` doesn't have three mutually exclusive branches — it has one
+boolean (`denied = attempted && access == PhotoAccess.denied`) plus an
+orthogonal `busy` flag that only disables/spins the CTA
+(`AppButton.primary(busy: busy, onPressed: busy ? null : ...)`; there's no
+separate loading overlay elsewhere in the widget). So the task brief's
+"loading/denied/first-run" maps to: **first-run** = `denied: false, busy:
+false` (default copy, "Continue" CTA); **denied** = `denied: true` ("turned
+off" copy, "Open Settings" CTA); **loading** = `busy: true`, layered on
+either of the above (disables the CTA). Task 2's test covers all three
+names plus the busy-crossed-with-denied combination, since `busy` isn't
+mutually exclusive with `denied`.
+
+---
+
+### Task 0 — `AccessRing` widget + isolated preview
+
+**Files:**
+- Create: `lib/features/onboarding/widgets/access_ring.dart`.
+- New preview file per the `flutter-add-widget-preview` skill's own bootstrap
+  conventions (first use in this repo — invoke the skill and follow its
+  setup rather than hand-rolling one).
+- Create: `test/widgets/access_ring_test.dart`.
+- Modify: `test/widgets/design_goldens_test.dart` — one new `goldenTest`
+  entry, following the existing boilerplate (`themedGroup(...)`; no
+  `ProviderScope` needed, `AccessRing` reads no provider-backed state).
+
+**Proposed widget** (a starting point — Task 0's preview review may change
+the constants below; nothing here is final):
+
+```dart
+import 'package:flutter/material.dart';
+
+import '../../../core/theme/app_colors.dart';
+
+/// The onboarding poster's decorative ring — a single stroked circle. Purely
+/// decorative (see this phase's plan notes for why it uses [AppColors.accent]
+/// despite the design system's "accent is state, never decoration" rule);
+/// static, no animation. [diameter] is caller-supplied so [AccessStep] can
+/// size it as a fraction of screen width rather than a fixed pixel value.
+class AccessRing extends StatelessWidget {
+  const AccessRing({super.key, required this.diameter});
+
+  final double diameter;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppColors>()!;
+    return SizedBox(
+      width: diameter,
+      height: diameter,
+      child: CustomPaint(painter: AccessRingPainter(color: colors.accent)),
+    );
+  }
+}
+
+/// Public so a widget test can assert the resolved color without pixel
+/// matching — same rationale as `IndexingRingPainter`
+/// (`lib/widgets/indexing_dial.dart`).
+class AccessRingPainter extends CustomPainter {
+  const AccessRingPainter({required this.color});
+
+  final Color color;
+
+  static const double _strokeWidth = 1.5;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = (Offset.zero & size).deflate(_strokeWidth / 2);
+    canvas.drawOval(
+      rect,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = _strokeWidth
+        ..color = color,
+    );
+  }
+
+  @override
+  bool shouldRepaint(AccessRingPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+```
+
+No `AnimationController`, no `AnimatedContainer`, no `Ticker` — matches
+`IndexingRingPainter`'s precedent for a plain `const`-field `CustomPainter`
+driven only by rebuild, the established pattern in this codebase for a ring
+that doesn't animate.
+
+**Steps:**
+1. Create `access_ring.dart` as above (or closer to a mockup if one surfaces
+   before this task starts).
+2. Invoke `dart-flutter:flutter-add-widget-preview` to bootstrap a preview
+   for `AccessRing` — light and dark, a couple of `diameter` values (e.g.
+   240 and 420) so the preview itself stands in for "small vs large" at this
+   isolated stage.
+3. View the preview. This confirms only: the shape renders, colors resolve
+   correctly in both themes, the stroke doesn't look wrong at a glance. Do
+   not wire into `access_step.dart` yet — that's Task 1, which needs a
+   diameter-as-fraction-of-width decision first (Task 1 step 2).
+4. Add the golden entry to `test/widgets/design_goldens_test.dart`:
+   ```dart
+   goldenTest(
+     'AccessRing — decorative ring',
+     fileName: 'access_ring',
+     builder: () => themedGroup(
+       const Align(child: AccessRing(diameter: 240)),
+     ),
+   );
+   ```
+5. Add `test/widgets/access_ring_test.dart`:
+   ```dart
+   testWidgets('paints with the theme accent color', (tester) async {
+     for (final (name, theme) in [
+       ('light', AppTheme.light),
+       ('dark', AppTheme.dark),
+     ]) {
+       await tester.pumpWidget(
+         MaterialApp(
+           theme: theme,
+           home: const Scaffold(body: AccessRing(diameter: 100)),
+         ),
+       );
+       final painter = tester
+           .widget<CustomPaint>(find.byType(CustomPaint))
+           .painter as AccessRingPainter;
+       final colors = Theme.of(tester.element(find.byType(AccessRing)))
+           .extension<AppColors>()!;
+       expect(painter.color, colors.accent, reason: name);
+     }
+   });
+
+   testWidgets('is static — no pending ticker/animation after settling', (
+     tester,
+   ) async {
+     await tester.pumpWidget(
+       MaterialApp(
+         theme: AppTheme.light,
+         home: const Scaffold(body: AccessRing(diameter: 100)),
+       ),
+     );
+     await tester.pumpAndSettle();
+     expect(tester.binding.transientCallbackCount, 0);
+     expect(find.byType(AnimatedContainer), findsNothing);
+   });
+   ```
+6. `flutter test test/widgets/access_ring_test.dart test/widgets/design_goldens_test.dart --update-goldens`
+   — confirm the new tests pass and `access_ring.png` (light+dark) appears
+   under `test/widgets/goldens/ci/`; review both by eye.
+7. `flutter analyze` — zero warnings.
+8. Commit: `git add lib/features/onboarding/widgets/access_ring.dart test/widgets/access_ring_test.dart test/widgets/design_goldens_test.dart test/widgets/goldens/ci/access_ring* <preview files> && git commit -m "feat: add AccessRing decorative widget with isolated preview"`.
+
+---
+
+### Task 1 — Wire `AccessRing` into `AccessStep`
+
+**File:** `lib/features/onboarding/widgets/access_step.dart`.
+
+**Change:** wrap the existing `Padding(...)` (currently the sole child of
+`SafeArea`, lines 45-135) in a `Stack`, with the ring as a first,
+non-interactive, non-semantic layer bleeding off the top-right corner, sized
+relative to screen width:
+
+```dart
+body: Stack(
+  children: [
+    Positioned(
+      top: -diameter * 0.3,
+      right: -diameter * 0.3,
+      child: IgnorePointer(
+        child: ExcludeSemantics(child: AccessRing(diameter: diameter)),
+      ),
+    ),
+    SafeArea(
+      child: Padding(
+        // ...unchanged...
+      ),
+    ),
+  ],
+),
+```
+
+where `diameter` derives from `MediaQuery.sizeOf(context).width` (e.g.
+`width * 1.1`) rather than a fixed pixel value — this is what lets the ring
+scale instead of clipping identically on every device width, the specific
+risk the phase brief calls out. `IgnorePointer` keeps the ring from stealing
+taps meant for the content beneath it (nothing is tappable under its
+footprint today, but the poster now overlaps the headline/brand row in the
+`Stack`'s paint order, so this is a correctness guard, not paranoia).
+`ExcludeSemantics` keeps a screen reader from announcing a shape that
+carries no information — the same treatment `IndexingDial` reserves for its
+disc when idle, applied here since this ring is *always* decoration, never
+state.
+
+**Steps:**
+1. Make the change above.
+2. Run on an emulator/simulator at a **small** width (e.g. iPhone SE class,
+   ~375pt, or a small Android AVD ~360dp) and a **large** width (e.g. a
+   Pixel Tablet or iPad simulator, or the largest phone AVD available) —
+   confirm the ring doesn't visually collide with the growing `text.display`
+   headline on either the first-run or denied copy variant, and doesn't get
+   clipped in a way that reads as a rendering bug (a *deliberate* off-screen
+   bleed is fine; an accidental hard edge/box artifact is not). This is a
+   viewport-width check via emulator/simulator resize, distinct from (and no
+   substitute for) the physical-device pass in Task 3.
+3. Confirm `flutter analyze` is clean (no unused imports left from the
+   pre-`Stack` structure).
+4. Commit: `git add lib/features/onboarding/widgets/access_step.dart && git commit -m "feat: wire AccessRing into the onboarding poster"`.
+
+---
+
+### Task 2 — `access_step.dart` widget test
+
+**File:** create `test/features/onboarding/widgets/access_step_test.dart`.
+
+**Cover** (per the naming reconciliation above):
+- **First-run** (`access: PhotoAccess.notDetermined, attempted: false, busy:
+  false`): headline reads "Your photos stay yours.", CTA label "Continue",
+  tapping it calls `onRequestAccess` (not `onOpenSettings`).
+- **Denied** (`access: PhotoAccess.denied, attempted: true, busy: false`):
+  headline reads "Photo access is turned off.", CTA label "Open Settings",
+  tapping it calls `onOpenSettings` (not `onRequestAccess`).
+- **Loading** (`busy: true`, crossed with both of the above): the CTA is
+  disabled — tapping it invokes neither callback, since `busy` guards both
+  branches identically in the live code (`onPressed: busy ? null : (denied ?
+  onOpenSettings : onRequestAccess)`).
+- **`AccessRing` mounts exactly once**, regardless of state —
+  `find.byType(AccessRing)` finds one widget in every case above (decoration
+  is state-invariant, unlike everything else in this widget).
+
+**Steps:**
+1. Write the test file with the cases above, using recorded-callback bools
+   (`var requested = false; onRequestAccess: () => requested = true`) —
+   check whether `onboarding_screen_test.dart` already uses this pattern and
+   reuse its convention rather than inventing a new one.
+2. Run: `flutter test test/features/onboarding/widgets/access_step_test.dart`
+   — expect PASS if Task 1 already landed; if this task runs first (TDD),
+   confirm the ring assertion fails until Task 1 wires it in.
+3. `flutter analyze` — zero warnings.
+4. Commit: `git add test/features/onboarding/widgets/access_step_test.dart && git commit -m "test: add AccessStep widget test covering first-run/denied/loading branching"`.
+
+---
+
+### Task 3 — Golden regen + device/on-device verification
+
+1. `flutter test test/widgets/design_goldens_test.dart --update-goldens` —
+   confirm nothing beyond `access_ring.png` changed (Task 0 already
+   generated it; this task's job is to catch anything Task 1's
+   `access_step.dart` change accidentally disturbed elsewhere — `AccessStep`
+   itself has no golden today and this phase doesn't add a whole-screen one,
+   only the isolated ring gets a golden, per the task brief). **Confirmed:**
+   `git status --short test/widgets/goldens/` came back empty after
+   regenerating — every PNG (including `access_ring.png`) already matched
+   what Task 0 committed, no drift from Task 1/2's changes.
+2. `tool/check.sh` — must pass clean. **Confirmed:** 874 tests pass, analyze
+   clean.
+3. Repeat Task 1 step 2's small/large emulator width check once more against
+   the final wired-in state, light and dark theme both. **Not done as a
+   real visual emulator check** — same environment gap Task 1 hit (no
+   small/large simulator *pair*, no Android AVD); this session additionally
+   confirmed no Android device at all (`adb devices` empty) and the
+   physical iPhone shows **Offline** in `xcrun xctrace list devices`
+   (`flutter devices` optimistically lists it as "wirelessly connected,"
+   but that couldn't be relied on to actually launch the app — same
+   discrepancy Phase 3's session already hit and recorded). The Task 1/2
+   widget-test width-substitute (4+ cases at ~375dp/~860dp, both copy
+   variants, asserting no render exception and `AccessRing` mounted) is the
+   only verification this session could actually run; the visual
+   ring-vs-headline collision judgment call is unverified either way.
+4. On-device pass (per `AGENTS.md` Definition of Done): open onboarding
+   fresh (uninstall/reinstall or clear app data) on the connected device,
+   confirm the ring renders correctly, tap "Continue" and confirm the native
+   permission dialog still appears (the `Stack`/`IgnorePointer` change must
+   not break the tap target), and check the denied → "Open Settings" path.
+   Same backlog status as Phases 1-3 if no device is connected this session
+   — **not a blocker**, record the outcome here either way. **Not done —
+   no device connected this session** (see step 3's device-availability
+   findings above); same outstanding backlog item as Phases 1-3's manual
+   passes.
+5. Commit any final golden/doc updates. **Done:** pulled the
+   `docs/design-system.md`/`AppColors.accent` carve-out forward from Phase 6
+   rather than leaving the docs inconsistent with the shipped code (commit
+   `e7756f9`) — cheap enough not to wait.
+
+**Attempted 2026-09-05 — no device available, same class of gap as Phases
+1-3.** `adb devices` (Android) returns empty. `xcrun xctrace list devices`
+shows the physical iPhone as **Offline**, despite `flutter devices` listing
+it as a "wirelessly connected device" — not reliable enough to attempt a
+real `flutter run` against it. Only iOS simulators are available
+(including, this session, an iPad pair alongside iPhone 17/17 Pro/Air —
+more simulator variety than Phase 2/3 had), but launching a Flutter build
+against any of them still needs the same structural Xcode-scheme fix (or a
+physical-device workaround) `docs/gotchas.md`'s iOS `integration_test` entry
+already documents — not re-diagnosed here, consistent with how Phase 3
+handled hitting the same wall. **Small/large-width verification was
+substituted with widget tests instead** (Task 1/2, see above) rather than a
+real visual pass — this is a different, narrower substitution than Phases
+1-3's manual passes (which had no substitute at all), but the *visual*
+judgment call (does the ring actually look right against the growing
+headline) remains genuinely unverified either way.
+
+**Definition of Done for this phase:**
+- [x] `tool/check.sh` passes.
+- [x] Preview reviewed before wiring in (Task 0 step 3) — mechanically only
+      (tool discovered all 4 preview instances, scaffold compiled with no
+      errors); actual visual rendering in the previewer UI still needs
+      human eyes, no display in this sandbox.
+- [x] Golden for `AccessRing` in isolation, light and dark (Task 0).
+- [x] Widget test for `access_step.dart`'s first-run/denied/loading
+      branching, including the ring mounting invariantly (Task 2).
+- [x] Small- and large-width verification done — **substituted with widget
+      tests** (Task 1/2), not a real emulator/simulator visual check (Task 3
+      step 3) — no small/large device pair was available this session; the
+      visual ring-vs-headline judgment call is still unverified.
+- [x] No implicit animation confirmed absent (Task 0's ticker/
+      `AnimatedContainer` test).
+- [x] `docs/design-system.md`'s accent rule updated with the poster-ring
+      carve-out — pulled forward here rather than deferred to Phase 6
+      (commit `e7756f9`).
+- [ ] On-device manual pass (Task 3 step 4) — **not done**, no device
+      connected this session; not a blocker, same backlog item as Phases
+      1-3.
+- [x] This plan doc checked off through Phase 4, "Next step" line updated to
+      point at Phase 5.
 
 ---
 
@@ -1553,3 +1904,32 @@ Phase 2 hit) — same backlog item as Phase 1's and Phase 2's still-pending
 manual passes. Next step: connect the Pixel 9 Pro XL (or the physical
 iPhone) in a future session, play a memory with 3+ pages, and confirm the
 current segment reads red and taller in motion per Task 1's steps above.
+
+**Phase 4 — Onboarding poster treatment:** built and reviewed clean
+2026-09-05 (branch `worktree-swiss-ui-refactor-phase4`), Tasks 0-3 executed
+via `superpowers:subagent-driven-development` — Task 0 (`AccessRing` widget +
+first-time `flutter-add-widget-preview` bootstrap in this repo, 1 fix round:
+formatting), Task 1 (wired into `AccessStep`, 1 fix round: the substitute
+width-check test didn't actually assert the ring was present), Task 2
+(extended that same test file with copy/CTA/callback/busy-loading coverage,
+0 fix rounds — also surfaced a real gotcha: `busy: true` renders an
+indefinitely-animating spinner, so tests on that branch need a bounded
+`pump()` instead of `pumpAndSettle()`), Task 3 (golden regen clean, no
+drift; `tool/check.sh` 874 tests passing; pulled the
+`docs/design-system.md`/`AppColors.accent` accent-as-decoration carve-out
+forward from Phase 6 rather than leaving the docs inconsistent). The
+accent-as-decoration exception flagged at planning time was accepted at
+plan approval and shipped as documented. No mockup ever surfaced, so Task
+0's ring shape (thin stroked circle, top-right bleed) shipped as originally
+proposed — reviewed via the widget-preview tool only mechanically (no
+display in this sandbox); a real visual pass is still owed. Small/large
+device-width verification was substituted with widget tests throughout
+(no small/large simulator pair or Android AVD available this session
+either) — this covers "does it crash at extreme widths" but not the visual
+ring-vs-headline judgment call, which — together with the on-device pass —
+remains outstanding, same backlog item as Phases 1-3's still-pending manual
+passes. Next step: decide how to land Phase 4, then pick up the four queued
+on-device/visual passes (Phases 1-3 plus this phase) opportunistically when
+a physical device or a working simulator becomes available — see
+`docs/gotchas.md`'s iOS `integration_test` entry for the standing Xcode
+scheme blocker.
