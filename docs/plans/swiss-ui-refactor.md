@@ -1717,6 +1717,26 @@ state.
    variants, asserting no render exception and `AccessRing` mounted) is the
    only verification this session could actually run; the visual
    ring-vs-headline collision judgment call is unverified either way.
+   **Quantified during the final whole-branch review (2026-09-05):** the
+   ring is not a small corner accent — plugging a representative 390pt
+   width into the shipped formula (`access_step.dart:45`,
+   `diameter = MediaQuery.sizeOf(context).width * 1.1`, ring `Positioned`
+   at `top: -diameter * 0.3, right: -diameter * 0.3`,
+   `access_step.dart:51-52`) gives `diameter ≈ 429`, so the ring's
+   bounding box spans roughly `x ≈ 90..519` (visible left edge ~23% in
+   from the screen's left edge, not tucked into the corner) and
+   `y ≈ -129..300` — the same vertical band the headline/brand-row content
+   occupies after the first `Spacer`. It reads as a dominant graphic
+   across the upper-middle of the screen, not a subtle accent. This is
+   still safe for *readability*: the `Stack`'s paint order puts the real
+   screen content (`SafeArea`/`Padding`/`Column`) on top of the ring, so
+   opaque text always wins. What's still unverified is purely aesthetic —
+   whether the visible arc of stroke reads as a deliberate poster layer or
+   as debris crossing through the copy — and that fraction of the screen
+   is width-invariant, but the absolute headline-to-ring proximity is
+   tightest at small widths, so the eventual on-device pass should check
+   both the first-run and denied copy variants at a **small** width
+   specifically, not just "some width."
 4. On-device pass (per `AGENTS.md` Definition of Done): open onboarding
    fresh (uninstall/reinstall or clear app data) on the connected device,
    confirm the ring renders correctly, tap "Continue" and confirm the native
@@ -1747,7 +1767,9 @@ substituted with widget tests instead** (Task 1/2, see above) rather than a
 real visual pass — this is a different, narrower substitution than Phases
 1-3's manual passes (which had no substitute at all), but the *visual*
 judgment call (does the ring actually look right against the growing
-headline) remains genuinely unverified either way.
+headline) remains genuinely unverified either way — see step 3 above for
+the actual bounding-box geometry that makes this worth checking carefully
+rather than a routine "looks fine" glance.
 
 **Definition of Done for this phase:**
 - [x] `tool/check.sh` passes.
@@ -1761,7 +1783,11 @@ headline) remains genuinely unverified either way.
 - [x] Small- and large-width verification done — **substituted with widget
       tests** (Task 1/2), not a real emulator/simulator visual check (Task 3
       step 3) — no small/large device pair was available this session; the
-      visual ring-vs-headline judgment call is still unverified.
+      visual ring-vs-headline judgment call is still unverified. Task 3
+      step 3 above now quantifies the ring's actual footprint (`x ≈
+      90..519`, `y ≈ -129..300` at a 390pt width) — it's a dominant
+      upper-middle graphic, not a corner accent, so the still-owed pass
+      should check both copy variants at a **small** width specifically.
 - [x] No implicit animation confirmed absent (Task 0's ticker/
       `AnimatedContainer` test).
 - [x] `docs/design-system.md`'s accent rule updated with the poster-ring
