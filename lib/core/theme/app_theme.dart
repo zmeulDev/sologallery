@@ -175,7 +175,7 @@ abstract final class AppTheme {
     const s = AppTextStyles.standard;
     return TextTheme(
       titleLarge: s.pageTitle.copyWith(color: primary),
-      titleMedium: s.body.copyWith(fontWeight: FontWeight.w600, color: primary),
+      titleMedium: s.body.copyWith(fontWeight: FontWeight.w700, color: primary),
       bodyLarge: s.body.copyWith(color: primary),
       bodyMedium: s.body.copyWith(color: primary),
       bodySmall: s.caption.copyWith(color: secondary),
