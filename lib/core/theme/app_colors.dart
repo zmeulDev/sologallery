@@ -59,6 +59,7 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.pillActiveText,
     required this.border,
     required this.accent,
+    required this.accentText,
   });
 
   /// Recessed surface (e.g. filter track, inactive pill).
@@ -85,6 +86,14 @@ class AppColors extends ThemeExtension<AppColors> {
   /// and dark: red reads fine on both a white and a near-black ground.
   final Color accent;
 
+  /// Text-safe variant of [accent] — same red, but chosen so it clears WCAG
+  /// AA's 4.5:1 text-contrast threshold against the specific ground each
+  /// consumer paints it on (`scheme.surface`: FilterPill and
+  /// SegmentedControl's selected label). [accent] itself only clears 3:1
+  /// (non-text/UI-component contrast) on some grounds — use [accentText],
+  /// never [accent], whenever this red becomes the colour of *text*.
+  final Color accentText;
+
   static const light = AppColors(
     surface2: Color(0xFFEBEBEB),
     textSecondary: Color(0xFF6E6E6A),
@@ -93,6 +102,7 @@ class AppColors extends ThemeExtension<AppColors> {
     pillActiveText: Color(0xFFF0F0EE),
     border: Color(0x12000000), // rgba(0,0,0,0.07)
     accent: Color(0xFFEB0000),
+    accentText: Color(0xFFEB0000),
   );
 
   static const dark = AppColors(
@@ -103,6 +113,7 @@ class AppColors extends ThemeExtension<AppColors> {
     pillActiveText: Color(0xFF111110),
     border: Color(0x12FFFFFF), // rgba(255,255,255,0.07)
     accent: Color(0xFFEB0000),
+    accentText: Color(0xFFFF3B30),
   );
 
   @override
@@ -114,6 +125,7 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? pillActiveText,
     Color? border,
     Color? accent,
+    Color? accentText,
   }) {
     return AppColors(
       surface2: surface2 ?? this.surface2,
@@ -123,6 +135,7 @@ class AppColors extends ThemeExtension<AppColors> {
       pillActiveText: pillActiveText ?? this.pillActiveText,
       border: border ?? this.border,
       accent: accent ?? this.accent,
+      accentText: accentText ?? this.accentText,
     );
   }
 
@@ -137,6 +150,7 @@ class AppColors extends ThemeExtension<AppColors> {
       pillActiveText: Color.lerp(pillActiveText, other.pillActiveText, t)!,
       border: Color.lerp(border, other.border, t)!,
       accent: Color.lerp(accent, other.accent, t)!,
+      accentText: Color.lerp(accentText, other.accentText, t)!,
     );
   }
 }
