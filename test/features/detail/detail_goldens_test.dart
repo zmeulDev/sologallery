@@ -1,9 +1,7 @@
 import 'package:alchemist/alchemist.dart';
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:sologallery/core/database/app_database.dart';
-import 'package:sologallery/core/database/database_provider.dart';
+import 'package:sologallery/core/database/app_database.dart' show Album;
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/detail/detail_providers.dart';
 import 'package:sologallery/features/detail/widgets/add_to_album_sheet.dart';
@@ -12,11 +10,6 @@ import 'package:sologallery/features/detail/widgets/exif_sheet.dart';
 import 'package:sologallery/services/photo_library_service.dart';
 
 void main() {
-  // Shared in-memory database — ExifSheet watches isFavoriteProvider, which
-  // reads through favoritesDaoProvider/databaseProvider. None of these
-  // scenarios mutate favorites, so one instance across the file is fine.
-  final db = AppDatabase(NativeDatabase.memory());
-
   /// Themed light+dark scenarios on each theme's own surface.
   GoldenTestGroup themedGroup(Widget Function(ThemeData) build) {
     return GoldenTestGroup(
@@ -69,7 +62,7 @@ void main() {
     builder: () => themedGroup(
       (_) => ProviderScope(
         overrides: [
-          databaseProvider.overrideWithValue(db),
+          isFavoriteProvider('x').overrideWith((ref) => Stream.value(false)),
           assetDetailProvider('x').overrideWith((ref) => AssetDetail(
                 id: 'x',
                 width: 6048,
@@ -81,6 +74,52 @@ void main() {
                 mimeType: 'image/heic',
                 latitude: 37.7749,
                 longitude: -122.4194,
+              )),
+        ],
+        child: const ExifSheet(assetId: 'x'),
+      ),
+    ),
+  );
+
+  goldenTest(
+    'ExifSheet — no EXIF data',
+    fileName: 'exif_sheet_no_exif',
+    builder: () => themedGroup(
+      (_) => ProviderScope(
+        overrides: [
+          isFavoriteProvider('x').overrideWith((ref) => Stream.value(false)),
+          assetDetailProvider('x').overrideWith((ref) => AssetDetail(
+                id: 'x',
+                width: 800,
+                height: 600,
+                createdAt: DateTime(2026, 3, 1, 9, 5),
+                orientationDegrees: 0,
+                isVideo: false,
+              )),
+        ],
+        child: const ExifSheet(assetId: 'x'),
+      ),
+    ),
+  );
+
+  goldenTest(
+    'ExifSheet — long location value',
+    fileName: 'exif_sheet_long_location',
+    builder: () => themedGroup(
+      (_) => ProviderScope(
+        overrides: [
+          isFavoriteProvider('x').overrideWith((ref) => Stream.value(false)),
+          assetDetailProvider('x').overrideWith((ref) => AssetDetail(
+                id: 'x',
+                width: 6048,
+                height: 8064,
+                createdAt: DateTime(2026, 7, 12, 14, 33),
+                orientationDegrees: 0,
+                isVideo: false,
+                // Deliberately out-of-range magnitude — stresses the fixed
+                // value column's wrap behaviour; not a real coordinate.
+                latitude: 123456789.1234,
+                longitude: -987654321.5678,
               )),
         ],
         child: const ExifSheet(assetId: 'x'),

@@ -1,9 +1,6 @@
-import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sologallery/core/database/app_database.dart';
-import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/detail/detail_providers.dart';
 import 'package:sologallery/features/detail/widgets/exif_sheet.dart';
@@ -22,17 +19,19 @@ import 'package:sologallery/services/photo_library_service.dart';
 /// `AssetDetail`. This is that test, driven by the same shapes the fixtures
 /// carry rather than by the fixtures themselves.
 void main() {
-  late AppDatabase db;
-
-  setUp(() => db = AppDatabase(NativeDatabase.memory()));
-  tearDown(() async => db.close());
-
-  Future<void> pumpSheet(WidgetTester tester, AssetDetail? detail) async {
+  Future<void> pumpSheet(
+    WidgetTester tester,
+    AssetDetail? detail, {
+    bool isFavorite = false,
+  }) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          databaseProvider.overrideWithValue(db),
           assetDetailProvider('x').overrideWith((ref) => detail),
+          // A single-emission stream, not a live query — no favoritesDao/
+          // Drift needed to test this widget's rendering, and nothing to
+          // cancel at teardown (unlike a real watchIsFavorite() stream).
+          isFavoriteProvider('x').overrideWith((ref) => Stream.value(isFavorite)),
         ],
         child: MaterialApp(
           theme: AppTheme.light,
@@ -41,19 +40,6 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-  }
-
-  // ExifSheet now watches isFavoriteProvider, which opens a live Drift query
-  // stream against `db`. Every test must dispose the tree (and pump the
-  // zero-duration Timer that cancelling the stream schedules) before this
-  // test's tearDown closes `db`, or flutter_test's end-of-test invariant
-  // check ("Timer is still pending") fails — it runs before any `tearDown`/
-  // `addTearDown` hook does, so this can't be hoisted into `pumpSheet` or a
-  // shared tearDown; it must be the last thing each test body does. Same fix
-  // as detail_screen_test.dart's settleTeardown.
-  Future<void> settleTeardown(WidgetTester tester) async {
-    await tester.pumpWidget(const SizedBox());
-    await tester.pump(const Duration(seconds: 1));
   }
 
   // A still image with every optional field the sheet knows how to show, GPS
@@ -95,8 +81,6 @@ void main() {
     expect(find.text('JPEG'), findsOneWidget); // Type
     expect(find.text('LOCATION'), findsOneWidget);
     expect(find.text('47.3764, 8.5476'), findsOneWidget); // Location
-
-    await settleTeardown(tester);
   });
 
   testWidgets('empty record degrades to the always-present chips, no blanks', (
@@ -121,8 +105,6 @@ void main() {
       findsNothing,
     );
     expect(tester.takeException(), isNull);
-
-    await settleTeardown(tester);
   });
 
   testWidgets('a null projection shows the unavailable note, not a broken sheet',
@@ -134,18 +116,13 @@ void main() {
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
-
-    await settleTeardown(tester);
   });
 
   testWidgets('favorited asset shows the Favorited mark', (tester) async {
-    await db.favoritesDao.add('x');
-    await pumpSheet(tester, fullRecord());
+    await pumpSheet(tester, fullRecord(), isFavorite: true);
 
     expect(find.text('Favorited'), findsOneWidget);
     expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
-
-    await settleTeardown(tester);
   });
 
   testWidgets('unfavorited asset shows no mark', (tester) async {
@@ -153,7 +130,25 @@ void main() {
 
     expect(find.text('Favorited'), findsNothing);
     expect(find.byIcon(Icons.favorite_rounded), findsNothing);
+  });
 
-    await settleTeardown(tester);
+  testWidgets('a very long location value wraps without overflowing', (
+    tester,
+  ) async {
+    await pumpSheet(
+      tester,
+      AssetDetail(
+        id: 'x',
+        width: 100,
+        height: 100,
+        createdAt: DateTime(2026, 1, 1),
+        orientationDegrees: 0,
+        isVideo: false,
+        latitude: 123456789.1234,
+        longitude: -987654321.5678,
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
   });
 }
