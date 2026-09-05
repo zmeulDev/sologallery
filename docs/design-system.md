@@ -8,6 +8,8 @@ every new design-system widget gets one, light and dark.
 The look is a warm off-white / near-black palette with one accent colour
 reserved for state, never decoration, pill filters, and a floating nav
 capsule. There is no brand hue; emphasis comes from ink, weight and space.
+One named exception: the onboarding poster's decorative ring (`AccessRing`)
+is purely decorative, not state — see `AppColors.accent`'s doc comment.
 
 ---
 

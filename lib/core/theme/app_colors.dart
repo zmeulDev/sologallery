@@ -82,8 +82,13 @@ class AppColors extends ThemeExtension<AppColors> {
 
   /// The one spot color, scoped strictly to state (an active filter, a
   /// favorited photo, an "on" toggle, the live indexing ring, the memory
-  /// player's current segment) — never decoration. Identical value in light
-  /// and dark: red reads fine on both a white and a near-black ground.
+  /// player's current segment) — never decoration, with one named exception:
+  /// the onboarding poster's [AccessRing] (`lib/features/onboarding/widgets/
+  /// access_ring.dart`), a purely decorative graphic. See that phase's plan
+  /// notes (Phase 4, `docs/plans/swiss-ui-refactor.md`) for why this
+  /// exception was accepted rather than inventing a second red token.
+  /// Identical value in light and dark: red reads fine on both a white and a
+  /// near-black ground.
   final Color accent;
 
   /// Text-safe variant of [accent] — same red, but chosen so it clears WCAG
