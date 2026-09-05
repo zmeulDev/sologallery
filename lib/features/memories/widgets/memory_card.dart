@@ -110,7 +110,7 @@ class MemoryCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: text.body.copyWith(
                             color: AppOverMedia.glyph,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
                             height: 1.2,
                           ),
                         ),

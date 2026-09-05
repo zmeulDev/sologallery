@@ -102,6 +102,25 @@ void main() {
     expect(find.text('1 photo'), findsOneWidget);
   });
 
+  testWidgets(
+    'a named person is bold, an unnamed one stays regular weight',
+    (tester) async {
+      await pump(tester, const [
+        PersonSummary(id: 1, displayName: 'Alice', coverAssetId: 'a', faceCount: 4),
+        PersonSummary(id: 2, displayName: null, coverAssetId: 'b', faceCount: 1),
+      ]);
+
+      expect(
+        tester.widget<Text>(find.text('Alice')).style?.fontWeight,
+        FontWeight.w700,
+      );
+      expect(
+        tester.widget<Text>(find.text('Unnamed')).style?.fontWeight,
+        FontWeight.w400,
+      );
+    },
+  );
+
   testWidgets('tapping a person opens their detail route', (tester) async {
     await pump(tester, const [
       PersonSummary(id: 7, displayName: 'Bob', coverAssetId: 'a', faceCount: 2),

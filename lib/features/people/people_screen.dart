@@ -307,7 +307,7 @@ class _PersonCard extends StatelessWidget {
               color: scheme.onSurface,
               fontWeight: person.displayName == null
                   ? FontWeight.w400
-                  : FontWeight.w600,
+                  : FontWeight.w700,
             ),
           ),
           Text(

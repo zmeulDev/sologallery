@@ -71,7 +71,7 @@ class AlbumCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: text.body.copyWith(
                         color: scheme.onSurface,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: AppSpace.s4),

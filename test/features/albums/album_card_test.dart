@@ -54,6 +54,22 @@ void main() {
     expect(find.byType(AssetThumbnail), findsOneWidget);
   });
 
+  testWidgets('the album name is bold', (tester) async {
+    const summary = AlbumSummary(
+      id: 4,
+      name: 'Trip',
+      entryCount: 3,
+      coverAssetId: 'c1',
+    );
+    await pump(tester, summary: summary);
+    await tester.pump();
+
+    expect(
+      tester.widget<Text>(find.text('Trip')).style?.fontWeight,
+      FontWeight.w700,
+    );
+  });
+
   testWidgets('empty album shows placeholder cover and Empty caption', (
     tester,
   ) async {

@@ -45,6 +45,16 @@ void main() {
     expect(find.text('2025'), findsOneWidget);
   });
 
+  testWidgets('the title is bold', (tester) async {
+    await pump(tester, memory('trip'));
+    await tester.pump();
+
+    expect(
+      tester.widget<Text>(find.text('Early June')).style?.fontWeight,
+      FontWeight.w700,
+    );
+  });
+
   testWidgets(
     'spells a multi-word kind out rather than showing the enum name',
     (tester) async {

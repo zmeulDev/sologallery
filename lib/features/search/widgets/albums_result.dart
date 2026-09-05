@@ -88,7 +88,7 @@ class _AlbumTile extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: styles.caption.copyWith(
                 color: scheme.onSurface,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
               ),
             ),
             Text(
