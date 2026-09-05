@@ -123,7 +123,7 @@ class DurationBadge extends StatelessWidget {
               style: const TextStyle(
                 color: AppOverMedia.glyph,
                 fontSize: 11,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
                 height: 1,
               ),
             ),

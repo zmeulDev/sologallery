@@ -179,4 +179,13 @@ void main() {
 
     semantics.dispose();
   });
+
+  testWidgets('the person name uses the emphasis weight', (tester) async {
+    await pump(tester, [person(1, 'Ada')]);
+    await tester.pump();
+    final richText = tester.widget<RichText>(
+      find.descendant(of: find.text('Ada'), matching: find.byType(RichText)),
+    );
+    expect(richText.text.style?.fontWeight, FontWeight.w700);
+  });
 }

@@ -53,7 +53,7 @@ class EmptyState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: styles.body.copyWith(
                 color: scheme.onSurface,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
               ),
             ),
             if (detail case final sub?) ...[

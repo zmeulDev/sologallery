@@ -87,4 +87,13 @@ void main() {
     await settle(tester);
     expect(find.byType(DurationBadge), findsNothing);
   });
+
+  testWidgets('the duration label uses the emphasis weight', (tester) async {
+    await pump(tester, 'v', badge: true);
+    await settle(tester);
+    final richText = tester.widget<RichText>(
+      find.descendant(of: find.text('1:05'), matching: find.byType(RichText)),
+    );
+    expect(richText.text.style?.fontWeight, FontWeight.w700);
+  });
 }

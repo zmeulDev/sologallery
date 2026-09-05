@@ -113,7 +113,7 @@ class _FolderChip extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: styles.body.copyWith(
                   color: scheme.onSurface,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),

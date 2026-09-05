@@ -219,4 +219,15 @@ void main() {
     expect(find.text('folder-detail:ABC123/L0/040'), findsOneWidget);
     await settle(tester);
   });
+
+  testWidgets('the folder name uses the emphasis weight', (tester) async {
+    await pump(tester, const [
+      DeviceFolder(id: 'cam', name: 'Camera', count: 12),
+    ]);
+    final richText = tester.widget<RichText>(
+      find.descendant(of: find.text('Camera'), matching: find.byType(RichText)),
+    );
+    expect(richText.text.style?.fontWeight, FontWeight.w700);
+    await settle(tester);
+  });
 }

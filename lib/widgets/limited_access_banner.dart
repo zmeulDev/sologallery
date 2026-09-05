@@ -42,7 +42,7 @@ class LimitedAccessBanner extends StatelessWidget {
             onPressed: onSelectMore,
             style: TextButton.styleFrom(
               foregroundColor: scheme.onSurface,
-              textStyle: text.filterPill.copyWith(fontWeight: FontWeight.w600),
+              textStyle: text.filterPill.copyWith(fontWeight: FontWeight.w700),
               padding: const EdgeInsets.symmetric(
                 horizontal: AppSpace.s12,
                 vertical: 6,
