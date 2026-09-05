@@ -72,7 +72,7 @@ Every row must ship with its non-colour cue, or don't ship the row.
 |---|---|---|
 | `FilterPill` (active) | this facet is selected | bold weight (700) vs regular; pill shape unchanged |
 | `ConsentSwitch` (on) | this capability is enabled | thumb position (Material `Switch` default) |
-| `SegmentedControl` (selected) | this is the current choice | bold weight; **decision needed**, see below |
+| `SegmentedControl` (selected) | this is the current choice | bold weight (inherited from the `button` role, already 700); thumb kept, see decision #3's resolution below |
 | `NavPillBar` knob | current destination | position (which slot) |
 | `IndexingDial` ring | analysis actively running | the ring only exists/animates while indexing; disc is otherwise empty |
 | `ExifSheet` favourite mark | this photo is favourited | filled vs. outline heart shape (existing Material convention) |
@@ -104,6 +104,23 @@ per-section "index dot" (was decorative, cut during the spike already).
    different value, a heavier weight/size that qualifies as "large text," or
    a conscious documented exception). Do not carry this value into Phase 1's
    text-colour usage without addressing this.
+   **Resolved during Phase 1 planning (2026-09-05):** no single red value can
+   hit 4.5:1 against both a near-white ground and a near-black ground, so a
+   text-safe accent must vary by theme. Rather than add per-widget variants
+   (`FilterPill` sits on `scheme.surface`; `SegmentedControl`'s label, if the
+   thumb were removed as originally drafted, would sit on `colors.surface2` —
+   a *different* ground with its own pass/fail profile), decision #3 below is
+   reversed: `SegmentedControl` **keeps its thumb**, so both widgets' selected
+   text sits on the same ground (`scheme.surface`). That collapses the fix to
+   one new token, `AppColors.accentText`, varying only by theme:
+   - `light: Color(0xFFEB0000)` — identical to `accent`; already 4.63:1
+     against white (script-verified, see Phase 1 Task 0).
+   - `dark: Color(0xFFFF3B30)` — a brighter red; 4.81:1 against dark
+     `scheme.surface` (`#1C1C1A`), script-verified.
+   Non-text accent uses (border, ring, switch track, nav knob) are unaffected
+   and keep plain `colors.accent` (`#EB0000`, both themes) — Phase 0 already
+   verified those pass the 3:1 non-text threshold everywhere. See Phase 1
+   Task 0 for the exact contrast-ratio unit test that locks this in.
 2. **`FilterPill` active state:** keeps its `StadiumBorder` shape (per the
    corrections above, shape stays put). Change is: selected fill goes from
    `colors.pillActiveBg` to transparent/`scheme.surface`, selected border and
@@ -111,12 +128,16 @@ per-section "index dot" (was decorative, cut during the spike already).
    on the spike's mockup, which dropped the pill shape entirely — dropping
    it isn't necessary once buttons/pills are confirmed exempt from the radius
    conversation, and keeping it is the smaller, safer diff.
-3. **`SegmentedControl` selected state:** for consistency with `FilterPill`,
-   drop the raised thumb (`_thumbRadius`, `scheme.surface` fill) and instead
-   colour the selected label `colors.accent` + bold, on the plain recessed
-   track. This is the one place a shape actually goes away — flag if you'd
-   rather keep the thumb and only recolour the text on it (smaller diff,
-   less consistent with the pill).
+3. **`SegmentedControl` selected state:** ~~drop the raised thumb
+   (`_thumbRadius`, `scheme.surface` fill) and instead colour the selected
+   label `colors.accent` + bold, on the plain recessed track.~~ **Reversed
+   during Phase 1 planning (2026-09-05)** — see decision #1's resolution:
+   the thumb stays exactly as-is (`scheme.surface` fill, `colors.border`
+   border), so the selected label's ground matches `FilterPill`'s. Only the
+   selected label's colour changes: `scheme.onSurface` → `colors.accentText`.
+   No weight override needed here — `styles.button` (what this label already
+   uses) is already `w700` post-Phase-0, unlike `FilterPill`'s `filterPill`
+   role which stayed `w400` and needs a per-call override.
 4. **Memory player's third progress state** (Phase 3) is a small logic
    change, not a pure style pass — it introduces a real "is this segment
    currently playing" concept the code doesn't have today. Kept as its own
@@ -140,7 +161,8 @@ Per the session-hygiene rule in `CLAUDE.md`, later phases should be their own
 conversations/PRs, each starting from this doc.
 
 - [x] **Phase 0 — Foundation** (built 2026-09-04/05, reviewed clean)
-- [ ] **Phase 1 — Shared widgets** (separate session)
+- [ ] **Phase 1 — Shared widgets** (separate session; planned 2026-09-05,
+      concrete tasks below, awaiting go-ahead before implementation)
 - [ ] **Phase 2 — `ExifSheet` rebuild** (separate session)
 - [ ] **Phase 3 — Memories player third state** (separate session, has a
       logic component)
@@ -229,55 +251,359 @@ durable context, not pruned — later phases depend on these):**
 
 ## Phase 1 — Shared widgets
 
+**Status:** planning complete, concrete tasks below, not yet started.
+Executed as one branch/PR; tasks are ordered by dependency (Task 0 first,
+everything else consumes its `accentText` token or is independent of it).
+Per `AGENTS.md`, run `tool/check.sh` after every task, not just at the end.
+
+**Golden-regen command — unresolved gap, verify in Task 0:** no command is
+recorded anywhere in this repo (`AGENTS.md`, `docs/gotchas.md`,
+`tool/check.sh`, no CI config, no `alchemist.yaml` all checked, none found).
+The candidate, per `alchemist` 0.14.0's own convention: `UPDATE_GOLDENS=true
+flutter test test/widgets/design_goldens_test.dart` (goldens live at
+`test/widgets/goldens/ci/`). **Task 0 must confirm this actually regenerates
+a golden before the rest of the phase relies on it**, then record it in
+`docs/gotchas.md` per `AGENTS.md`'s "maintain the docs" rule — this closes a
+gap Phase 0 could not close (its changes were invisible to these Ahem-font
+CI goldens; Phase 1's colour changes will not be).
+
+---
+
+### Task 0 — `accentText` token + contrast lock
+
 **Files:**
-- `lib/widgets/filter_pill.dart` — selected state: fill →
-  `Colors.transparent` (or `scheme.surface`), border colour → `colors.accent`
-  (replace the `withAlpha(0)` transparent-border trick — selected now needs a
-  *visible* border), text colour → `colors.accent`, text weight → override to
-  `FontWeight.w700` at the call site (since the shared `filterPill` role is
-  now flat 400). Update the doc comment (it currently says "inverts to the
-  ink fill" — that's no longer true).
-- `lib/widgets/consent_switch.dart` — `activeTrackColor`: `colors.pillActiveBg`
-  → `colors.accent`. `activeThumbColor` can likely stay
-  `colors.pillActiveText`/white — verify contrast against the new track.
-- `lib/widgets/segmented_control.dart` — per decision #3: remove the
-  `Positioned` thumb (`_thumbRadius`, the `scheme.surface` `DecoratedBox`),
-  colour the selected label `colors.accent` + `FontWeight.w700` instead of
-  `scheme.onSurface`. Simplifies the `Stack` to just the `Row` of labels.
-- `lib/widgets/nav_pill_bar.dart` — the knob
-  (`colors.pillActiveText` circle, lines ~56-94 per the spike's research) →
-  `colors.accent`. Selected glyph colour, currently rendered in
-  `pillActiveBg` so it reads atop the knob, needs to stay legible atop a red
-  knob — likely switches to white/`pillActiveText` rather than
-  `pillActiveBg`. Verify against both themes.
-- `lib/widgets/indexing_dial.dart` — the `IndexingRingPainter` stroke colour
-  (`colors.pillActiveText`) → `colors.accent`, **only while indexing is
-  active** (it already renders `SizedBox.shrink()` when idle, so there's no
-  "resting red" state to worry about).
-- **Residual weight cleanup (from Phase 0's review), shared-widget half:**
-  6 files have a hardcoded `FontWeight.w600` bypassing `AppTextStyles`
-  entirely — clean these up here so the two-weight system is actually true
-  end-to-end for shared widgets: `lib/widgets/asset_thumbnail.dart:126`,
-  `empty_state.dart:56`, `limited_access_banner.dart:45`,
-  `folder_list.dart:116`, `people_strip.dart:186`, `indexing_dial.dart:100`
-  (this last one is already being touched above for the accent colour — do
-  both changes in the same edit). The remaining 4 files are feature-screen
-  code, assigned to Phase 5 below.
+- Modify: `lib/core/theme/app_colors.dart:53-142` — add `accentText` field
+  (required in constructor, `copyWith`, `lerp`, alongside `accent`):
+
+  ```dart
+  /// Text-safe variant of [accent] — same red, but chosen so it clears WCAG
+  /// AA's 4.5:1 text-contrast threshold against the specific ground each
+  /// consumer paints it on (`scheme.surface`: FilterPill and
+  /// SegmentedControl's selected label). [accent] itself only clears 3:1
+  /// (non-text/UI-component contrast) on some grounds — use [accentText],
+  /// never [accent], whenever this red becomes the colour of *text*.
+  final Color accentText;
+  ```
+
+  Add to `.light` (`Color(0xFFEB0000)` — same literal as `accent`) and
+  `.dark` (`Color(0xFFFF3B30)`).
+- Test: `test/core/theme/app_colors_test.dart` (create if it doesn't exist —
+  check first; Phase 0 added a unit test locking `accent` equality across
+  themes, likely in this same file).
+
+**Steps:**
+1. Write the failing contrast test. `Color.computeLuminance()` already
+   implements the exact WCAG relative-luminance formula, so no hand-rolled
+   math is needed:
+
+   ```dart
+   import 'package:flutter/material.dart';
+   import 'package:flutter_test/flutter_test.dart';
+   import 'package:sologallery/core/theme/app_colors.dart';
+   import 'package:sologallery/core/theme/app_theme.dart';
+
+   double _contrastRatio(Color a, Color b) {
+     final lA = a.computeLuminance();
+     final lB = b.computeLuminance();
+     final lighter = lA > lB ? lA : lB;
+     final darker = lA > lB ? lB : lA;
+     return (lighter + 0.05) / (darker + 0.05);
+   }
+
+   void main() {
+     test('accentText clears 4.5:1 against scheme.surface in both themes', () {
+       // Light scheme.surface is pure white; dark is #1C1C1A — see
+       // app_theme.dart:22,30. FilterPill and SegmentedControl (Phase 1)
+       // both paint accentText as text directly on scheme.surface.
+       expect(
+         _contrastRatio(AppColors.light.accentText, const Color(0xFFFFFFFF)),
+         greaterThanOrEqualTo(4.5),
+       );
+       expect(
+         _contrastRatio(AppColors.dark.accentText, const Color(0xFF1C1C1A)),
+         greaterThanOrEqualTo(4.5),
+       );
+     });
+
+     test('accent and accentText are both defined and equal across themes '
+         'for accent (non-text)', () {
+       expect(AppColors.light.accent, AppColors.dark.accent);
+     });
+   }
+   ```
+
+2. Run: `flutter test test/core/theme/app_colors_test.dart` — expect FAIL
+   (`accentText` getter doesn't exist yet).
+3. Add the `accentText` field and the two literals above.
+4. Run the same test again — expect PASS. If it fails on the dark-theme
+   assertion (e.g. a reviewer nudges the literal), the fix is to darken/
+   brighten `Color(0xFFFF3B30)` until the ratio clears 4.5 — do not weaken
+   the test.
+5. Confirm the golden-regen command: run
+   `UPDATE_GOLDENS=true flutter test test/widgets/design_goldens_test.dart`
+   with **no other changes staged**, then `git status` — if no golden PNGs
+   under `test/widgets/goldens/ci/` changed, the command is a no-op and the
+   real mechanism needs finding (check the `alchemist` package source under
+   `~/.pub-cache/hosted/pub.dev/alchemist-0.14.0/` for its actual env var/API
+   name). Once confirmed working, add a line to `docs/gotchas.md`.
+6. `flutter analyze` — zero warnings.
+7. Commit: `git add lib/core/theme/app_colors.dart test/core/theme/app_colors_test.dart && git commit -m "feat: add accentText token for WCAG-safe accent-as-text"`.
+
+---
+
+### Task 1 — `FilterPill` selected state
+
+**File:** `lib/widgets/filter_pill.dart` (60 lines, full file read during
+planning).
+
+**Change** (`build`, currently lines 32-59):
+- `color: selected ? colors.pillActiveBg : colors.surface2` (line 36) →
+  `selected ? Colors.transparent : colors.surface2`.
+- `side: BorderSide(color: selected ? colors.border.withAlpha(0) : colors.border)`
+  (line 39) → `selected ? colors.accent : colors.border` — selected now needs
+  a *visible* stroke, so the `withAlpha(0)` transparent-border trick goes
+  away entirely for the selected branch.
+- `style: styles.filterPill.copyWith(color: selected ? colors.pillActiveText : colors.textSecondary)`
+  (lines 52-54) →
+  `styles.filterPill.copyWith(color: selected ? colors.accentText : colors.textSecondary, fontWeight: selected ? FontWeight.w700 : null)`
+  — the weight override is per-call because the shared `filterPill` role
+  itself stayed flat `w400` in Phase 0 (see the role's own doc comment,
+  `app_text_styles.dart:33`, which already anticipates this: "the *selected*
+  look now comes from colour + a per-call weight override in `FilterPill`").
+- Update the class doc comment (lines 6-9): replace "Active inverts to the
+  ink fill (`pillActiveBg`)" with something like "Active shows a transparent
+  fill with an accent border and label — the ink fill is gone; state now
+  reads through colour, not inversion."
 
 **Tests:**
-- Existing/new goldens for `filter_pill`, `theme_mode_picker` (per the
-  existing code comment naming these two specifically), `nav_pill_bar`,
-  `indexing_dial` — light and dark, selected and unselected/active and idle
-  states.
-- `consent_switch` golden if one exists, else a widget test asserting
-  `activeTrackColor` resolves to `colors.accent`.
-- Contrast check: white icon glyph on the red knob, in both themes.
+- `test/widgets/design_goldens_test.dart:174-186` — existing `'FilterPill —
+  selected and unselected'` golden already covers both states side by side;
+  regenerate with the Task 0-confirmed command and review the diff (selected
+  pill should now show transparent fill + red border + red bold text,
+  unselected unchanged).
+- Add a plain (non-golden) widget test asserting the selected `Text` widget's
+  resolved `TextStyle.color == colors.accentText` and `.fontWeight ==
+  FontWeight.w700` — the golden alone can't distinguish "red because
+  `accentText`" from "red because someone typo'd a hex," same rationale
+  Phase 3 already uses for its three-state test.
 
-**Definition of Done:** same shape as Phase 0 — `tool/check.sh`, goldens
-reviewed, plan doc updated, plus one on-device pass tapping through nav tabs
-and toggling a Search facet to confirm the instant (non-animated) state swap
-still holds — this is exactly the kind of change the "fake-pairing" rule
-exists for.
+**Commit:** `git add lib/widgets/filter_pill.dart test/widgets/design_goldens_test.dart <new test file> && git commit -m "feat: recolor FilterPill selected state to accent"`.
+
+---
+
+### Task 2 — `SegmentedControl` selected label
+
+**File:** `lib/widgets/segmented_control.dart` (115 lines, full file read
+during planning). Per decision #3's reversal: **the thumb stays**, only the
+label recolors.
+
+**Change** (`build`, lines 93-101):
+```dart
+style: styles.button.copyWith(
+  color: index == selectedIndex
+      ? colors.accentText   // was: scheme.onSurface
+      : colors.textSecondary,
+),
+```
+No shape change, no weight override (`styles.button` is already `w700`), no
+`Stack`/`Positioned` restructuring — this is a one-line colour swap.
+
+**Tests:**
+- `test/widgets/design_goldens_test.dart:203-208` — existing `'ThemeModePicker
+  — system selected'` golden (the only `SegmentedControl` consumer with a
+  golden) — regenerate, review (thumb unchanged, selected label now red).
+- Widget test asserting the selected label's resolved colour is
+  `colors.accentText` (same rationale as Task 1).
+
+**Commit:** `git add lib/widgets/segmented_control.dart test/widgets/design_goldens_test.dart <new test file> && git commit -m "feat: recolor SegmentedControl selected label to accentText"`.
+
+---
+
+### Task 3 — `ConsentSwitch` active track
+
+**File:** `lib/widgets/consent_switch.dart` (38 lines, full file read during
+planning).
+
+**Change** (line 31): `activeTrackColor: colors.pillActiveBg` →
+`colors.accent`. Leave `activeThumbColor: colors.pillActiveText` (line 30)
+and everything else unchanged — script-verified contrast of `pillActiveText`
+against `accent` is ≥4:1 in both themes (thumb-vs-track is a non-text UI
+pairing, 3:1 threshold), so no new token is needed here, just confirm via
+the test below rather than trust the arithmetic blind.
+
+**Tests:**
+- `test/widgets/design_goldens_test.dart:213-225` — existing `'ConsentSwitch
+  — on and off'` golden — regenerate, review (on-state track now red).
+- Add a widget test asserting `activeTrackColor` resolves to `colors.accent`
+  for both the `value: true` light and dark cases (a `Switch`'s
+  `activeTrackColor` is a plain `Color?`, not a `WidgetStateProperty`, so this
+  is a direct property read, no `resolve()` needed).
+
+**Commit:** `git add lib/widgets/consent_switch.dart test/widgets/design_goldens_test.dart <new test file> && git commit -m "feat: recolor ConsentSwitch active track to accent"`.
+
+---
+
+### Task 4 — `NavPillBar` knob
+
+**File:** `lib/widgets/nav_pill_bar.dart` (191 lines, full file read during
+planning).
+
+**Change:**
+- Knob (`build`, lines 87-94): `color: colors.pillActiveText` →
+  `colors.accent`.
+- Selected glyph colour (the `_NavItem` constructed in the `Row` at lines
+  96-109): `activeColor: colors.pillActiveBg` (line 104) → `Colors.white`.
+  **Decision:** hardcode white rather than reuse a theme-flipped token.
+  Before this change, `pillActiveBg` deliberately flipped per theme so the
+  selected glyph always matched the *capsule's* ink colour (an inverted-
+  cutout effect against a knob that was itself `pillActiveText`, also theme-
+  flipped). Now the knob is `colors.accent` — identical in both themes — so
+  the glyph on it should be too, rather than reintroducing a theme-dependent
+  swap against a theme-independent ground. Script-verified: `Colors.white`
+  against `accent` (`#EB0000`, L≈0.177) is ≈4.6:1, clears 3:1 (icon/non-text)
+  comfortably in both themes (this only needs to beat 3:1, not 4.5:1 — icons
+  are graphical objects under WCAG 1.4.11, not text).
+- `inactiveColor` (line 105-106, `colors.pillActiveText.withValues(alpha:
+  _inactiveOpacity)`) is unchanged — only the *selected* glyph and the knob
+  move.
+
+**Tests:**
+- `test/widgets/design_goldens_test.dart:197-201` — existing `'NavPillBar —
+  Search selected'` golden — regenerate, review (knob red, selected glyph
+  white in both themes now, versus previously flipping ink colour).
+- Widget test asserting the selected `Icon`'s resolved `color ==
+  Colors.white` and the knob `Container`'s `BoxDecoration.color ==
+  colors.accent`.
+
+**Commit:** `git add lib/widgets/nav_pill_bar.dart test/widgets/design_goldens_test.dart <new test file> && git commit -m "feat: recolor NavPillBar knob to accent"`.
+
+---
+
+### Task 5 — `IndexingDial` ring + residual weight
+
+**File:** `lib/widgets/indexing_dial.dart` (141 lines, full file read during
+planning). Two independent changes landing together per the original plan's
+note (same file, same review pass):
+
+- Ring colour (`_Dial.build`, line 90): `color: colors.pillActiveText` →
+  `colors.accent`, passed into `IndexingRingPainter`. Only while indexing is
+  active — the widget already returns `const SizedBox.shrink()` when idle
+  (`IndexingDial.build`, line 54), so there's no "resting red" state to
+  guard against separately. Disc background (line 84, `colors.pillActiveBg`)
+  and the remaining-count text colour (line 99, `colors.pillActiveText`) are
+  unchanged — script-verified the red ring clears 3:1 against the disc
+  background in both themes (≈3.65:1 light, ≈4.0:1 dark).
+- Residual weight (line 100, **not line 126 as originally scoped** — verified
+  against the live file during planning): `fontWeight: FontWeight.w600` →
+  `FontWeight.w700`. Rationale for 600→700 rather than dropping the override
+  entirely: this is a small numeric readout against a busy disc background,
+  where the emphasis was clearly intentional (matches the "residual weight
+  cleanup" rationale applied identically to Task 6's five files below) —
+  collapsing to the design system's one bold value (`700`) rather than
+  erasing the emphasis keeps it inside the two-weight system Phase 0
+  established, rather than leaving a third, unsanctioned weight in place.
+
+**Tests:**
+- `test/widgets/design_goldens_test.dart:564-577` — existing `'IndexingDial —
+  a pass three quarters done'` golden — regenerate, review (ring red instead
+  of ink-coloured, count text weight visually unchanged since these CI
+  goldens can't show weight — see the standing Ahem-font caveat).
+- Widget test reading `IndexingRingPainter.color` (already public per its own
+  doc comment, "so a widget test can read the fraction") — assert it equals
+  `colors.accent` when the dial is built with an active `IndexingStatus`.
+
+**Commit:** `git add lib/widgets/indexing_dial.dart test/widgets/design_goldens_test.dart <new test file> && git commit -m "feat: recolor IndexingDial ring to accent, fix residual weight"`.
+
+---
+
+### Task 6 — Residual `FontWeight.w600` cleanup (shared-widget half)
+
+Five files hardcode `FontWeight.w600` bypassing `AppTextStyles` entirely —
+a third weight the two-weight system (400/700) was supposed to eliminate.
+Same rationale as Task 5's `indexing_dial.dart` line: each of these is
+clearly emphasis-bearing text (a title, a name, a CTA, a duration overlay),
+so the fix is `w600` → `w700` in place, not dropping the override. The
+remaining 4 files with the same finding are feature-screen code, assigned to
+Phase 5.
+
+| File | Line | Context |
+|---|---|---|
+| `lib/widgets/asset_thumbnail.dart` | 126 | `DurationBadge`'s "▶ m:ss" label — inline `const TextStyle`, not an `AppTextStyles` role (it hardcodes its own contrast since it overlays media) |
+| `lib/widgets/empty_state.dart` | 56 | `EmptyState` title, `styles.body.copyWith(...)` |
+| `lib/widgets/limited_access_banner.dart` | 45 | "Select more" CTA `TextButton.textStyle`, `text.filterPill.copyWith(...)` |
+| `lib/widgets/folder_list.dart` | 116 | Folder-name label inside `_FolderChip`, `styles.body.copyWith(...)` |
+| `lib/widgets/people_strip.dart` | 186 | Person-name caption inside `_PersonTile`, `styles.caption.copyWith(...)` |
+
+**Change:** in each, replace `FontWeight.w600` with `FontWeight.w700`
+in-place (a one-line diff per file; the surrounding `.copyWith(...)` and
+`color:` arguments are untouched).
+
+**Tests:**
+- `asset_thumbnail.dart` — golden exists: `test/widgets/design_goldens_test.dart:80-94`,
+  `'DurationBadge — short and long clips'` (`duration_badge` PNG) —
+  regenerate, review (weight invisible in CI goldens per the standing
+  caveat, so this is really validated by the code-level `FontWeight.w700`
+  read, same as Phase 0).
+- `empty_state.dart` — golden exists: lines 400-420, `'EmptyState — title
+  with detail and CTA, and note'` — regenerate, review.
+- `limited_access_banner.dart` — golden exists: lines 188-192,
+  `'LimitedAccessBanner'` — regenerate, review.
+- `people_strip.dart` — golden exists: lines 584-628, `'PeopleStrip — carded
+  row of circular faces, one named'` — regenerate, review.
+- `folder_list.dart` — **no existing golden** (pre-existing gap, not
+  introduced by this task) — add a plain widget test asserting the
+  folder-name `Text`'s resolved `fontWeight == FontWeight.w700`. Adding a
+  full `alchemist` golden for `FolderList` is out of scope here (a layout
+  golden, not a weight-only fix) — flag it as a follow-up if a reviewer wants
+  one.
+- For the four files with existing goldens, also add a plain widget test per
+  file asserting the specific `Text`'s resolved `fontWeight ==
+  FontWeight.w700` — same "golden can't show weight" rationale as above,
+  applied consistently.
+
+**Commit:** one commit for all five, or one per file — reviewer's call, but
+if bundled: `git commit -m "fix: collapse residual FontWeight.w600 to w700 (shared widgets)"`.
+
+---
+
+### Task 7 — Golden regeneration pass + on-device verification
+
+Run once, after Tasks 0-6 land, not per-task, so the golden diff review
+happens against the full accumulated change rather than six separate noisy
+diffs:
+
+1. `UPDATE_GOLDENS=true flutter test test/widgets/design_goldens_test.dart`
+   (Task 0 will have already confirmed this is the right command/flag).
+2. `git diff --stat test/widgets/goldens/ci/` — expect exactly: `filter_pill.png`,
+   `theme_mode_picker.png`, `nav_pill_bar.png`, `indexing_dial.png`,
+   `consent_switch.png`, `duration_badge.png`, `empty_state.png`,
+   `limited_access_banner.png`, `people_strip.png` changed. Anything else
+   changing is a regression to investigate before committing.
+3. Open each changed PNG and review manually, screen by screen — per Phase
+   0's Definition of Done, don't blindly accept a wall of diffs.
+4. `tool/check.sh` — must pass clean (analyze + build_runner + all tests).
+5. On-device pass (Pixel 9 Pro XL, per `AGENTS.md` environment): tap through
+   all four `NavPillBar` destinations (knob should show solid red, white
+   glyph, both themes), toggle a Search facet pill (instant, non-animated red
+   border+text swap — this is exactly the "fake-pairing" rule's territory,
+   per Phase 0's carried-forward note), flip a `ConsentSwitch` in Settings,
+   open Settings' `ThemeModePicker` and switch modes, and — if a library scan
+   is running or can be triggered — confirm the `IndexingDial` ring reads red
+   while active.
+6. Commit the regenerated goldens: `git add test/widgets/goldens/ci/ && git commit -m "test: regenerate goldens for Phase 1 accent rollout"`.
+
+**Definition of Done for this phase:**
+- [ ] `tool/check.sh` passes.
+- [ ] Every regenerated golden diff reviewed manually (Task 7, step 3).
+- [ ] The golden-regen command confirmed and recorded in `docs/gotchas.md`
+      (Task 0, step 5) — closes the gap Phase 0 could not close.
+- [ ] On-device pass complete (Task 7, step 5).
+- [ ] `AppColors.accentText` and `AppColors.accent` both consumed in `lib/` —
+      the Phase 0 "unused symbol" exception is now moot, nothing further to
+      do (the exception lived in this plan doc, not as literal text in
+      `AGENTS.md`).
+- [ ] This plan doc checked off through Phase 1, "Next step" line updated to
+      point at Phase 2.
 
 ---
 
@@ -408,6 +734,9 @@ Update `docs/design-system.md`:
   state only, never decoration — future contributors need this stated
   somewhere more durable than this plan doc, which gets pruned per
   `AGENTS.md`'s "prune task-scoped notes" rule once the work lands.
+- Also add an `accentText` row (new in Phase 1) — a companion text-safe
+  variant of `accent`, differing by theme; note that consumers must use
+  `accentText`, never `accent`, whenever the red becomes the colour of text.
 
 ---
 
@@ -434,10 +763,14 @@ Per `AGENTS.md`:
 
 ## Next step
 
-Phase 0 is built and clean (commits `e624faa`..`3d6c6c8` on
-`worktree-swiss-ui-refactor-phase0`, whole-branch review clean after one fix
-wave). Decide how to land it, then start Phase 1 in a fresh session. Before
-Phase 1 begins, resolve decision #1's WCAG contrast pre-condition (do not
-reuse `#EB0000` as *text* colour without re-solving contrast) and be aware
-`AppColors.accent` is currently an unused symbol against `AGENTS.md`'s "no
-unused symbols" rule, accepted as time-boxed until Phase 1 consumes it.
+Phase 0 is merged (commits `e624faa`..`42b5dbd`). Phase 1 is now fully
+planned — decision #1's WCAG contrast pre-condition is resolved (new
+`accentText` token, see decision #1's 2026-09-05 update and Phase 1 Task 0),
+decision #3 is reversed (`SegmentedControl` keeps its thumb), and all 8
+concrete tasks in the Phase 1 section above are ready to execute, each with
+exact file/line targets, real code, and its own tests/commit. **Approved
+2026-09-05 — executing now** via
+`superpowers:subagent-driven-development` in an isolated worktree
+(`worktree-swiss-ui-refactor-phase1`). Work through Tasks 0-7 in order (0 is
+a hard dependency for Tasks 1-2; the rest are independent of each other and
+of Task 0) — then start Phase 2 in a fresh session.
