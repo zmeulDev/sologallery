@@ -24,8 +24,9 @@ void main() {
           .map((p) => p.painter)
           .whereType<AccessRingPainter>()
           .single;
-      final colors = Theme.of(tester.element(find.byType(AccessRing)))
-          .extension<AppColors>()!;
+      final colors = Theme.of(
+        tester.element(find.byType(AccessRing)),
+      ).extension<AppColors>()!;
       expect(painter.color, colors.accent, reason: name);
     }
   });

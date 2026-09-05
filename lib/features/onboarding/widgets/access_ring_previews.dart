@@ -12,8 +12,10 @@ import 'access_ring.dart';
 /// stroke actually exercises `AppColors.accent`.
 
 /// Theming shared by every preview below.
-PreviewThemeData accessRingPreviewTheme() =>
-    PreviewThemeData(materialLight: AppTheme.light, materialDark: AppTheme.dark);
+PreviewThemeData accessRingPreviewTheme() => PreviewThemeData(
+  materialLight: AppTheme.light,
+  materialDark: AppTheme.dark,
+);
 
 /// [AccessRing] at a small diameter, in both themes.
 @Preview(
@@ -26,7 +28,8 @@ PreviewThemeData accessRingPreviewTheme() =>
   theme: accessRingPreviewTheme,
   brightness: Brightness.dark,
 )
-Widget accessRingSmallPreview() => const Center(child: AccessRing(diameter: 240));
+Widget accessRingSmallPreview() =>
+    const Center(child: AccessRing(diameter: 240));
 
 /// [AccessRing] at a large diameter, in both themes — stands in for
 /// `AccessStep`'s eventual "fraction of screen width" sizing (Task 1).
@@ -40,4 +43,5 @@ Widget accessRingSmallPreview() => const Center(child: AccessRing(diameter: 240)
   theme: accessRingPreviewTheme,
   brightness: Brightness.dark,
 )
-Widget accessRingLargePreview() => const Center(child: AccessRing(diameter: 420));
+Widget accessRingLargePreview() =>
+    const Center(child: AccessRing(diameter: 420));
