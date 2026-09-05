@@ -171,7 +171,7 @@ conversations/PRs, each starting from this doc.
       dedicated fix pass; see Phase 1's Definition of Done below for what
       that pass covered.)
 - [ ] **Phase 2 — `ExifSheet` rebuild** (Tasks 0-3 built and clean; Task 4
-      on-device pass outstanding — needs a physical device)
+      on-device pass skipped by user decision 2026-09-05, not a blocker)
 - [ ] **Phase 3 — Memories player third state** (separate session, has a
       logic component)
 - [ ] **Phase 4 — Onboarding poster treatment** (separate session, highest
@@ -1100,12 +1100,31 @@ duplicating it.
    adjustment from what device rendering showed, distinct from the desktop
    golden review.
 
+**Attempted 2026-09-05 on the iPhone 17 simulator instead of the Pixel — did
+not work, not a Phase 2 issue.** Booted the sim, seeded it with
+`gps_exif.jpg`/`no_exif.jpg` via `xcrun simctl addmedia` and pre-granted
+Photos access via `xcrun simctl privacy grant photos`, then `flutter build ios
+--debug --simulator` succeeded — but `flutter run -d <sim-id>` failed both
+before and after opening `Simulator.app`: "Unable to find a destination
+matching the provided destination specifier". `xcodebuild -showdestinations`
+confirms this is structural — the `Runner` scheme lists **zero** simulator
+destinations at all, only the physical device and placeholders. This is the
+same underlying limitation `docs/gotchas.md`'s "iOS: integration_test runs
+only on a physical device" entry already recorded for `integration_test`
+specifically (now confirmed to also block a plain `flutter run`); addendum
+added there 2026-09-05 rather than duplicating it here. **User decision:**
+skip the automated on-device pass rather than debug the Xcode scheme
+configuration or switch to the physical iPhone — Task 4 stays outstanding,
+same status as Phase 1's still-pending manual pass.
+
 **Definition of Done for this phase:**
-- [ ] `tool/check.sh` passes.
-- [ ] Every golden diff reviewed manually (Task 3, step 6).
+- [x] `tool/check.sh` passes.
+- [x] Every golden diff reviewed manually (Task 3, step 6).
 - [ ] `integration_test/detail_actions_test.dart` passes on-device (Task 4,
-      step 1).
-- [ ] Manual no-EXIF and GPS device checks done (Task 4, steps 2-3).
+      step 1) — **not done**, see the simulator note above; skipped by user
+      decision, not a blocker.
+- [ ] Manual no-EXIF and GPS device checks done (Task 4, steps 2-3) — **not
+      done**, same reason.
 - [ ] This plan doc checked off through Phase 2, "Next step" line updated to
       point at Phase 3.
 
@@ -1266,13 +1285,15 @@ alongside Phase 2's own device pass, not as a Phase 1 blocker held open
 indefinitely.
 
 **Phase 2 — `ExifSheet` rebuild:** Tasks 0-3 are built and clean (`tool/check.sh`
-passing, commits `716600c`..`dba52c8` plus the Task 2/3 work landing next);
-Task 4 (on-device pass) is outstanding, needs the physical device. See the
-Phase 2 section above for the full record, including two corrections found
-during execution (both already folded into the task text, not left as
-separate addenda): the favourite-mark test scaffolding switched from a
-`databaseProvider`/in-memory-Drift override to directly overriding
+passing, commits `716600c`..`2675cd1`). Task 4 (on-device pass) is
+**outstanding by user decision, not a blocker** — an iPhone 17 simulator
+attempt (2026-09-05) hit a structural Xcode scheme issue (see Task 4's note
+above and `docs/gotchas.md`'s iOS `integration_test` entry) and the user chose
+to skip the automated pass rather than debug the simulator or switch to the
+physical iPhone. See the Phase 2 section above for the full record, including
+two corrections found during execution (already folded into the task text,
+not left as separate addenda): the favourite-mark test scaffolding switched
+from a `databaseProvider`/in-memory-Drift override to directly overriding
 `isFavoriteProvider` with `Stream.value(bool)`, after the original approach
 hit both a "Timer still pending" hang in widget tests and a
 `MissingPluginException` in goldens.
-current as each lands.

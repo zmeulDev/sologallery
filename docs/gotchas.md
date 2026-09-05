@@ -419,7 +419,16 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   frameworks ship no arm64-simulator slice, so `flutter pub get` writes
   `EXCLUDED_ARCHS[sdk=iphonesimulator*]=arm64` into `ios/Flutter/Generated.xcconfig`
   and the arm64 sim has no buildable arch (`flutter test -d <sim>` → "Unable to
-  find a destination matching…"). (2) **patrol on iOS is not wired** here — no
+  find a destination matching…"). **Confirmed 2026-09-05 that a plain `flutter
+  run -d <sim-id>` fails identically** (not just `integration_test`) — booting
+  the simulator and opening `Simulator.app` first makes no difference;
+  `xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner
+  -showdestinations` lists **zero** simulator destinations at all for the
+  `Runner` scheme (only the physical device and the two "Any…" placeholders),
+  so this isn't specific to which simulator is booted. `flutter build ios
+  --debug --simulator` (no `-d`, no destination resolution) does still
+  succeed, if a build-only smoke check is ever needed. (2) **patrol on iOS is
+  not wired** here — no
   `RunnerUITests` target, and the project has SPM enabled so patrol attaches as
   a Swift package to `Runner` only; `patrol_cli` 4.6.1 also forces `--release`
   on a physical device. Run iOS integration tests as
