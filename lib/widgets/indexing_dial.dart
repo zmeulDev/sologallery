@@ -87,7 +87,7 @@ class _Dial extends StatelessWidget {
           child: CustomPaint(
             painter: IndexingRingPainter(
               progress: done.clamp(0.0, 1.0),
-              color: colors.pillActiveText,
+              color: colors.accent,
             ),
             child: Center(
               // Compacted: a five-digit library would otherwise overflow the
@@ -97,7 +97,7 @@ class _Dial extends StatelessWidget {
                 maxLines: 1,
                 style: styles.caption.copyWith(
                   color: colors.pillActiveText,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),

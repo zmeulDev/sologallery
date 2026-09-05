@@ -145,4 +145,22 @@ void main() {
 
     expect(find.text('7'), findsOneWidget);
   });
+
+  testWidgets('ring colour is accent when indexing', (tester) async {
+    await pump(
+      tester,
+      const AsyncData(IndexingStatus(remaining: 7, total: 8)),
+    );
+
+    final painters = tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((p) => p.painter)
+        .whereType<IndexingRingPainter>();
+    expect(painters, isNotEmpty);
+
+    final painter = painters.single;
+    final colors = Theme.of(tester.element(find.byType(IndexingDial)))
+        .extension<AppColors>()!;
+    expect(painter.color, colors.accent);
+  });
 }
