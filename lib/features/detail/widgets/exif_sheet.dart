@@ -17,9 +17,9 @@ Future<void> showExifSheet(BuildContext context, String assetId) {
   );
 }
 
-/// Bottom sheet of `photo_manager`-native metadata as design-system EXIF chips
-/// (uppercase key over a heavier value). Reads [assetDetailProvider]; renders
-/// explicit loading / error / data states.
+/// Bottom sheet of `photo_manager`-native metadata as a flush-left two-column
+/// table (uppercase key, hairline row dividers). Reads [assetDetailProvider];
+/// renders explicit loading / error / data states.
 class ExifSheet extends ConsumerWidget {
   const ExifSheet({super.key, required this.assetId});
 
@@ -44,45 +44,48 @@ class ExifSheet extends ConsumerWidget {
                   AppSpace.s20,
                   AppSpace.s24,
                 ),
-                child: _Chips(detail: d),
+                child: _ExifTable(detail: d),
               ),
       ),
     );
   }
 }
 
-class _Chips extends StatelessWidget {
-  const _Chips({required this.detail});
+/// Flush-left key/value table: one row per field, fixed-width label column,
+/// flexible value column, hairline dividers between rows.
+class _ExifTable extends StatelessWidget {
+  const _ExifTable({required this.detail});
   final AssetDetail detail;
+
+  static const _labelColumnWidth = 88.0;
 
   @override
   Widget build(BuildContext context) {
-    final chips = <Widget>[
-      _ExifChip(label: 'Taken', value: formatTakenDate(detail.createdAt)),
-      _ExifChip(
-        label: 'Dimensions',
-        value: formatDimensions(detail.width, detail.height),
-      ),
-      _ExifChip(
-        label: 'Resolution',
-        value: formatMegapixels(detail.width, detail.height),
-      ),
-      if (formatDuration(detail.videoDuration) case final length?)
-        _ExifChip(label: 'Duration', value: length),
-      if (formatFileSize(detail.sizeBytes) case final size?)
-        _ExifChip(label: 'Size', value: size),
-      if (formatType(detail.mimeType) case final type?)
-        _ExifChip(label: 'Type', value: type),
-      if (formatCoordinates(detail.latitude, detail.longitude) case final gps?)
-        _ExifChip(label: 'Location', value: gps),
+    final rows = <(String, String)>[
+      ('Taken', formatTakenDate(detail.createdAt)),
+      ('Dimensions', formatDimensions(detail.width, detail.height)),
+      ('Resolution', formatMegapixels(detail.width, detail.height)),
+      if (formatDuration(detail.videoDuration) case final v?) ('Duration', v),
+      if (formatFileSize(detail.sizeBytes) case final v?) ('Size', v),
+      if (formatType(detail.mimeType) case final v?) ('Type', v),
+      if (formatCoordinates(detail.latitude, detail.longitude) case final v?)
+        ('Location', v),
     ];
-    return Wrap(spacing: 28, runSpacing: 18, children: chips);
+    final colors = Theme.of(context).extension<AppColors>()!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < rows.length; i++) ...[
+          if (i > 0) Divider(height: 1, color: colors.border),
+          _ExifRow(label: rows[i].$1, value: rows[i].$2),
+        ],
+      ],
+    );
   }
 }
 
-class _ExifChip extends StatelessWidget {
-  const _ExifChip({required this.label, required this.value});
-
+class _ExifRow extends StatelessWidget {
+  const _ExifRow({required this.label, required this.value});
   final String label;
   final String value;
 
@@ -91,20 +94,28 @@ class _ExifChip extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final colors = Theme.of(context).extension<AppColors>()!;
     final text = Theme.of(context).extension<AppTextStyles>()!;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label.toUpperCase(),
-          style: text.exifKey.copyWith(color: colors.textMuted),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          value,
-          style: text.exifValue.copyWith(color: scheme.onSurface),
-        ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpace.s12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          SizedBox(
+            width: _ExifTable._labelColumnWidth,
+            child: Text(
+              label.toUpperCase(),
+              style: text.exifKey.copyWith(color: colors.textMuted),
+            ),
+          ),
+          const SizedBox(width: AppSpace.s16),
+          Expanded(
+            child: Text(
+              value,
+              style: text.exifValue.copyWith(color: scheme.onSurface),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
