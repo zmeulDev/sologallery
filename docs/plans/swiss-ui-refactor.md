@@ -179,9 +179,10 @@ conversations/PRs, each starting from this doc.
       2026-09-05, branch `worktree-swiss-ui-refactor-phase4`, Tasks 0-3
       executed via `superpowers:subagent-driven-development`; on-device pass
       still outstanding, not a blocker — see Phase 4's Definition of Done)
-- [ ] **Phase 5 — Remaining screens** (Albums, Saved, Settings, Search,
-      Library apply Phase 0/1 tokens — mostly inherited automatically, spot
-      verify each)
+- [x] **Phase 5 — Remaining screens** (built and clean 2026-09-05, commits
+      `7c803cd`..`82f98e8` — Saved heart badge recolored, 4+1 residual
+      `FontWeight.w600` collapses, Library/Search/Albums/Settings verified
+      clean, no code change needed there)
 - [ ] **Phase 6 — Docs**: fold the grid-bleed rule, the accent token, and the
       two-weight rule into `docs/design-system.md`.
 
@@ -1803,37 +1804,282 @@ rather than a routine "looks fine" glance.
 
 ## Phase 5 — Remaining screens
 
-Library, Search, Saved, Albums, Settings mostly *inherit* Phase 0/1 changes
-automatically (they consume `AppTextStyles`/`AppColors`/`FilterPill`/
-`SegmentedControl` rather than hand-rolling styles). This phase is a
-verification pass, not a rewrite:
-- [ ] Library — confirm "all" filter view reads as ≤3 simultaneous hierarchy
-      levels post-weight-collapse (the spike's own gap #2).
-- [ ] Search — confirm facet pills and the People card (r30, unchanged)
-      render correctly together.
-- [ ] Saved — heart badge already uses a scrim disc; swap to `colors.accent`
-      fill (`saved_screen.dart:234-254`, the `_HeartBadge` widget).
-- [ ] Albums — no colour change needed (New button is a pill, untouched;
-      AlbumCard is r30, untouched) — verify only.
-- [ ] Settings — `ThemeModePicker` inherits the `SegmentedControl` change
-      from Phase 1 automatically; verify only.
-- [ ] **Residual weight cleanup (from Phase 0's review), feature-screen
-      half:** 4 files have a hardcoded `FontWeight.w600` bypassing
-      `AppTextStyles` — `lib/features/people/people_screen.dart:309-310`,
-      `search/widgets/albums_result.dart:91`,
-      `albums/widgets/album_card.dart:74`,
-      `memories/widgets/memory_card.dart:113`. See Phase 1 for the other 6
-      (shared-widget) files in the same finding.
-- [ ] **Additional residual `FontWeight.w600` found during Phase 1's
-      whole-branch review:** `lib/core/theme/app_theme.dart`'s `_textTheme`
-      builds `titleMedium` as `s.body.copyWith(fontWeight: FontWeight.w600,
-      ...)` — a latent third weight baked into the `TextTheme` itself, not a
-      widget-level override like the ones above. No current consumer in
-      `lib/` reads `titleMedium` (checked during Phase 1's fix pass), so it
-      isn't visibly regressing anything today, but it should still collapse
-      to `w700` (or be reconsidered) so the two-weight system stays true if
-      something starts consuming it later. Not urgent; tracked here so it
-      isn't lost.
+**Status:** planning complete 2026-09-05, concrete tasks below, not yet
+started. Library, Search, Saved, Albums, Settings mostly *inherit* Phase 0/1
+changes automatically (they consume `AppTextStyles`/`AppColors`/`FilterPill`/
+`SegmentedControl` rather than hand-rolling styles) — this phase is a
+verification pass, not a rewrite. Per `AGENTS.md`, run `tool/check.sh` after
+each task.
+
+**Device check for the opportunistic on-device/visual backlog (Phases 1-4),
+done during this planning pass:** still blocked, same root causes already on
+record. `adb devices` — empty, no Android device connected. iOS: the physical
+iPhone 17 Pro Max shows **Offline** in `xctrace list devices`; the iPhone 17
+simulator is booted but structurally cannot run `flutter run`/
+`integration_test` (`google_mlkit_image_labeling` has no arm64-sim slice —
+see `docs/gotchas.md`'s iOS entry and [[testing-device-iphone-17-sim]]). No
+change from Phase 4's last check; the four queued manual passes (Phase 1
+Task 7 step 5, Phase 2 Task 4, Phase 3 Task 1, Phase 4's on-device pass) stay
+outstanding into whatever session next has a connected device.
+
+**Verify-only findings (Library, Search, Albums, Settings) — traced during
+planning, no code change needed, ship as confirmed:**
+- **Library "all" filter:** `LibraryScreen` routes `all`/`months` through
+  `MonthTimeline`, which stacks `MonthHeader` (`pageTitle` role, 18/700) over
+  `LibrarySection` (`sectionLabel` role, 400) with `SectionCountPill`
+  (`caption` role, 400) trailing. That's two distinct weights (400/700)
+  across three roles — reads as ≤3 hierarchy levels, confirming Phase 0's
+  finding still holds (nothing in Phases 1-4 touched these three files).
+- **Search facets + People card:** `ResultsBody` stacks `FilterBar`
+  (`FilterPill`, already recolored in Phase 1 Task 1) → `PeopleStrip` (`r30`
+  circular avatars, its own `w600` residual already fixed to `w700` in Phase
+  1 Task 6) → `AlbumsResult` → the photo grid. No hand-rolled styling in
+  `search_screen.dart`, `filter_bar.dart`, or `results_body.dart` — all three
+  consume shared widgets/tokens only. `AlbumsResult`'s own `w600` residual is
+  handled in Task 1 below.
+- **Albums:** `AlbumsScreen`/`_Sections`/`_NoAlbumsNote` consume `AppButton`
+  (pill, untouched), `AlbumCard` (r30, untouched — its `w600` residual is
+  Task 1 below), `PeopleStrip`, `FolderList`, `SectionHeader` — no hand-rolled
+  colour or weight in the screen file itself.
+- **Settings:** `SettingsScreen`'s `_AppearanceGroup` passes straight through
+  to `ThemeModePicker`, which is a bare `SegmentedControl<ThemeMode>` with no
+  local styling — Phase 1 Task 2's label-colour change applies automatically.
+
+---
+
+### Task 0 — Saved heart badge: scrim disc → `colors.accent` fill
+
+**File:** `lib/features/saved/saved_screen.dart:234-254`, the `_HeartBadge`
+widget (full context read during planning — it sits inside `_GridCell`,
+positioned top-right over `AssetThumbnail`).
+
+**Current code:**
+```dart
+class _HeartBadge extends StatelessWidget {
+  const _HeartBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppOverMedia.scrim,
+        shape: BoxShape.circle,
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(6),
+        child: Icon(
+          Icons.favorite_rounded,
+          size: 14,
+          color: AppOverMedia.glyph,
+        ),
+      ),
+    );
+  }
+}
+```
+
+**Change:** the disc fill becomes `colors.accent` (the Accent-usage table's
+own row for this widget: "same filled-heart convention" as `ExifSheet`'s
+mark, non-text/icon use, so plain `accent`, never `accentText`). The glyph
+stays `AppOverMedia.glyph` (`Colors.white`) — script-verified in Phase 1 Task
+4 that white against `accent` (`#EB0000`) is ≈4.6:1, clears the 3:1
+icon/non-text threshold in both themes (this colour doesn't flip by theme).
+Because the fill now reads a `ThemeExtension`, the widget can no longer be
+`const`:
+
+```dart
+class _HeartBadge extends StatelessWidget {
+  const _HeartBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppColors>()!;
+    return DecoratedBox(
+      decoration: BoxDecoration(color: colors.accent, shape: BoxShape.circle),
+      child: const Padding(
+        padding: EdgeInsets.all(6),
+        child: Icon(
+          Icons.favorite_rounded,
+          size: 14,
+          color: AppOverMedia.glyph,
+        ),
+      ),
+    );
+  }
+}
+```
+
+Add the `AppColors` import (`../../core/theme/app_colors.dart`) if not
+already present in the file.
+
+**Tests:** no existing golden covers `SavedScreen` or `_HeartBadge` (checked
+`test/widgets/design_goldens_test.dart` and `test/features/screens_test.dart`
+— neither references it), so this is a plain widget-test addition, not a
+golden regen. `test/features/saved/saved_screen_test.dart`'s existing
+`'renders a grid cell per favorite'` test (line 52) already asserts
+`find.byIcon(Icons.favorite_rounded)` — add a new test alongside it:
+
+```dart
+testWidgets('the heart badge fills with the accent colour', (tester) async {
+  await db.indexDao.upsertMetadata([
+    (
+      id: 'a1',
+      createdAt: DateTime(2024),
+      isVideo: false,
+      width: 1,
+      height: 1,
+      isDated: true,
+    ),
+  ]);
+  await db.favoritesDao.add('a1', at: DateTime(2024, 1, 2));
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        databaseProvider.overrideWithValue(db),
+        photoLibraryServiceProvider.overrideWithValue(
+          FakePhotoLibraryService(),
+        ),
+      ],
+      child: MaterialApp(theme: AppTheme.light, home: const SavedScreen()),
+    ),
+  );
+  await tester.pump();
+
+  final badge = tester.widget<DecoratedBox>(
+    find.ancestor(
+      of: find.byIcon(Icons.favorite_rounded),
+      matching: find.byType(DecoratedBox),
+    ),
+  );
+  expect(
+    (badge.decoration as BoxDecoration).color,
+    AppColors.light.accent,
+  );
+  await teardownTree(tester);
+});
+```
+
+Add the `AppColors` import to the test file if not already present.
+
+**Steps:**
+1. Run `flutter test test/features/saved/saved_screen_test.dart` — confirm
+   the baseline suite passes before touching anything.
+2. Add the new test above (it will fail — `DecoratedBox.color` is currently
+   `AppOverMedia.scrim`, not `AppColors.light.accent`).
+3. Run again — expect FAIL.
+4. Make the code change to `_HeartBadge`.
+5. Run again — expect PASS, all tests in the file.
+6. `flutter analyze` — zero warnings.
+7. Commit: `git add lib/features/saved/saved_screen.dart test/features/saved/saved_screen_test.dart && git commit -m "feat: recolor Saved heart badge to accent"`.
+
+---
+
+### Task 1 — Residual `FontWeight.w600` cleanup (feature-screen half)
+
+Four files hardcode `FontWeight.w600` bypassing `AppTextStyles`, the other
+half of the finding Phase 1 Task 6 already fixed for shared widgets. Same
+rationale: each is clearly emphasis-bearing text (a card title, a name), so
+the fix is `w600` → `w700` in place, not dropping the override.
+
+| File | Line | Context (confirmed against the live file) |
+|---|---|---|
+| `lib/features/people/people_screen.dart` | 310 | `_PersonCard`'s name label — conditional: `person.displayName == null ? FontWeight.w400 : FontWeight.w600` (only the `w600` branch changes) |
+| `lib/features/search/widgets/albums_result.dart` | 91 | `_AlbumTile`'s album-name label, `styles.caption.copyWith(...)` |
+| `lib/features/albums/widgets/album_card.dart` | 74 | `AlbumCard`'s name label, `styles.caption.copyWith(...)` |
+| `lib/features/memories/widgets/memory_card.dart` | 113 | `MemoryCard`'s title over media, `text.body.copyWith(...)` |
+
+**Change:** in each, replace `FontWeight.w600` with `FontWeight.w700`
+in-place — a one-line diff per file, surrounding `.copyWith(...)` arguments
+untouched.
+
+**Tests:**
+- `album_card.dart` and `memory_card.dart` have existing goldens in
+  `test/widgets/design_goldens_test.dart` (`'AlbumCard — populated and
+  empty'` line 232, `'MemoryCard — titled and untitled cover'` line 325) —
+  regenerate with `flutter test test/widgets/design_goldens_test.dart
+  --update-goldens` and review the diff. Per the standing Ahem-font/
+  `obscureText` CI-golden caveat (Phase 0), the weight change itself won't be
+  visible in the PNG — this is validated by the code-level `FontWeight.w700`
+  assertions below instead, same as Phase 1 Task 6.
+- `people_screen.dart` (`_PersonCard`) and `albums_result.dart`
+  (`_AlbumTile`) are private widgets with **no existing golden** (checked —
+  pre-existing gap, not introduced by this task, same category as Phase 1
+  Task 6's `folder_list.dart` finding) — add a plain widget test per file
+  instead:
+  - `test/features/people/people_screen_test.dart` — add a test asserting
+    the named-person label's resolved `fontWeight == FontWeight.w700` (use
+    the existing `displayName: 'Alice'` fixture at line 95) and, separately,
+    that the unnamed-person label (`displayName: null`, line 96) stays
+    `FontWeight.w400` — locking in that the conditional's untouched branch
+    really is untouched.
+  - `test/features/search/widgets/albums_result_test.dart` — new file (no
+    test currently exercises this widget in isolation); pump `AlbumsResult`
+    with one `AlbumSummary` and assert the name `Text`'s resolved
+    `fontWeight == FontWeight.w700`.
+- For `album_card.dart` and `memory_card.dart`, also add a plain widget-test
+  assertion (not just the golden) for the same reason Phase 1 Task 6 did:
+  `test/features/albums/album_card_test.dart` and
+  `test/features/memories/widgets/memory_card_test.dart` already exist —
+  add one `fontWeight == FontWeight.w700` assertion to each.
+
+**Commit:** one commit for all four:
+`git commit -m "fix: collapse residual FontWeight.w600 to w700 (feature screens)"`.
+
+---
+
+### Task 2 — Latent `titleMedium` weight in `app_theme.dart`
+
+**File:** `lib/core/theme/app_theme.dart:178` — `_textTheme` builds
+`titleMedium: s.body.copyWith(fontWeight: FontWeight.w600, color: primary)`,
+a third weight baked into the `TextTheme` itself rather than a widget-level
+override. Confirmed during this planning pass: still no consumer of
+`titleMedium` anywhere in `lib/` (`grep -rn "titleMedium" lib/` — only this
+one definition site), so nothing visibly regresses today, but it should
+still collapse to `w700` so the two-weight system stays true if something
+starts consuming it later.
+
+**Change:** `FontWeight.w600` → `FontWeight.w700` on that line, no other
+change.
+
+**Tests:** no test reads `titleMedium` today (confirmed by the same grep,
+run against `test/` too). No new test needed — this is a dead-code-adjacent
+correction, not a behavior change; `tool/check.sh` passing is sufficient
+confirmation nothing depends on the old value.
+
+**Commit:** `git add lib/core/theme/app_theme.dart && git commit -m "fix: collapse latent titleMedium weight to w700"`.
+
+---
+
+### Task 3 — Full-branch check
+
+Run once, after Tasks 0-2 land:
+1. `tool/check.sh` — must pass clean (analyze + build_runner + all tests).
+2. `git diff --stat test/widgets/goldens/ci/` — expect exactly `album_card.png`
+   and `memory_card.png` changed (Task 1's golden regen). Anything else
+   changing is a regression to investigate before committing.
+3. On-device pass: still blocked this session (see the device check above) —
+   carries forward into the same outstanding backlog as Phases 1-4, not a
+   Phase 5 blocker.
+
+**Definition of Done for this phase:**
+- [x] `tool/check.sh` passes (879 tests, clean analyze + build_runner).
+- [x] Verify-only findings recorded above (Library, Search, Albums, Settings)
+      — done during planning, no code change needed.
+- [x] `_HeartBadge` recolored to `colors.accent`, test passing (Task 0,
+      commit `7c803cd`).
+- [x] All 4 feature-screen `FontWeight.w600` residuals collapsed to `w700`,
+      each with a passing weight assertion (Task 1, commit `b894d7d`). Golden
+      regen for `AlbumCard`/`MemoryCard` confirmed a no-op (Ahem-font CI
+      goldens can't show weight, same standing caveat as Phase 0/1) — no PNGs
+      changed.
+- [x] `app_theme.dart`'s latent `titleMedium` weight collapsed to `w700`
+      (Task 2, commit `82f98e8` — confirmed zero consumers via grep before
+      and after).
+- [x] On-device/visual backlog (Phases 1-4) re-checked this session — still
+      blocked, no regression from last check (no Android device, physical
+      iPhone Offline, simulator structurally blocked).
+- [x] This plan doc checked off through Phase 5, "Next step" line updated to
+      point at Phase 6.
 
 ---
 
@@ -1959,3 +2205,18 @@ on-device/visual passes (Phases 1-3 plus this phase) opportunistically when
 a physical device or a working simulator becomes available — see
 `docs/gotchas.md`'s iOS `integration_test` entry for the standing Xcode
 scheme blocker.
+
+**Phase 5 — Remaining screens:** built and clean 2026-09-05 (commits
+`7c803cd`, `b894d7d`, `82f98e8`), Tasks 0-3 executed directly in-session (no
+worktree — small enough diff not to warrant one). Verify-only findings for
+Library/Search/Albums/Settings recorded in the phase section above, no
+regression found. `tool/check.sh` passes (879 tests). Golden regen for
+`AlbumCard`/`MemoryCard` was a no-op PNG-wise, as expected from the standing
+Ahem-font caveat. The four-phase on-device/visual backlog (Phases 1-4) was
+re-checked and remains blocked — no Android device, physical iPhone Offline,
+iOS simulator structurally excluded. Next step: **Phase 6 — Docs** (fold
+the grid-bleed rule, `accent`/`accentText`, and the two-weight rule into
+`docs/design-system.md`), or decide how to land Phases 1-5 together first —
+see the multi-phase branch/PR question this plan hasn't resolved yet (Phase 0
+built on its own worktree branch; Phases 1-5 have all landed as direct
+commits to `main` in their own sessions).
