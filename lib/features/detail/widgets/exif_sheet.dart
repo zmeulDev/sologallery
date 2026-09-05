@@ -28,6 +28,8 @@ class ExifSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(assetDetailProvider(assetId));
+    // Synchronously-composed flag; see AGENTS.md's Riverpod conventions.
+    final isFavorite = ref.watch(isFavoriteProvider(assetId)).value ?? false;
 
     return AppSheet(
       label: 'DETAILS',
@@ -44,9 +46,43 @@ class ExifSheet extends ConsumerWidget {
                   AppSpace.s20,
                   AppSpace.s24,
                 ),
-                child: _ExifTable(detail: d),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isFavorite) ...[
+                      const _FavoriteMark(),
+                      const SizedBox(height: AppSpace.s16),
+                    ],
+                    _ExifTable(detail: d),
+                  ],
+                ),
               ),
       ),
+    );
+  }
+}
+
+/// Small state mark shown when the photo is favorited — the filled heart
+/// shape carries the meaning (per the Accent-usage table), [AppColors.accent]
+/// is decoration on top, so the label stays default text colour.
+class _FavoriteMark extends StatelessWidget {
+  const _FavoriteMark();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppColors>()!;
+    final styles = Theme.of(context).extension<AppTextStyles>()!;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.favorite_rounded, color: colors.accent, size: 16),
+        const SizedBox(width: AppSpace.s8),
+        Text(
+          'Favorited',
+          style: styles.caption.copyWith(color: colors.textSecondary),
+        ),
+      ],
     );
   }
 }

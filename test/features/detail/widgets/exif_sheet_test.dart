@@ -43,6 +43,19 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  // ExifSheet now watches isFavoriteProvider, which opens a live Drift query
+  // stream against `db`. Every test must dispose the tree (and pump the
+  // zero-duration Timer that cancelling the stream schedules) before this
+  // test's tearDown closes `db`, or flutter_test's end-of-test invariant
+  // check ("Timer is still pending") fails — it runs before any `tearDown`/
+  // `addTearDown` hook does, so this can't be hoisted into `pumpSheet` or a
+  // shared tearDown; it must be the last thing each test body does. Same fix
+  // as detail_screen_test.dart's settleTeardown.
+  Future<void> settleTeardown(WidgetTester tester) async {
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  }
+
   // A still image with every optional field the sheet knows how to show, GPS
   // included — tagged at the same Zurich coordinates as `gps_exif.jpg`.
   AssetDetail fullRecord() => AssetDetail(
@@ -82,6 +95,8 @@ void main() {
     expect(find.text('JPEG'), findsOneWidget); // Type
     expect(find.text('LOCATION'), findsOneWidget);
     expect(find.text('47.3764, 8.5476'), findsOneWidget); // Location
+
+    await settleTeardown(tester);
   });
 
   testWidgets('empty record degrades to the always-present chips, no blanks', (
@@ -106,6 +121,8 @@ void main() {
       findsNothing,
     );
     expect(tester.takeException(), isNull);
+
+    await settleTeardown(tester);
   });
 
   testWidgets('a null projection shows the unavailable note, not a broken sheet',
@@ -117,5 +134,26 @@ void main() {
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
+
+    await settleTeardown(tester);
+  });
+
+  testWidgets('favorited asset shows the Favorited mark', (tester) async {
+    await db.favoritesDao.add('x');
+    await pumpSheet(tester, fullRecord());
+
+    expect(find.text('Favorited'), findsOneWidget);
+    expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
+
+    await settleTeardown(tester);
+  });
+
+  testWidgets('unfavorited asset shows no mark', (tester) async {
+    await pumpSheet(tester, fullRecord());
+
+    expect(find.text('Favorited'), findsNothing);
+    expect(find.byIcon(Icons.favorite_rounded), findsNothing);
+
+    await settleTeardown(tester);
   });
 }
