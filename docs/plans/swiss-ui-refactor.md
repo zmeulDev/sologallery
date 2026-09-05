@@ -1,6 +1,8 @@
 # Swiss UI refactor — implementation plan
 
-**Status:** planning — not yet approved. Nothing in this doc has been built.
+**Status:** Phase 0 built and reviewed clean (branch
+`worktree-swiss-ui-refactor-phase0`, commits `e624faa`..`3d6c6c8`). Phases
+1-6 remain planning only.
 **Source:** a research spike (not committed to the repo) comparing the current
 design system against International Typographic Style principles, with
 mockups covering nine screens: Onboarding (access + consent), the nav shell,
@@ -8,8 +10,11 @@ Library, Search, Saved, Albums, Memories player, Detail/EXIF, and Settings.
 The direction landed on **black / white / one spot red**, red scoped strictly
 to *state* (never decoration), with `AppRadius` completely unchanged.
 
-**Next step:** get this plan approved, then execute **Phase 0** only in this
-session/PR. Later phases are separate follow-ups — see "Phasing" below for why.
+**Next step:** review Phase 0's branch/PR and decide how to land it (see the
+"Rulings" carried into decision #1 and the Phase 0 Definition of Done below —
+in particular the WCAG contrast pre-condition and the time-boxed
+unused-symbol exception). Once merged, start a fresh session for **Phase 1**
+— see "Phasing" below for why phases are separate sessions/PRs.
 
 ---
 
@@ -87,6 +92,18 @@ per-section "index dot" (was decorative, cut during the spike already).
    colour, not two — red reads fine on both a white and a near-black ground.
    *Verify contrast (WCAG AA against both `surface` values) during Phase 0
    before merging.*
+   **Contrast verified during Phase 0's final review (2026-09-05):**
+   `#EB0000` passes 3:1 (non-text/UI use — border, ring, switch track, knob)
+   against every surface in both themes, but **fails** 4.5:1 text contrast
+   against every ground except pure-white light `surface`. Phase 0 ships
+   `accent` unused, so no live accessibility issue ships today. **Hard
+   pre-condition for Phase 1:** decisions #2 and #3 below use `colors.accent`
+   as *text* colour (FilterPill selected text, SegmentedControl selected
+   label) — bold 12sp does not qualify as WCAG "large text," so this literal
+   cannot be reused for that text without re-solving contrast first (a
+   different value, a heavier weight/size that qualifies as "large text," or
+   a conscious documented exception). Do not carry this value into Phase 1's
+   text-colour usage without addressing this.
 2. **`FilterPill` active state:** keeps its `StadiumBorder` shape (per the
    corrections above, shape stays put). Change is: selected fill goes from
    `colors.pillActiveBg` to transparent/`scheme.surface`, selected border and
@@ -122,7 +139,7 @@ reviewable change, and `AGENTS.md`'s Definition of Done requires goldens
 Per the session-hygiene rule in `CLAUDE.md`, later phases should be their own
 conversations/PRs, each starting from this doc.
 
-- [ ] **Phase 0 — Foundation** (this session, if approved)
+- [x] **Phase 0 — Foundation** (built 2026-09-04/05, reviewed clean)
 - [ ] **Phase 1 — Shared widgets** (separate session)
 - [ ] **Phase 2 — `ExifSheet` rebuild** (separate session)
 - [ ] **Phase 3 — Memories player third state** (separate session, has a
@@ -171,15 +188,42 @@ conversations/PRs, each starting from this doc.
   README for the update flag/env var.
 
 **Definition of Done for this phase:**
-- [ ] `tool/check.sh` passes.
-- [ ] Every golden diff reviewed manually (list which screens changed and why
-      in the commit message).
-- [ ] No screen using `AppTextStyles` regressed to 3+ visually distinct
+- [x] `tool/check.sh` passes.
+- [x] Every golden diff reviewed manually — **caveat found during review:**
+      this repo's CI goldens render with the Ahem font + `obscureText: true`
+      (alchemist's `CiGoldensConfig` default), so they cannot visually show a
+      font-weight change at all. All 6 PNGs that got byte-different on
+      regeneration were verified pixel-identical (RGBA diff) — pure
+      re-encode churn, zero content change. Satisfied instead via a
+      code-level trace of every `AppTextStyles` consumer plus the new
+      weight-invariant unit test (see Tests above). **Carry this forward:**
+      Phase 1's colour changes (unlike Phase 0's weight changes) *will* show
+      up in these same CI goldens, so goldens regain real value starting
+      there.
+- [x] No screen using `AppTextStyles` regressed to 3+ visually distinct
       weights on one view — spot-check Library ("all" filter) and Search
       results, the two screens flagged in the spike as exceeding three
-      hierarchy levels.
-- [ ] This plan doc checked off through Phase 0, "Next step" line updated to
+      hierarchy levels. **Result:** `AppTextStyles` itself is now clean on
+      both screens (400/700 only). A residual `FontWeight.w600` persists on
+      both screens via **10** pre-existing hardcoded overrides outside
+      `AppTextStyles` (not introduced by this phase, not fixable without
+      touching widget/feature files outside Phase 0's scope) — full list and
+      phase assignment under Phase 1 and Phase 5 below.
+- [x] This plan doc checked off through Phase 0, "Next step" line updated to
       point at Phase 1.
+
+**Additional notes from Phase 0's implementation and review (kept here as
+durable context, not pruned — later phases depend on these):**
+- `AppColors.accent` ships **unused** in `lib/` at the end of Phase 0 (no
+  consumer until Phase 1). This is a deliberate, time-boxed exception to
+  `AGENTS.md`'s "no unused symbols" absolute rule, consumed by Phase 1 —
+  same shape as the existing `EditInstructionsDao` exception, not an
+  indefinite one. Flagged explicitly rather than silently merged.
+- WCAG AA contrast on `#EB0000` was verified (see decision #1 above): fine
+  for non-text/UI use (3:1), fails text-contrast (4.5:1) on every ground but
+  pure-white light `surface`. **Phase 1 must resolve this** before using
+  `colors.accent` as text colour (FilterPill/SegmentedControl selected
+  labels) — see decision #1's update for detail.
 
 ---
 
@@ -210,6 +254,15 @@ conversations/PRs, each starting from this doc.
   (`colors.pillActiveText`) → `colors.accent`, **only while indexing is
   active** (it already renders `SizedBox.shrink()` when idle, so there's no
   "resting red" state to worry about).
+- **Residual weight cleanup (from Phase 0's review), shared-widget half:**
+  6 files have a hardcoded `FontWeight.w600` bypassing `AppTextStyles`
+  entirely — clean these up here so the two-weight system is actually true
+  end-to-end for shared widgets: `lib/widgets/asset_thumbnail.dart:126`,
+  `empty_state.dart:56`, `limited_access_banner.dart:45`,
+  `folder_list.dart:116`, `people_strip.dart:186`, `indexing_dial.dart:100`
+  (this last one is already being touched above for the accent colour — do
+  both changes in the same edit). The remaining 4 files are feature-screen
+  code, assigned to Phase 5 below.
 
 **Tests:**
 - Existing/new goldens for `filter_pill`, `theme_mode_picker` (per the
@@ -320,6 +373,13 @@ verification pass, not a rewrite:
       AlbumCard is r30, untouched) — verify only.
 - [ ] Settings — `ThemeModePicker` inherits the `SegmentedControl` change
       from Phase 1 automatically; verify only.
+- [ ] **Residual weight cleanup (from Phase 0's review), feature-screen
+      half:** 4 files have a hardcoded `FontWeight.w600` bypassing
+      `AppTextStyles` — `lib/features/people/people_screen.dart:309-310`,
+      `search/widgets/albums_result.dart:91`,
+      `albums/widgets/album_card.dart:74`,
+      `memories/widgets/memory_card.dart:113`. See Phase 1 for the other 6
+      (shared-widget) files in the same finding.
 
 ---
 
@@ -328,8 +388,18 @@ verification pass, not a rewrite:
 Update `docs/design-system.md`:
 - Add `accent` to the Colors table (`AppColors`), one row, noting it's the
   only colour token with semantic meaning tied to state, not surface.
-- Update the Typography table's weight column for `sectionLabel`,
-  `filterPill`, `button`, `exifValue`.
+  (Phase 0's review already pulled forward the intro-line mention of
+  `accent` and the 4-row typography weight correction — this phase still
+  needs the actual Colors-table row and the rest below.)
+- ~~Update the Typography table's weight column for `sectionLabel`,
+  `filterPill`, `button`, `exifValue`.~~ Done during Phase 0's final review
+  (2026-09-05) — pulled forward because AGENTS.md requires reading this doc
+  before any UI work and Phases 1-5 are all UI work.
+- Dedupe the "photos supply all the color" rationale — it currently exists
+  in two places in `lib/core/theme/app_colors.dart` (the `AppOverMedia` doc
+  block, ~line 6-8, and `AppColors`'s own doc comment, ~line 49-51) with
+  slightly diverging wording, a residual from Phase 0's fix rounds. Pick one
+  home for it (`AppColors`'s own doc comment) and remove/trim the other.
 - Add a line to the Radius section or a new "Grid" section stating the
   s8-bleed-past-s16-margin pattern as a rule, not a per-file comment
   (currently scattered across `month_timeline.dart`, `library_section.dart`
@@ -364,6 +434,10 @@ Per `AGENTS.md`:
 
 ## Next step
 
-Get this plan approved. If approved, execute **Phase 0 only** in this
-session — add the `accent` token and collapse the four weights, update the
-two golden test files, and stop there for review before Phase 1 starts.
+Phase 0 is built and clean (commits `e624faa`..`3d6c6c8` on
+`worktree-swiss-ui-refactor-phase0`, whole-branch review clean after one fix
+wave). Decide how to land it, then start Phase 1 in a fresh session. Before
+Phase 1 begins, resolve decision #1's WCAG contrast pre-condition (do not
+reuse `#EB0000` as *text* colour without re-solving contrast) and be aware
+`AppColors.accent` is currently an unused symbol against `AGENTS.md`'s "no
+unused symbols" rule, accepted as time-boxed until Phase 1 consumes it.
