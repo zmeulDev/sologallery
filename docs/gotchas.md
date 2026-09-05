@@ -431,8 +431,36 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   not wired** here — no
   `RunnerUITests` target, and the project has SPM enabled so patrol attaches as
   a Swift package to `Runner` only; `patrol_cli` 4.6.1 also forces `--release`
-  on a physical device. Run iOS integration tests as
-  `flutter test integration_test/<file>.dart -d <id> --no-uninstall`.
+  on a physical device. `flutter test integration_test/<file>.dart -d <id>
+  --no-uninstall` **only works for files that don't use `patrolTest`** (plain
+  `IntegrationTestWidgetsFlutterBinding` files — `search_test.dart`,
+  `memories_test.dart`, etc.). **Confirmed 2026-09-05 on a physical iPhone
+  (iOS 26.6.1):** every `patrolTest`-based file (`detail_actions_test.dart`,
+  `nav_shell_test.dart`, `consent_flow_test.dart`, and the rest that call
+  `$.platform.mobile.*`) crashes immediately with `Failed assertion:
+  '_debugInitializedType == null': Binding is already initialized to
+  IntegrationTestWidgetsFlutterBinding` — the `flutter test
+  integration_test/*.dart` runner initializes `IntegrationTestWidgetsFlutterBinding`
+  itself before `main()` runs, and `patrolTest`'s own `PatrolBinding.ensureInitialized()`
+  (which wants `LiveTestWidgetsFlutterBinding`) then fails because a binding
+  singleton is already locked in. This is a hard binding conflict, not a flaky
+  environment issue — no retry or flag fixes it. Net effect: **no
+  `patrolTest`-based integration test can run on iOS at all** today (only
+  `patrol test`, which (2) above already rules out on iOS). The Swiss UI
+  refactor plan's four queued on-device passes (Phases 1-4) that depend on a
+  `patrolTest` file are blocked by this, not by device availability — a
+  manual eyes-on pass (`flutter run -d <id>`) is the only verification path
+  left for iOS until a `RunnerUITests` target is wired up.
+- **A stray leftover `flutter run -d <device>` silently blocks all later
+  `devicectl` calls to that device, with no error — just an indefinite hang.**
+  Found 2026-09-05: an earlier `flutter run` from a previous (cleared)
+  session was still alive in the background holding the device's CoreDevice
+  tunnel; a subsequent `flutter test integration_test/<file>.dart -d <id>`
+  hung silently at `Installing and launching...` for **59 minutes** before
+  the install finally completed, immediately after the stray process was
+  killed. Before treating a stuck iOS device install as a build problem, run
+  `ps aux | grep -i devicectl` (and `flutter run`/`flutter test` parents) and
+  kill anything stale holding the same device id.
 - **iOS fixture seeding + a debug build that won't launch.** No `/sdcard`; push
   fixtures into the app data container with
   `xcrun devicectl device copy to --device <id> --domain-type appDataContainer

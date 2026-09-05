@@ -1121,14 +1121,52 @@ skip the automated on-device pass rather than debug the Xcode scheme
 configuration or switch to the physical iPhone — Task 4 stays outstanding,
 same status as Phase 1's still-pending manual pass.
 
+**Attempted again 2026-09-05 with a physical iPhone connected via cable
+(`iPhone-F70C0WQ33M`, iOS 26.6.1) — still not done, two new (different)
+environment blockers found, neither a Phase 2 code issue:**
+1. A stray `flutter run -d <this-device>` process, left over from before this
+   session's `/clear`, was still alive and holding the device's CoreDevice
+   tunnel. It caused `flutter test integration_test/detail_actions_test.dart
+   -d <id> --no-uninstall`'s device install step to hang **silently for 59
+   minutes** with no error, until the stray process was found (`ps aux | grep
+   devicectl`) and killed — see the new `docs/gotchas.md` entry. After that,
+   the app actually installed and launched, but then:
+2. `patrolTest`-based files **cannot run on iOS at all** via `flutter test
+   integration_test/<file>.dart -d <id>`, confirmed with a precise error this
+   time (not just "not wired"): `Failed assertion: '_debugInitializedType ==
+   null': Binding is already initialized to IntegrationTestWidgetsFlutterBinding`.
+   The `flutter test integration_test/*.dart` runner initializes
+   `IntegrationTestWidgetsFlutterBinding` itself before `main()`, and
+   `patrolTest`'s `PatrolBinding.ensureInitialized()` then fails because a
+   binding singleton is already locked in. This is a hard conflict, not
+   flakiness — it will reproduce every time. `detail_actions_test.dart` uses
+   `patrolTest`, so **this specific test cannot run on iOS at all** until a
+   `RunnerUITests` target is wired up (see `docs/gotchas.md`'s updated entry).
+   A second attempt with a non-`patrolTest` file (`memories_test.dart`, which
+   uses plain `IntegrationTestWidgetsFlutterBinding`) hit a *third*, unrelated
+   blocker: the Dart VM Service was never discovered after the app launched
+   (timed out at 619s), with Flutter's own hint that Xcode-automation
+   (AppleEvents) permission may not be granted to the controlling
+   process/terminal (System Settings → Privacy & Security → Automation) —
+   not diagnosed further this session; needs the user to check/grant that
+   permission before another attempt is worth making.
+
+**Net finding:** on-device *automated* verification for this plan's
+`patrolTest`-based files is not just "no device available" (the status since
+Phase 1) — it is **structurally blocked on iOS** regardless of device
+availability. A manual eyes-on pass (`flutter run -d <id>`, once the Xcode
+automation permission is sorted) is the only path left for iOS; Android
+(Pixel 9 Pro XL) remains untried this session (`adb devices` not rechecked).
+
 **Definition of Done for this phase:**
 - [x] `tool/check.sh` passes.
 - [x] Every golden diff reviewed manually (Task 3, step 6).
 - [ ] `integration_test/detail_actions_test.dart` passes on-device (Task 4,
-      step 1) — **not done**, see the simulator note above; skipped by user
-      decision, not a blocker.
+      step 1) — **not done**; confirmed structurally blocked on iOS via
+      `patrolTest`'s binding conflict (see note above), not a device-
+      availability issue. Not attempted on Android this session.
 - [ ] Manual no-EXIF and GPS device checks done (Task 4, steps 2-3) — **not
-      done**, same reason.
+      done**, blocked behind the same VM Service discovery issue on iOS.
 - [ ] This plan doc checked off through Phase 2, "Next step" line updated to
       point at Phase 3.
 
