@@ -893,6 +893,15 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   Phase-5 icon-family swap left every golden byte-identical (md5-verified),
   which is the *expected* outcome, not a missed regen. Goldens verify layout/
   color only; verify glyph shapes on device (or by eye in the running app).
+- **Golden files regenerate via `flutter test --update-goldens`.** The alchemist
+  package (used for design-system golden tests) requires the standard Flutter
+  flag `--update-goldens`, not an environment variable like `UPDATE_GOLDENS`.
+  To verify the mechanism actually regenerates: make a small visual change
+  (e.g. adjust padding/color in a widget under test), run
+  `flutter test test/widgets/design_goldens_test.dart --update-goldens`,
+  confirm a PNG under `test/widgets/goldens/ci/` changed (with
+  `git diff test/widgets/goldens/ci/`), then revert the visual change and
+  re-run the test to confirm it still passes (no diff).
 - **`flutter install --debug` can install a stale patrol test bundle instead of
   the app.** `patrol test` and `flutter build apk --debug -t lib/main.dart`
   write to the **same** output path
