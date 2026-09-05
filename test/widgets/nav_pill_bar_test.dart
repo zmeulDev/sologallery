@@ -163,4 +163,42 @@ void main() {
     expect(dial.right, 360 - AppSpace.s12);
     expect(dial.center.dy, closeTo(bareCapsule.center.dy, 0.01));
   });
+
+  testWidgets('the knob is filled with the theme-invariant accent colour', (
+    tester,
+  ) async {
+    await tester.pumpWidget(host(1, (_) {}));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    final colors = Theme.of(
+      tester.element(find.byType(NavPillBar)),
+    ).extension<AppColors>()!;
+
+    final knob = tester.widget<Container>(
+      find.byWidgetPredicate(
+        (w) =>
+            w is Container &&
+            w.decoration is BoxDecoration &&
+            (w.decoration! as BoxDecoration).shape == BoxShape.circle,
+      ),
+    );
+    final decoration = knob.decoration! as BoxDecoration;
+    expect(decoration.color, colors.accent);
+  });
+
+  testWidgets(
+    'the selected glyph is plain white, regardless of theme',
+    (tester) async {
+      await tester.pumpWidget(host(1, (_) {}));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      final icon = tester.widget<Icon>(
+        find.descendant(
+          of: find.byTooltip('Search'),
+          matching: find.byType(Icon),
+        ),
+      );
+      expect(icon.color, Colors.white);
+    },
+  );
 }

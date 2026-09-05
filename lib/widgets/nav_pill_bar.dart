@@ -88,7 +88,7 @@ class NavPillBar extends StatelessWidget {
               width: _knobSize,
               height: _knobSize,
               decoration: BoxDecoration(
-                color: colors.pillActiveText,
+                color: colors.accent,
                 shape: BoxShape.circle,
               ),
             ),
@@ -101,7 +101,11 @@ class NavPillBar extends StatelessWidget {
                   child: _NavItem(
                     destination: _destinations[i],
                     selected: i == currentIndex,
-                    activeColor: colors.pillActiveBg,
+                    // Hardcoded, not a theme token: the knob is now
+                    // theme-invariant accent red, so the glyph on it should
+                    // be too, rather than reintroducing a theme-dependent
+                    // swap against a theme-independent ground.
+                    activeColor: Colors.white,
                     inactiveColor: colors.pillActiveText
                         .withValues(alpha: _inactiveOpacity),
                     onTap: () => onTap(i),
