@@ -94,7 +94,7 @@ class SegmentedControl<T> extends StatelessWidget {
                               child: DefaultTextStyle(
                                 style: styles.button.copyWith(
                                   color: index == selectedIndex
-                                      ? scheme.onSurface
+                                      ? colors.accentText
                                       : colors.textSecondary,
                                 ),
                                 child: Text(labelBuilder(option)),

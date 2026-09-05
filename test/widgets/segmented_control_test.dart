@@ -8,9 +8,10 @@ void main() {
     required ThemeMode value,
     required ValueChanged<ThemeMode> onChanged,
     List<ThemeMode>? options,
+    ThemeData? theme,
   }) {
     return MaterialApp(
-      theme: AppTheme.light,
+      theme: theme ?? AppTheme.light,
       home: Scaffold(
         body: Center(
           child: SegmentedControl<ThemeMode>(
@@ -79,4 +80,40 @@ void main() {
       expect(find.text('system'), findsOneWidget);
     },
   );
+
+  testWidgets('selected label color is accentText in light theme', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(value: ThemeMode.light, onChanged: (_) {}, theme: AppTheme.light),
+    );
+    // Find the RichText for the selected label ("light"), which is rendered by Text
+    final richTextFinder = find.descendant(
+      of: find.text('light'),
+      matching: find.byType(RichText),
+    );
+    expect(richTextFinder, findsOneWidget);
+
+    final richText = tester.widget<RichText>(richTextFinder);
+    final textColor = richText.text.style?.color;
+    expect(textColor, const Color(0xFFEB0000)); // accentText in light
+  });
+
+  testWidgets('selected label color is accentText in dark theme', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(value: ThemeMode.dark, onChanged: (_) {}, theme: AppTheme.dark),
+    );
+    // Find the RichText for the selected label ("dark"), which is rendered by Text
+    final richTextFinder = find.descendant(
+      of: find.text('dark'),
+      matching: find.byType(RichText),
+    );
+    expect(richTextFinder, findsOneWidget);
+
+    final richText = tester.widget<RichText>(richTextFinder);
+    final textColor = richText.text.style?.color;
+    expect(textColor, const Color(0xFFFF3B30)); // accentText in dark
+  });
 }
