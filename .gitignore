@@ -46,3 +46,6 @@ app.*.map.json
 
 # alchemist golden-comparison output from a failing run
 failures/
+
+# superpowers subagent-driven-development scratch workspace
+.superpowers/
