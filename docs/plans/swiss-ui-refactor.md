@@ -1376,11 +1376,22 @@ motion* — this needs eyes on a real memory playing, not a frame).
    again, record the outcome here rather than re-diagnosing it, same as
    Phase 2 did.
 
+**Attempted 2026-09-05 — no device available.** Neither the primary Pixel 9
+Pro XL nor any other Android device is connected (`adb devices` returns
+empty). The physical iPhone shows as **Offline** in
+`xcrun xctrace list devices` (not connected/charging over cable right now).
+Only simulators are available, which hit the same structural blocker
+recorded under Phase 2's Task 4 and `docs/gotchas.md`'s iOS `integration_test`
+entry — not re-attempted here since that limitation is already diagnosed and
+unchanged. **Task 1 stays outstanding**, same status as Phase 1's and Phase
+2's still-pending manual passes — connect either device in a future session
+to close it out.
+
 **Definition of Done for this phase:**
-- [ ] `tool/check.sh` passes.
-- [ ] Widget test (Task 0) passing, all 5 cases.
-- [ ] On-device manual pass done (Task 1) — confirms the three states read
-      correctly in motion, not just as a static frame.
+- [x] `tool/check.sh` passes.
+- [x] Widget test (Task 0) passing, all 5 cases (commit `f992cf0`).
+- [ ] On-device manual pass done (Task 1) — **not done**, no device
+      connected this session; see the note above.
 - [ ] This plan doc checked off through Phase 3, "Next step" line updated to
       point at Phase 4.
 
@@ -1531,13 +1542,14 @@ from a `databaseProvider`/in-memory-Drift override to directly overriding
 hit both a "Timer still pending" hang in widget tests and a
 `MissingPluginException` in goldens.
 
-**Phase 3 — Memories player third state:** planning complete 2026-09-05
-(Task 0 — three-state colour/height mapping + widget test; Task 1 — on-device
-verification, no golden since nothing currently covers `Progress` and CI
-goldens can't show motion or a 1px height bump anyway). Not yet started —
-see the Phase 3 section above for the full task breakdown, including the
-`AppOverMedia`-is-const-vs-`colors.accent`-is-a-`ThemeExtension` wrinkle to
-flag in the eventual diff/PR description. Next action: get this plan
-approved, then execute Task 0 (TDD) followed by Task 1 (on-device, expect
-the same iPhone-simulator Xcode-scheme blocker Phase 2 hit if no physical
-device is available this session).
+**Phase 3 — Memories player third state:** Task 0 built and clean (commit
+`f992cf0`, `tool/check.sh` passing — five widget tests asserting the
+three-state colour/height mapping directly, plus the
+`AppOverMedia`-is-const-vs-`colors.accent`-is-a-`ThemeExtension` wrinkle
+called out in the code). Task 1 (on-device pass) is **outstanding — no
+device connected this session** (Android `adb devices` empty, physical
+iPhone shows Offline, simulators blocked by the same Xcode-scheme issue
+Phase 2 hit) — same backlog item as Phase 1's and Phase 2's still-pending
+manual passes. Next step: connect the Pixel 9 Pro XL (or the physical
+iPhone) in a future session, play a memory with 3+ pages, and confirm the
+current segment reads red and taller in motion per Task 1's steps above.
