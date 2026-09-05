@@ -38,4 +38,24 @@ void main() {
 
     expect(switchWidget.activeTrackColor, colors.accent);
   });
+
+  testWidgets('active thumb color is theme-invariant white in light theme', (
+    tester,
+  ) async {
+    await tester.pumpWidget(host(theme: AppTheme.light));
+
+    final switchWidget = tester.widget<Switch>(find.byType(Switch));
+
+    expect(switchWidget.activeThumbColor, Colors.white);
+  });
+
+  testWidgets('active thumb color is theme-invariant white in dark theme', (
+    tester,
+  ) async {
+    await tester.pumpWidget(host(theme: AppTheme.dark));
+
+    final switchWidget = tester.widget<Switch>(find.byType(Switch));
+
+    expect(switchWidget.activeThumbColor, Colors.white);
+  });
 }

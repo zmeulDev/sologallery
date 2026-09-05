@@ -27,7 +27,11 @@ class ConsentSwitch extends StatelessWidget {
       child: Switch(
         value: value,
         onChanged: onChanged,
-        activeThumbColor: colors.pillActiveText,
+        // Hardcoded, not a theme token: the track is now theme-invariant
+        // accent red, so the thumb on it should be too, rather than
+        // reintroducing a theme-dependent swap against a theme-independent
+        // ground (same call as NavPillBar's knob glyph).
+        activeThumbColor: Colors.white,
         activeTrackColor: colors.accent,
         inactiveThumbColor: Theme.of(context).colorScheme.surface,
         inactiveTrackColor: colors.surface2,

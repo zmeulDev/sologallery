@@ -88,10 +88,14 @@ class AppColors extends ThemeExtension<AppColors> {
 
   /// Text-safe variant of [accent] — same red, but chosen so it clears WCAG
   /// AA's 4.5:1 text-contrast threshold against the specific ground each
-  /// consumer paints it on (`scheme.surface`: FilterPill and
-  /// SegmentedControl's selected label). [accent] itself only clears 3:1
-  /// (non-text/UI-component contrast) on some grounds — use [accentText],
-  /// never [accent], whenever this red becomes the colour of *text*.
+  /// consumer actually paints it on: `FilterPill`'s selected label sits
+  /// directly on the `Scaffold`, so its real ground is
+  /// `AppTheme.scaffoldBackgroundColor`, not `scheme.surface`; only
+  /// `SegmentedControl`'s selected label (which sits on the control's raised
+  /// `scheme.surface` thumb) actually paints on `scheme.surface`. [accent]
+  /// itself only clears 3:1 (non-text/UI-component contrast) on some
+  /// grounds — use [accentText], never [accent], whenever this red becomes
+  /// the colour of *text*.
   final Color accentText;
 
   static const light = AppColors(
@@ -102,7 +106,13 @@ class AppColors extends ThemeExtension<AppColors> {
     pillActiveText: Color(0xFFF0F0EE),
     border: Color(0x12000000), // rgba(0,0,0,0.07)
     accent: Color(0xFFEB0000),
-    accentText: Color(0xFFEB0000),
+    // Darker than [accent]: plain #EB0000 only clears 4.5:1 against pure-white
+    // scheme.surface (4.633:1), but FilterPill's selected label actually
+    // paints on the real light scaffoldBackgroundColor (#F5F5F3), where
+    // #EB0000 falls to 4.244:1 and fails AA text contrast. #D80000 clears
+    // both real grounds with margin (4.908:1 on #F5F5F3, 5.357:1 on
+    // #FFFFFF) — see test/core/theme/app_colors_test.dart.
+    accentText: Color(0xFFD80000),
   );
 
   static const dark = AppColors(

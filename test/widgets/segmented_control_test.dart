@@ -87,7 +87,6 @@ void main() {
     await tester.pumpWidget(
       host(value: ThemeMode.light, onChanged: (_) {}, theme: AppTheme.light),
     );
-    // Find the RichText for the selected label ("light"), which is rendered by Text
     final richTextFinder = find.descendant(
       of: find.text('light'),
       matching: find.byType(RichText),
@@ -96,7 +95,8 @@ void main() {
 
     final richText = tester.widget<RichText>(richTextFinder);
     final textColor = richText.text.style?.color;
-    expect(textColor, const Color(0xFFEB0000)); // accentText in light
+    final accentText = AppTheme.light.extension<AppColors>()!.accentText;
+    expect(textColor, accentText);
   });
 
   testWidgets('selected label color is accentText in dark theme', (
@@ -105,7 +105,6 @@ void main() {
     await tester.pumpWidget(
       host(value: ThemeMode.dark, onChanged: (_) {}, theme: AppTheme.dark),
     );
-    // Find the RichText for the selected label ("dark"), which is rendered by Text
     final richTextFinder = find.descendant(
       of: find.text('dark'),
       matching: find.byType(RichText),
@@ -114,6 +113,7 @@ void main() {
 
     final richText = tester.widget<RichText>(richTextFinder);
     final textColor = richText.text.style?.color;
-    expect(textColor, const Color(0xFFFF3B30)); // accentText in dark
+    final accentText = AppTheme.dark.extension<AppColors>()!.accentText;
+    expect(textColor, accentText);
   });
 }

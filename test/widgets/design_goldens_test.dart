@@ -207,9 +207,10 @@ void main() {
         themedGroup(ThemeModePicker(mode: ThemeMode.system, onChanged: (_) {})),
   );
 
-  // The consent switch is the only switch in the app; its active track is the
-  // pill-active token, so this golden is what keeps consent from drifting into
-  // a second accent color.
+  // The consent switch is the only switch in the app; its active track is
+  // colors.accent (the same spot red as every other state indicator), so
+  // this golden is what keeps consent from drifting into a second accent
+  // color.
   goldenTest(
     'ConsentSwitch — on and off',
     fileName: 'consent_switch',

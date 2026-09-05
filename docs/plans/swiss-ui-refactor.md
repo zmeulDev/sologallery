@@ -161,8 +161,15 @@ Per the session-hygiene rule in `CLAUDE.md`, later phases should be their own
 conversations/PRs, each starting from this doc.
 
 - [x] **Phase 0 — Foundation** (built 2026-09-04/05, reviewed clean)
-- [ ] **Phase 1 — Shared widgets** (separate session; planned 2026-09-05,
-      concrete tasks below, awaiting go-ahead before implementation)
+- [x] **Phase 1 — Shared widgets** (built and reviewed 2026-09-05, branch
+      `worktree-swiss-ui-refactor-phase1`, Tasks 0-7 executed via
+      `superpowers:subagent-driven-development`. The final whole-branch
+      review found 5 issues invisible to the per-task reviews — most notably
+      `accentText.light` (`#EB0000`) failing WCAG AA text contrast against
+      `FilterPill`'s *real* ground (`scaffoldBackgroundColor`, not
+      `scheme.surface` as Task 0's test assumed) — all fixed in one
+      dedicated fix pass; see Phase 1's Definition of Done below for what
+      that pass covered.)
 - [ ] **Phase 2 — `ExifSheet` rebuild** (separate session)
 - [ ] **Phase 3 — Memories player third state** (separate session, has a
       logic component)
@@ -259,11 +266,15 @@ Per `AGENTS.md`, run `tool/check.sh` after every task, not just at the end.
 **Golden-regen command — unresolved gap, verify in Task 0:** no command is
 recorded anywhere in this repo (`AGENTS.md`, `docs/gotchas.md`,
 `tool/check.sh`, no CI config, no `alchemist.yaml` all checked, none found).
-The candidate, per `alchemist` 0.14.0's own convention: `UPDATE_GOLDENS=true
-flutter test test/widgets/design_goldens_test.dart` (goldens live at
-`test/widgets/goldens/ci/`). **Task 0 must confirm this actually regenerates
-a golden before the rest of the phase relies on it**, then record it in
-`docs/gotchas.md` per `AGENTS.md`'s "maintain the docs" rule — this closes a
+The candidate, guessed from `alchemist` 0.14.0's convention seen elsewhere,
+was `UPDATE_GOLDENS=true flutter test test/widgets/design_goldens_test.dart`
+(goldens live at `test/widgets/goldens/ci/`) — **this turned out to be
+wrong**; the real invocation, confirmed in Task 0 and now recorded in
+`docs/gotchas.md`, is the standard Flutter flag: `flutter test
+test/widgets/design_goldens_test.dart --update-goldens`. **Task 0 must
+confirm this actually regenerates a golden before the rest of the phase
+relies on it**, then record it in `docs/gotchas.md` per `AGENTS.md`'s
+"maintain the docs" rule — this closes a
 gap Phase 0 could not close (its changes were invisible to these Ahem-font
 CI goldens; Phase 1's colour changes will not be).
 
@@ -339,13 +350,15 @@ CI goldens; Phase 1's colour changes will not be).
    assertion (e.g. a reviewer nudges the literal), the fix is to darken/
    brighten `Color(0xFFFF3B30)` until the ratio clears 4.5 — do not weaken
    the test.
-5. Confirm the golden-regen command: run
-   `UPDATE_GOLDENS=true flutter test test/widgets/design_goldens_test.dart`
-   with **no other changes staged**, then `git status` — if no golden PNGs
-   under `test/widgets/goldens/ci/` changed, the command is a no-op and the
-   real mechanism needs finding (check the `alchemist` package source under
+5. Confirm the golden-regen command: run `flutter test
+   test/widgets/design_goldens_test.dart --update-goldens` with **no other
+   changes staged**, then `git status` — if no golden PNGs under
+   `test/widgets/goldens/ci/` changed, the command is a no-op and the real
+   mechanism needs finding (check the `alchemist` package source under
    `~/.pub-cache/hosted/pub.dev/alchemist-0.14.0/` for its actual env var/API
-   name). Once confirmed working, add a line to `docs/gotchas.md`.
+   name). **Confirmed:** the standard Flutter `--update-goldens` flag is the
+   real mechanism, not an `UPDATE_GOLDENS` env var — recorded in
+   `docs/gotchas.md`.
 6. `flutter analyze` — zero warnings.
 7. Commit: `git add lib/core/theme/app_colors.dart test/core/theme/app_colors_test.dart && git commit -m "feat: add accentText token for WCAG-safe accent-as-text"`.
 
@@ -572,13 +585,19 @@ Run once, after Tasks 0-6 land, not per-task, so the golden diff review
 happens against the full accumulated change rather than six separate noisy
 diffs:
 
-1. `UPDATE_GOLDENS=true flutter test test/widgets/design_goldens_test.dart`
+1. `flutter test test/widgets/design_goldens_test.dart --update-goldens`
    (Task 0 will have already confirmed this is the right command/flag).
 2. `git diff --stat test/widgets/goldens/ci/` — expect exactly: `filter_pill.png`,
    `theme_mode_picker.png`, `nav_pill_bar.png`, `indexing_dial.png`,
    `consent_switch.png`, `duration_badge.png`, `empty_state.png`,
    `limited_access_banner.png`, `people_strip.png` changed. Anything else
-   changing is a regression to investigate before committing.
+   changing is a regression to investigate before committing. **Known-good
+   exception found during the final whole-branch review:** `segmented_control.png`
+   is *also* a legitimate change here — there's a distinct `SegmentedControl`
+   golden scenario in `design_goldens_test.dart` (separate from
+   `ThemeModePicker`, which consumes the same widget but isn't the same
+   golden) that this original enumeration missed. Don't treat it as a
+   regression.
 3. Open each changed PNG and review manually, screen by screen — per Phase
    0's Definition of Done, don't blindly accept a wall of diffs.
 4. `tool/check.sh` — must pass clean (analyze + build_runner + all tests).
@@ -593,16 +612,24 @@ diffs:
 6. Commit the regenerated goldens: `git add test/widgets/goldens/ci/ && git commit -m "test: regenerate goldens for Phase 1 accent rollout"`.
 
 **Definition of Done for this phase:**
-- [ ] `tool/check.sh` passes.
-- [ ] Every regenerated golden diff reviewed manually (Task 7, step 3).
-- [ ] The golden-regen command confirmed and recorded in `docs/gotchas.md`
-      (Task 0, step 5) — closes the gap Phase 0 could not close.
-- [ ] On-device pass complete (Task 7, step 5).
-- [ ] `AppColors.accentText` and `AppColors.accent` both consumed in `lib/` —
+- [x] `tool/check.sh` passes.
+- [x] Every regenerated golden diff reviewed manually (Task 7, step 3) —
+      including the fix-wave regeneration triggered by darkening
+      `accentText.light` to `#D80000` (`filter_pill.png`,
+      `theme_mode_picker.png`, `segmented_control.png`, `consent_switch.png`;
+      byte-size deltas were all small, no dimension changes, consistent with
+      a colour-only repaint).
+- [x] The golden-regen command confirmed and recorded in `docs/gotchas.md`
+      (Task 0, step 5) — closes the gap Phase 0 could not close. Confirmed
+      mechanism: `flutter test test/widgets/design_goldens_test.dart
+      --update-goldens` (the standard Flutter flag, not an env var).
+- [ ] On-device pass complete (Task 7, step 5) — **not done**; requires a
+      physical device, out of scope for an in-worktree fix pass.
+- [x] `AppColors.accentText` and `AppColors.accent` both consumed in `lib/` —
       the Phase 0 "unused symbol" exception is now moot, nothing further to
       do (the exception lived in this plan doc, not as literal text in
       `AGENTS.md`).
-- [ ] This plan doc checked off through Phase 1, "Next step" line updated to
+- [x] This plan doc checked off through Phase 1, "Next step" line updated to
       point at Phase 2.
 
 ---
@@ -706,6 +733,16 @@ verification pass, not a rewrite:
       `albums/widgets/album_card.dart:74`,
       `memories/widgets/memory_card.dart:113`. See Phase 1 for the other 6
       (shared-widget) files in the same finding.
+- [ ] **Additional residual `FontWeight.w600` found during Phase 1's
+      whole-branch review:** `lib/core/theme/app_theme.dart`'s `_textTheme`
+      builds `titleMedium` as `s.body.copyWith(fontWeight: FontWeight.w600,
+      ...)` — a latent third weight baked into the `TextTheme` itself, not a
+      widget-level override like the ones above. No current consumer in
+      `lib/` reads `titleMedium` (checked during Phase 1's fix pass), so it
+      isn't visibly regressing anything today, but it should still collapse
+      to `w700` (or be reconsidered) so the two-weight system stays true if
+      something starts consuming it later. Not urgent; tracked here so it
+      isn't lost.
 
 ---
 
@@ -763,14 +800,17 @@ Per `AGENTS.md`:
 
 ## Next step
 
-Phase 0 is merged (commits `e624faa`..`42b5dbd`). Phase 1 is now fully
-planned — decision #1's WCAG contrast pre-condition is resolved (new
-`accentText` token, see decision #1's 2026-09-05 update and Phase 1 Task 0),
-decision #3 is reversed (`SegmentedControl` keeps its thumb), and all 8
-concrete tasks in the Phase 1 section above are ready to execute, each with
-exact file/line targets, real code, and its own tests/commit. **Approved
-2026-09-05 — executing now** via
-`superpowers:subagent-driven-development` in an isolated worktree
-(`worktree-swiss-ui-refactor-phase1`). Work through Tasks 0-7 in order (0 is
-a hard dependency for Tasks 1-2; the rest are independent of each other and
-of Task 0) — then start Phase 2 in a fresh session.
+Phase 1 is built and clean (commits `8f76b61`..`2e6eb99` on
+`worktree-swiss-ui-refactor-phase1`, Tasks 0-7, plus a final whole-branch
+review fix wave that: darkened `accentText.light` to `#D80000` so it clears
+WCAG AA text contrast against `FilterPill`'s real ground
+(`scaffoldBackgroundColor`, not `scheme.surface`); made `ConsentSwitch`'s
+active thumb theme-invariant white, matching `NavPillBar`'s knob-glyph
+precedent; rewrote the `accentText` contrast test to check real theme
+grounds instead of hardcoded hex; replaced hardcoded hex literals in
+`segmented_control_test.dart` with the resolved token; and fixed two stale
+comments). Decide how to land it, then start **Phase 2 — `ExifSheet`
+rebuild** in a fresh session. The on-device manual pass (Task 7, step 5)
+still has not happened — it needs a physical device — so do it before or
+alongside Phase 2's own device pass, not as a Phase 1 blocker held open
+indefinitely.
