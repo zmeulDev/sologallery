@@ -170,15 +170,17 @@ conversations/PRs, each starting from this doc.
       `scheme.surface` as Task 0's test assumed) — all fixed in one
       dedicated fix pass; see Phase 1's Definition of Done below for what
       that pass covered.)
-- [ ] **Phase 2 — `ExifSheet` rebuild** (Tasks 0-3 built and clean; Task 4
-      on-device pass skipped by user decision 2026-09-05, not a blocker)
-- [ ] **Phase 3 — Memories player third state** (separate session, has a
-      logic component; planning complete 2026-09-05, concrete tasks below,
-      not yet started)
-- [ ] **Phase 4 — Onboarding poster treatment** (built and reviewed clean
+- [x] **Phase 2 — `ExifSheet` rebuild** (Tasks 0-3 built and clean, commits
+      `716600c`..`2675cd1`; Task 4 on-device pass — both the automated
+      `detail_actions_test.dart` run and the manual no-EXIF/GPS checks —
+      completed 2026-09-05 on Android)
+- [x] **Phase 3 — Memories player third state** (Task 0 built and clean,
+      commit `f992cf0`; Task 1 on-device manual pass completed 2026-09-05
+      on Android)
+- [x] **Phase 4 — Onboarding poster treatment** (built and reviewed clean
       2026-09-05, branch `worktree-swiss-ui-refactor-phase4`, Tasks 0-3
-      executed via `superpowers:subagent-driven-development`; on-device pass
-      still outstanding, not a blocker — see Phase 4's Definition of Done)
+      executed via `superpowers:subagent-driven-development`; on-device
+      manual pass completed 2026-09-05 on Android)
 - [x] **Phase 5 — Remaining screens** (built and clean 2026-09-05, commits
       `7c803cd`..`82f98e8` — Saved heart badge recolored, 4+1 residual
       `FontWeight.w600` collapses, Library/Search/Albums/Settings verified
@@ -628,8 +630,20 @@ diffs:
       (Task 0, step 5) — closes the gap Phase 0 could not close. Confirmed
       mechanism: `flutter test test/widgets/design_goldens_test.dart
       --update-goldens` (the standard Flutter flag, not an env var).
-- [ ] On-device pass complete (Task 7, step 5) — **not done**; requires a
-      physical device, out of scope for an in-worktree fix pass.
+- [x] On-device pass complete (Task 7, step 5) — **done 2026-09-05**,
+      Samsung SM-S938B (Android 16, API 36, `RZGYB1E58CV`). Automated half:
+      `nav_shell_test.dart` (NavPillBar knob + IndexingDial, 5/5) and
+      `consent_flow_test.dart` (Settings `ConsentSwitch` toggle, 5/5) both
+      passed clean via `patrol test`. Visual half: the user confirmed by eye
+      on the installed debug build — NavPillBar knob solid red with a white
+      glyph across all 4 tabs, Search facet pill selected state shows a
+      transparent fill with red border + bold red text, Settings consent
+      switch track and theme-picker selected label both read red. Code-level
+      trace also confirms every widget wires `colors.accent`/
+      `colors.accentText` exactly per Tasks 1-5 above (`filter_pill.dart:37,50`,
+      `segmented_control.dart:97`, `consent_switch.dart:35`,
+      `nav_pill_bar.dart:91`, `indexing_dial.dart:90`) — nothing has changed
+      here since Phase 1 landed.
 - [x] `AppColors.accentText` and `AppColors.accent` both consumed in `lib/` —
       the Phase 0 "unused symbol" exception is now moot, nothing further to
       do (the exception lived in this plan doc, not as literal text in
@@ -1161,13 +1175,23 @@ automation permission is sorted) is the only path left for iOS; Android
 **Definition of Done for this phase:**
 - [x] `tool/check.sh` passes.
 - [x] Every golden diff reviewed manually (Task 3, step 6).
-- [ ] `integration_test/detail_actions_test.dart` passes on-device (Task 4,
-      step 1) — **not done**; confirmed structurally blocked on iOS via
-      `patrolTest`'s binding conflict (see note above), not a device-
-      availability issue. Not attempted on Android this session.
-- [ ] Manual no-EXIF and GPS device checks done (Task 4, steps 2-3) — **not
-      done**, blocked behind the same VM Service discovery issue on iOS.
-- [ ] This plan doc checked off through Phase 2, "Next step" line updated to
+- [x] `integration_test/detail_actions_test.dart` passes on-device (Task 4,
+      step 1) — **done 2026-09-05** on Android (Samsung SM-S938B,
+      `RZGYB1E58CV`, iOS's binding conflict doesn't apply here): 3/3 non-
+      skipped cases passed via `patrol test`, including "open a photo →
+      favorite, view EXIF, add to album" — the exact ExifSheet path (rebuilt
+      table + favourite mark). The 2 skips (`share`, `delete`) are pre-
+      existing (`skip: true` in the source, unrelated to this plan).
+- [x] Manual no-EXIF and GPS device checks done (Task 4, steps 2-3) —
+      **done 2026-09-05**. `no_exif.jpg`/`gps_exif.jpg` seeded into the
+      Android device's real library (`test_assets/README.md`'s documented
+      MediaStore procedure — `adb push` + `MEDIA_SCANNER_SCAN_FILE`, not a
+      screenshot). User confirmed by eye on the installed debug build: the
+      no-EXIF sheet renders the expected 3-row table with no overflow, the
+      GPS sheet's `Location` row wraps cleanly. iOS remains structurally
+      blocked per the note above; untried this session (no iOS device
+      requested).
+- [x] This plan doc checked off through Phase 2, "Next step" line updated to
       point at Phase 3.
 
 ---
@@ -1431,9 +1455,13 @@ to close it out.
 **Definition of Done for this phase:**
 - [x] `tool/check.sh` passes.
 - [x] Widget test (Task 0) passing, all 5 cases (commit `f992cf0`).
-- [ ] On-device manual pass done (Task 1) — **not done**, no device
-      connected this session; see the note above.
-- [ ] This plan doc checked off through Phase 3, "Next step" line updated to
+- [x] On-device manual pass done (Task 1) — **done 2026-09-05** on the
+      Samsung SM-S938B (installed debug build, no automated test covers this
+      player UI — `memories_test.dart` is service-level only). User confirmed
+      by eye: playing a memory with 3+ segments shows the current segment
+      reading red and visibly taller than played segments, matching the
+      three-state colour/height mapping (widget test, commit `f992cf0`).
+- [x] This plan doc checked off through Phase 3, "Next step" line updated to
       point at Phase 4.
 
 ---
@@ -1832,9 +1860,11 @@ rather than a routine "looks fine" glance.
 - [x] `docs/design-system.md`'s accent rule updated with the poster-ring
       carve-out — pulled forward here rather than deferred to Phase 6
       (commit `e7756f9`).
-- [ ] On-device manual pass (Task 3 step 4) — **not done**, no device
-      connected this session; not a blocker, same backlog item as Phases
-      1-3.
+- [x] On-device manual pass (Task 3 step 4) — **done 2026-09-05**. A debug
+      build was installed fresh on the Samsung SM-S938B (so onboarding, and
+      the `AccessRing` poster on it, showed on first launch). User confirmed
+      by eye: the ring reads correctly against the headline, no visual
+      regression from the ring-vs-headline judgment call flagged at Task 0.
 - [x] This plan doc checked off through Phase 4, "Next step" line updated to
       point at Phase 5.
 
@@ -2174,6 +2204,52 @@ Per `AGENTS.md`:
 ---
 
 ## Next step
+
+**Session 2026-09-05 (later): full on-device verification closed out on
+Android.** A Samsung SM-S938B (Android 16, API 36, `RZGYB1E58CV`) connected
+via `adb` — the first Android device available to any session of this plan.
+`tool/check.sh` re-run clean (879 tests) as a baseline, then four
+`patrolTest`-based integration files ran via `patrol test`, all passing with
+zero failures: `detail_actions_test.dart` (3/3, 2 pre-existing unrelated
+skips — the ExifSheet favourite/DETAILS path, Phase 2's named outstanding
+item), `nav_shell_test.dart` (5/5 — NavPillBar + IndexingDial, Phase 1),
+`consent_flow_test.dart` (5/5 — onboarding `AccessStep`/Phase 4 and Settings
+`ConsentSwitch`/Phase 1), `saved_albums_test.dart` (2/2 — Phase 5's heart
+badge, regression check). A code-level spot check confirmed `filter_pill.dart`,
+`segmented_control.dart`, `consent_switch.dart`, `nav_pill_bar.dart`, and
+`indexing_dial.dart` still wire `colors.accent`/`colors.accentText` exactly
+as Phase 1 documented — nothing had drifted since the prior session's full
+code audit (commit `0440cc2`).
+
+The remaining gap after the automated run was the *colour/motion* judgment
+`patrol`'s finders structurally cannot make (widget presence/state, not
+rendered pixels) — and this session did not use screenshots for it, per the
+project's standing rule that screenshots can pollute the real photo library
+through MediaStore. Instead: `no_exif.jpg`/`gps_exif.jpg` were seeded into
+the device's real library per `test_assets/README.md`'s documented procedure,
+a debug APK was built and installed fresh (`flutter build apk --debug` +
+`adb install`, landing on a clean onboarding run), and the user walked the
+full manual checklist on-device — NavPillBar knob/glyph, Search FilterPill
+selected state, Settings ConsentSwitch + theme-picker label, the two seeded
+ExifSheet fixtures, a 3+-segment Memories playback, and the onboarding
+`AccessRing` poster — confirming all of it **ok**. Every phase's on-device
+Definition-of-Done line (Phases 1-4; Phase 5's heart badge covered by
+`saved_albums_test.dart`) is now checked off above.
+
+**iOS status unchanged:** still structurally blocked for `patrolTest` files
+(binding conflict, see `docs/gotchas.md`) — untried this session, not
+expected to matter now that Android covers every `patrolTest` file this plan
+depends on, but not formally closed either.
+
+**What's actually left:** Phase 6 — Docs (fold the grid-bleed rule,
+`accent`/`accentText`, and the two-weight rule into `docs/design-system.md`;
+task list under "Phase 6 — Docs" above, none of it started yet) — and the
+still-open question of how to land Phases 1-5 (they've shipped as direct
+commits to `main` across separate sessions, unlike Phase 0's worktree/PR;
+decide whether that's fine as-is or whether this plan doc should be archived
+now that every phase but docs is built, reviewed, and verified on-device).
+
+---
 
 Phase 1 is built and clean (commits `8f76b61`..`2e6eb99` on
 `worktree-swiss-ui-refactor-phase1`, Tasks 0-7, plus a final whole-branch
