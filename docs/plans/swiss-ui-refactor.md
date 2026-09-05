@@ -170,7 +170,8 @@ conversations/PRs, each starting from this doc.
       `scheme.surface` as Task 0's test assumed) — all fixed in one
       dedicated fix pass; see Phase 1's Definition of Done below for what
       that pass covered.)
-- [ ] **Phase 2 — `ExifSheet` rebuild** (separate session)
+- [ ] **Phase 2 — `ExifSheet` rebuild** (separate session, planning complete
+      — see Phase 2 below, Tasks 0-4, awaiting go-ahead to execute)
 - [ ] **Phase 3 — Memories player third state** (separate session, has a
       logic component)
 - [ ] **Phase 4 — Onboarding poster treatment** (separate session, highest
@@ -636,27 +637,442 @@ diffs:
 
 ## Phase 2 — `ExifSheet` rebuild
 
+**Status:** planning complete, concrete tasks below, not yet started.
+**Files:** `lib/features/detail/widgets/exif_sheet.dart` (111 lines, full file
+read during planning) · `test/features/detail/widgets/exif_sheet_test.dart`
+(existing behavioural test, extended, not replaced) ·
+`test/features/detail/detail_goldens_test.dart` (existing golden, extended).
+Per `AGENTS.md`, run `tool/check.sh` after every task.
+
+**Favourite-mark feasibility, resolved during planning:** trivially
+available — `ExifSheet` is already a `ConsumerWidget` and already imports
+`../detail_providers.dart` (for `assetDetailProvider`), which also declares
+`isFavoriteProvider` (`StreamProvider.autoDispose.family<bool, String>`,
+`detail_providers.dart:62`). No new prop needed: `ExifSheet.build` can watch
+`isFavoriteProvider(assetId)` directly, the same provider
+`PhotoDetailScreen`'s bottom-chrome `Consumer` already watches
+(`detail_screen.dart:179-180`). **This phase is not dropping the favourite
+mark.**
+
+**Test-scaffolding gotcha found during planning:** neither
+`exif_sheet_test.dart` nor `detail_goldens_test.dart` currently overrides
+`databaseProvider`. Today that's fine — `ExifSheet` never touches the
+database. The moment it watches `isFavoriteProvider`, it transitively reads
+`favoritesDaoProvider` → `databaseProvider`, whose default
+(`database_provider.dart:16-20`) opens a **real** `driftDatabase(name:
+'sologallery')` (`app_database.dart:190-192`, `drift_flutter`,
+platform-channel file paths) — not safe to touch unmocked in a host
+`flutter_test`. `test/features/detail/detail_screen_test.dart` already solved
+this exact problem for the same provider chain: it overrides
+`databaseProvider.overrideWithValue(AppDatabase(NativeDatabase.memory()))` in
+`setUp`/`tearDown` (lines 23-26, 41). Task 1 below copies that pattern into
+both test files **before** the favourite mark lands in production code, so
+the scaffolding change and the feature change aren't in the same diff.
+
+**Layout decisions this plan is making:**
+- **Row shape:** one `Row` per field — `SizedBox(width: _labelColumnWidth)`
+  (label, `exifKey` role, `colors.textMuted`, unchanged from today) then
+  `AppSpace.s16` gap then `Expanded` (value, `exifValue` role,
+  `scheme.onSurface`, unchanged from today), `crossAxisAlignment:
+  CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic`. This
+  swaps the chip's current *stacked* key-over-value for a *side-by-side*
+  key-then-value — that's what "two-column table" means here, not just a
+  narrower `Wrap`.
+- **`_labelColumnWidth`:** no existing precedent for a fixed label-column
+  width anywhere in `lib/`, so this is a new widget-local constant, not an
+  `AppSpace` token (same category as `app_sheet.dart`'s raw `36`/`18`/`10`
+  grab-handle literals — a component dimension, not a spacing-rhythm value).
+  Start at `88.0` (comfortably fits `exifKey`'s 9sp/uppercase/0.72-tracking
+  style for the longest real label, `DIMENSIONS`/`RESOLUTION`) and tune from
+  the Task 3 golden review if anything clips.
+- **Row dividers:** `Divider(height: 1, color: colors.border)` between rows
+  only (`if (i > 0)`), matching the existing convention in `app_card.dart:50`
+  and `add_to_album_sheet.dart:76` — none above the first row, none below the
+  last.
+- **Long-value handling:** wrap, don't truncate. A fixed-width table can't
+  reflow horizontally like the old `Wrap` did, but nothing in `PRD.md`
+  licenses silently dropping EXIF data — so the value `Text` gets no
+  `maxLines`/`overflow: ellipsis`, and the row's height is allowed to grow.
+  Task 2/3 verify this doesn't produce a `RenderFlex` overflow, not that it
+  fits on one line.
+- **Favourite mark:** shown only when `isFavoriteProvider(assetId)` resolves
+  true (mirrors `IndexingDial`'s "only exists while active" pattern from
+  Phase 1) — a `Row` of a 16px `Icons.favorite_rounded` in `colors.accent`
+  plus a `Text('Favorited', style: styles.caption.copyWith(color:
+  colors.textSecondary))`, placed above the table with an `AppSpace.s16` gap
+  below it. **Spelling:** "Favorited" (US), matching
+  `DetailActionBar`'s existing label exactly (`detail_action_bar.dart:57`),
+  not the session brief's British "Favourited" — this codebase is
+  consistently US-spelled. **Colour placement:** only the heart glyph gets
+  `colors.accent` — the label text stays `colors.textSecondary` (no
+  `accentText` needed, since text colour isn't the state cue here; filled-vs-
+  outline shape is, per the Accent-usage table's own row for this widget).
+  This also sidesteps a fourth `accentText`-contrast case entirely.
+
+---
+
+### Task 0 — `_ExifTable`/`_ExifRow` layout rebuild
+
+**File:** `lib/features/detail/widgets/exif_sheet.dart`. Replace
+`_Chips`/`_ExifChip` (lines 54-110) with `_ExifTable`/`_ExifRow` per the
+layout decisions above. Same field list/order/conditionals as today's
+`_Chips.build` (lines 60-78) — this task changes layout only, not which
+fields render or their formatted values.
+
+```dart
+class _ExifTable extends StatelessWidget {
+  const _ExifTable({required this.detail});
+  final AssetDetail detail;
+
+  static const _labelColumnWidth = 88.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <(String, String)>[
+      ('Taken', formatTakenDate(detail.createdAt)),
+      ('Dimensions', formatDimensions(detail.width, detail.height)),
+      ('Resolution', formatMegapixels(detail.width, detail.height)),
+      if (formatDuration(detail.videoDuration) case final v?) ('Duration', v),
+      if (formatFileSize(detail.sizeBytes) case final v?) ('Size', v),
+      if (formatType(detail.mimeType) case final v?) ('Type', v),
+      if (formatCoordinates(detail.latitude, detail.longitude) case final v?)
+        ('Location', v),
+    ];
+    final colors = Theme.of(context).extension<AppColors>()!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < rows.length; i++) ...[
+          if (i > 0) Divider(height: 1, color: colors.border),
+          _ExifRow(label: rows[i].$1, value: rows[i].$2),
+        ],
+      ],
+    );
+  }
+}
+
+class _ExifRow extends StatelessWidget {
+  const _ExifRow({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final colors = Theme.of(context).extension<AppColors>()!;
+    final text = Theme.of(context).extension<AppTextStyles>()!;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpace.s12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          SizedBox(
+            width: _ExifTable._labelColumnWidth,
+            child: Text(
+              label.toUpperCase(),
+              style: text.exifKey.copyWith(color: colors.textMuted),
+            ),
+          ),
+          const SizedBox(width: AppSpace.s16),
+          Expanded(
+            child: Text(
+              value,
+              style: text.exifValue.copyWith(color: scheme.onSurface),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+```
+
+Update `ExifSheet.build`'s data branch (lines 38-48) to build `_ExifTable`
+instead of `_Chips` (identical call shape, just the type name changes) and
+the class doc comment (lines 20-22, currently "design-system EXIF chips
+(uppercase key over a heavier value)") to describe the table instead of the
+chip cloud.
+
+**Steps:**
+1. Run `flutter test test/features/detail/widgets/exif_sheet_test.dart
+   test/features/detail/detail_goldens_test.dart` first — confirm both pass
+   on the current `Wrap`-based code (baseline before touching anything).
+2. Make the change above.
+3. Run the same two test files again — expect the behavioural test
+   (`exif_sheet_test.dart`) to **still pass unchanged** (it asserts on
+   rendered text content, not layout, and the field list/values didn't
+   change). Expect the golden (`detail_goldens_test.dart`) to still *run*
+   (it doesn't auto-fail on a visual diff unless goldens are already
+   committed and mismatched — regeneration is Task 3).
+4. `flutter analyze` — zero warnings, confirms no unused `_Chips`/`_ExifChip`
+   left behind.
+5. Commit: `git add lib/features/detail/widgets/exif_sheet.dart && git commit -m "feat: rebuild ExifSheet as a two-column table"`.
+
+---
+
+### Task 1 — Test scaffolding: in-memory `databaseProvider` override
+
+Land the scaffolding fix from the gotcha above **before** Task 2's feature
+change, so a reviewer can see "test setup" and "feature" as separate diffs.
+
+**Files:**
+- Modify: `test/features/detail/widgets/exif_sheet_test.dart` — add the same
+  `setUp`/`tearDown`/override triple `detail_screen_test.dart` already uses
+  (`detail_screen_test.dart:23-26,41`):
+  ```dart
+  import 'package:drift/native.dart';
+  import 'package:sologallery/core/database/app_database.dart';
+  import 'package:sologallery/core/database/database_provider.dart';
+  // ...
+  late AppDatabase db;
+  setUp(() => db = AppDatabase(NativeDatabase.memory()));
+  tearDown(() async => db.close());
+  ```
+  and add `databaseProvider.overrideWithValue(db)` to `pumpSheet`'s
+  `ProviderScope.overrides` (alongside the existing
+  `assetDetailProvider('x').overrideWith(...)`).
+- Modify: `test/features/detail/detail_goldens_test.dart` — same triple, plus
+  `databaseProvider.overrideWithValue(db)` added to the existing `'ExifSheet
+  — populated metadata'` goldenTest's `ProviderScope.overrides` (line 65-76).
+  Note `goldenTest` scenarios aren't per-test `setUp`/`tearDown` scoped the
+  way `testWidgets` are — build `db` once at the top of `main()` (a single
+  in-memory database shared across this file's golden scenarios is fine,
+  since none of them mutate favourites yet).
+
+**Steps:**
+1. Make the changes above with **no production-code change** — `ExifSheet`
+   still doesn't watch `isFavoriteProvider`, so this override is inert today,
+   just present for Task 2 to build on.
+2. Run `flutter test test/features/detail/widgets/exif_sheet_test.dart
+   test/features/detail/detail_goldens_test.dart` — expect PASS, identical
+   output to Task 0's step 3 (the override changes nothing observable yet).
+3. Commit: `git add test/features/detail/widgets/exif_sheet_test.dart test/features/detail/detail_goldens_test.dart && git commit -m "test: scaffold in-memory database for ExifSheet tests"`.
+
+---
+
+### Task 2 — Favourite-state mark
+
 **File:** `lib/features/detail/widgets/exif_sheet.dart`.
 
-Replace the `Wrap(spacing: 28, runSpacing: 18)` of `_ExifChip`s
-(`exif_sheet.dart:60-80`) with a flush-left two-column table: one row per
-field, label column fixed-width, value column flexible, hairline row
-dividers (`colors.border`), baseline-aligned. `exifKey`/`exifValue` roles
-already exist and already carry the right weights post-Phase-0 — this phase
-is layout only, not new tokens.
+**Steps (TDD — failing test first):**
+1. Add to `exif_sheet_test.dart`:
+   ```dart
+   testWidgets('favorited asset shows the Favorited mark', (tester) async {
+     await db.favoritesDao.add('x');
+     await pumpSheet(tester, fullRecord());
 
-Also add the favourite-state mark from the spike (a small `♥ Favourited`
-indicator using `colors.accent`) **only if** `PhotoDetailScreen` already
-tracks favourite state at the point `ExifSheet` is built — check before
-adding a new prop; don't thread new state through for a cosmetic add. If it's
-not trivially available, drop this part of the phase and note it as a
-follow-up rather than blocking the layout rebuild on it.
+     expect(find.text('Favorited'), findsOneWidget);
+     expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
+   });
 
-**Tests:** `test/features/detail/detail_goldens_test.dart` — this is a
-layout change, so add explicit cases for: no-EXIF asset (existing empty-state
-requirement in `PRD.md` §3.3), a full field set, and a long location string
-(the old `Wrap` could reflow around long strings; a fixed-width table needs
-to be checked for truncation/overflow handling).
+   testWidgets('unfavorited asset shows no mark', (tester) async {
+     await pumpSheet(tester, fullRecord());
+
+     expect(find.text('Favorited'), findsNothing);
+     expect(find.byIcon(Icons.favorite_rounded), findsNothing);
+   });
+   ```
+2. Run: `flutter test test/features/detail/widgets/exif_sheet_test.dart -n
+   "Favorited"` — expect FAIL (no such text/icon rendered yet).
+3. Implement in `exif_sheet.dart`:
+   ```dart
+   // In ExifSheet.build, alongside the existing `final detail = ...`:
+   // Synchronously-composed flag — see AGENTS.md's Riverpod conventions.
+   final isFavorite = ref.watch(isFavoriteProvider(assetId)).value ?? false;
+   ```
+   and in the data branch, wrap `_ExifTable` with the mark:
+   ```dart
+   data: (d) => d == null
+       ? const AppSheetNote('Details aren\'t available for this photo.')
+       : Padding(
+           padding: const EdgeInsets.fromLTRB(
+             AppSpace.s20, AppSpace.s8, AppSpace.s20, AppSpace.s24,
+           ),
+           child: Column(
+             crossAxisAlignment: CrossAxisAlignment.start,
+             mainAxisSize: MainAxisSize.min,
+             children: [
+               if (isFavorite) ...[
+                 const _FavoriteMark(),
+                 const SizedBox(height: AppSpace.s16),
+               ],
+               _ExifTable(detail: d),
+             ],
+           ),
+         ),
+   ```
+   ```dart
+   class _FavoriteMark extends StatelessWidget {
+     const _FavoriteMark();
+
+     @override
+     Widget build(BuildContext context) {
+       final colors = Theme.of(context).extension<AppColors>()!;
+       final styles = Theme.of(context).extension<AppTextStyles>()!;
+       return Row(
+         mainAxisSize: MainAxisSize.min,
+         children: [
+           Icon(Icons.favorite_rounded, color: colors.accent, size: 16),
+           const SizedBox(width: AppSpace.s8),
+           Text(
+             'Favorited',
+             style: styles.caption.copyWith(color: colors.textSecondary),
+           ),
+         ],
+       );
+     }
+   }
+   ```
+4. Run the same test again — expect PASS, both cases.
+5. Run the full file: `flutter test test/features/detail/widgets/exif_sheet_test.dart` — expect all pass, including the pre-existing three tests (they never favorite the asset, so they exercise the "no mark" path implicitly).
+6. `flutter analyze` — zero warnings.
+7. Commit: `git add lib/features/detail/widgets/exif_sheet.dart test/features/detail/widgets/exif_sheet_test.dart && git commit -m "feat: show a Favorited mark in ExifSheet when the photo is favorited"`.
+
+---
+
+### Task 3 — Golden + overflow-safety test coverage
+
+**Files:**
+- Modify: `test/features/detail/detail_goldens_test.dart` — add two new
+  `goldenTest` blocks (existing `'ExifSheet — populated metadata'` already
+  covers the full-field-set case with GPS, so it stands as-is beyond Task 1's
+  override addition).
+- Modify: `test/features/detail/widgets/exif_sheet_test.dart` — add the
+  overflow-safety assertion (a golden PNG alone can't assert "no
+  `RenderFlex` overflow exception was thrown").
+
+**Steps:**
+1. Add the no-EXIF golden (mirrors `exif_sheet_test.dart`'s `emptyRecord()`
+   shape — PRD.md §3.3 "assets with no EXIF render correctly"):
+   ```dart
+   goldenTest(
+     'ExifSheet — no EXIF data',
+     fileName: 'exif_sheet_no_exif',
+     builder: () => themedGroup(
+       (_) => ProviderScope(
+         overrides: [
+           databaseProvider.overrideWithValue(db),
+           assetDetailProvider('x').overrideWith((ref) => AssetDetail(
+                 id: 'x',
+                 width: 800,
+                 height: 600,
+                 createdAt: DateTime(2026, 3, 1, 9, 5),
+                 orientationDegrees: 0,
+                 isVideo: false,
+               )),
+         ],
+         child: const ExifSheet(assetId: 'x'),
+       ),
+     ),
+   );
+   ```
+2. Add the long-location golden. `formatCoordinates` always formats to four
+   decimal places (`asset_detail_display.dart:59-61`), so realistic GPS
+   values can't produce a long string — feed a deliberately out-of-range
+   pair purely to stress the fixed-width value column, same technique the
+   "long location string" requirement calls for (checking the table's
+   robustness to length, not simulating real device data):
+   ```dart
+   goldenTest(
+     'ExifSheet — long location value',
+     fileName: 'exif_sheet_long_location',
+     builder: () => themedGroup(
+       (_) => ProviderScope(
+         overrides: [
+           databaseProvider.overrideWithValue(db),
+           assetDetailProvider('x').overrideWith((ref) => AssetDetail(
+                 id: 'x',
+                 width: 6048,
+                 height: 8064,
+                 createdAt: DateTime(2026, 7, 12, 14, 33),
+                 orientationDegrees: 0,
+                 isVideo: false,
+                 // Deliberately out-of-range magnitude — stresses the fixed
+                 // value column's wrap behaviour; not a real coordinate.
+                 latitude: 123456789.1234,
+                 longitude: -987654321.5678,
+               )),
+         ],
+         child: const ExifSheet(assetId: 'x'),
+       ),
+     ),
+   );
+   ```
+3. In `exif_sheet_test.dart`, add the overflow-safety test using the same
+   out-of-range values:
+   ```dart
+   testWidgets('a very long location value wraps without overflowing', (
+     tester,
+   ) async {
+     await pumpSheet(
+       tester,
+       AssetDetail(
+         id: 'x',
+         width: 100,
+         height: 100,
+         createdAt: DateTime(2026, 1, 1),
+         orientationDegrees: 0,
+         isVideo: false,
+         latitude: 123456789.1234,
+         longitude: -987654321.5678,
+       ),
+     );
+
+     expect(tester.takeException(), isNull);
+   });
+   ```
+4. Confirm the golden-regen command (Phase 1 Task 0 already locked this in):
+   `flutter test test/features/detail/detail_goldens_test.dart
+   --update-goldens`.
+5. `git diff --stat test/features/detail/goldens/ci/` — expect
+   `exif_sheet.png` changed (new table layout) and two new files,
+   `exif_sheet_no_exif.png` and `exif_sheet_long_location.png`. Anything else
+   changing is a regression to investigate.
+6. Open all three PNGs (light + dark each) and review manually — check the
+   label column doesn't clip `DIMENSIONS`/`RESOLUTION`, the long-location
+   scenario wraps legibly without a visual overflow indicator, and dividers
+   sit flush between rows.
+7. Run `flutter test test/features/detail/widgets/exif_sheet_test.dart
+   test/features/detail/detail_goldens_test.dart` — expect all pass.
+8. `tool/check.sh` — must pass clean.
+9. Commit: `git add test/features/detail/widgets/exif_sheet_test.dart test/features/detail/detail_goldens_test.dart test/features/detail/goldens/ci/ && git commit -m "test: add ExifSheet golden and overflow coverage for the table rebuild"`.
+
+---
+
+### Task 4 — On-device verification
+
+Per `AGENTS.md`'s Definition of Done (integration pass + manual end-to-end).
+`integration_test/detail_actions_test.dart`'s first test already exercises
+this exact path — favorite the photo, then open EXIF — so no new
+integration test file is needed; Phase 2 rides the existing one instead of
+duplicating it.
+
+1. `PATH="$HOME/Library/Android/sdk/platform-tools:$PATH"
+   ~/.pub-cache/bin/patrol test -t
+   integration_test/detail_actions_test.dart -d 46121FDAS008AA` — confirm
+   `'open a photo → favorite, view EXIF, add to album'` still passes (the
+   sheet still opens, `'DETAILS'` still renders, and — since the photo was
+   just favorited two lines above — this exercises the new `Favorited` mark
+   on a real device for free).
+2. On the connected device, open a photo known to have no EXIF (seed
+   `test_assets/no_exif.jpg` if not already on the device — same fixture
+   `exif_sheet_test.dart`'s docstring already references) and confirm the
+   sheet renders the always-present fields only, no blank rows, no crash.
+3. Open a photo known to have GPS (`test_assets/gps_exif.jpg`) and confirm
+   the Location row renders and doesn't clip.
+4. Note in this doc whether the label column width (`88.0`) needed
+   adjustment from what device rendering showed, distinct from the desktop
+   golden review.
+
+**Definition of Done for this phase:**
+- [ ] `tool/check.sh` passes.
+- [ ] Every golden diff reviewed manually (Task 3, step 6).
+- [ ] `integration_test/detail_actions_test.dart` passes on-device (Task 4,
+      step 1).
+- [ ] Manual no-EXIF and GPS device checks done (Task 4, steps 2-3).
+- [ ] This plan doc checked off through Phase 2, "Next step" line updated to
+      point at Phase 3.
 
 ---
 
@@ -809,8 +1225,14 @@ active thumb theme-invariant white, matching `NavPillBar`'s knob-glyph
 precedent; rewrote the `accentText` contrast test to check real theme
 grounds instead of hardcoded hex; replaced hardcoded hex literals in
 `segmented_control_test.dart` with the resolved token; and fixed two stale
-comments). Decide how to land it, then start **Phase 2 — `ExifSheet`
-rebuild** in a fresh session. The on-device manual pass (Task 7, step 5)
+comments). Decide how to land it. The on-device manual pass (Task 7, step 5)
 still has not happened — it needs a physical device — so do it before or
 alongside Phase 2's own device pass, not as a Phase 1 blocker held open
 indefinitely.
+
+**Phase 2 — `ExifSheet` rebuild** planning is now complete (Tasks 0-4 above:
+layout rebuild, test-scaffolding fix for the new `databaseProvider`
+dependency, favourite mark, golden/overflow coverage, on-device pass) and
+waiting for go-ahead to execute, per `AGENTS.md`'s "plan first, then wait"
+workflow. Once approved, execute task-by-task and keep this doc's checkboxes
+current as each lands.
