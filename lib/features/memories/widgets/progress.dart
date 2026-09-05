@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_space.dart';
 
-/// The story's spine: one segment per page, filled up to the current one. The
-/// same motif the memory card previews.
+/// The story's spine: one segment per page — played, current, or upcoming.
+/// The same motif the memory card previews.
 class Progress extends StatelessWidget {
   const Progress({
     super.key,
@@ -19,6 +19,7 @@ class Progress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<AppColors>()!;
     return Positioned(
       top: MediaQuery.of(context).padding.top + 10,
       left: AppSpace.s16,
@@ -34,12 +35,14 @@ class Progress extends StatelessWidget {
               Expanded(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: i <= index
+                    color: i < index
                         ? AppOverMedia.glyph
-                        : AppOverMedia.segmentOff,
+                        : i == index
+                            ? colors.accent
+                            : AppOverMedia.segmentOff,
                     borderRadius: const BorderRadius.all(Radius.circular(1)),
                   ),
-                  child: const SizedBox(height: 2),
+                  child: SizedBox(height: i == index ? 3 : 2),
                 ),
               ),
             ],

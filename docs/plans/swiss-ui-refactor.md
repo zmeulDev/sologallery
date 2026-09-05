@@ -173,7 +173,8 @@ conversations/PRs, each starting from this doc.
 - [ ] **Phase 2 — `ExifSheet` rebuild** (Tasks 0-3 built and clean; Task 4
       on-device pass skipped by user decision 2026-09-05, not a blocker)
 - [ ] **Phase 3 — Memories player third state** (separate session, has a
-      logic component)
+      logic component; planning complete 2026-09-05, concrete tasks below,
+      not yet started)
 - [ ] **Phase 4 — Onboarding poster treatment** (separate session, highest
       subjectivity — consider a preview/checkpoint before wiring in)
 - [ ] **Phase 5 — Remaining screens** (Albums, Saved, Settings, Search,
@@ -1132,24 +1133,256 @@ same status as Phase 1's still-pending manual pass.
 
 ## Phase 3 — Memories player third state
 
-**File:** `lib/features/memories/widgets/progress.dart`.
+**Status:** planning complete, concrete tasks below, not yet started.
+**File:** `lib/features/memories/widgets/progress.dart` (51 lines, full file
+read during planning) · `test/features/memories/widgets/progress_test.dart`
+(new — no existing test for this widget; confirmed via `find
+test/features/memories -iname '*progress*'` returning nothing). Per
+`AGENTS.md`, run `tool/check.sh` after the task.
 
-Today: `i <= index` → `AppOverMedia.glyph` (opaque white), else
-`AppOverMedia.segmentOff`. Change to three states: `i < index` (played) stays
-`AppOverMedia.glyph`; `i == index` (current) → `colors.accent`, height bumped
-from 2 to 3 (the non-colour cue from the accent-usage table); `i > index`
-(upcoming) stays `segmentOff`. Note `AppOverMedia` is deliberately
-theme-invariant consts (media is always the background, not the chrome), but
-`colors.accent` is a `ThemeExtension` value — this widget will need access to
-`Theme.of(context).extension<AppColors>()!` if it doesn't already, since it's
-mixing a theme-variant token into an otherwise theme-invariant file. Note
-this explicitly in the diff/PR description since it's a small architectural
-wrinkle worth a reviewer's eyes.
+**Architectural wrinkle — call this out in the diff/PR description, not just
+here:** `AppOverMedia` (`lib/core/theme/app_colors.dart:14-47`) is
+deliberately a `const`, theme-invariant class — its doc comment says so
+explicitly ("media is the background, not the chrome... the values never
+flip with brightness"). `colors.accent`, by contrast, is a `ThemeExtension`
+value read via `Theme.of(context).extension<AppColors>()!` (same accessor
+`IndexingDial` and `NavPillBar` already use for their Phase-1 accent
+consumption). `progress.dart` today never touches `Theme.of(context)` at
+all — it only reaches for the const `AppOverMedia` fields — so this task
+is the first time this file mixes a theme-variant token into an otherwise
+theme-invariant widget. Not a problem to solve, just a precedent worth a
+reviewer's eyes: the "media supplies the color" rule still holds (the accent
+segment is still small, still state-only, still on the theme-invariant
+media background), it's just sourced from a different token family than its
+neighbours in the same `Row`.
 
-**Tests:** widget test asserting the three-state colour/height mapping
-directly (a golden alone won't distinguish "red because state" from "red
-because I fat-fingered a hex"). Manual on-device pass playing a memory to
-confirm the segment reads correctly in motion, not just as a static frame.
+**Change** (`build`, currently lines 30-47):
+```dart
+final colors = Theme.of(context).extension<AppColors>()!;
+return Positioned(
+  top: MediaQuery.of(context).padding.top + 10,
+  left: AppSpace.s16,
+  right: AppSpace.s16,
+  child: Opacity(
+    opacity: paused ? 0.35 : 1,
+    child: Row(
+      children: [
+        for (var i = 0; i < pages; i++) ...[
+          if (i > 0) const SizedBox(width: 3),
+          Expanded(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: i < index
+                    ? AppOverMedia.glyph
+                    : i == index
+                        ? colors.accent
+                        : AppOverMedia.segmentOff,
+                borderRadius: const BorderRadius.all(Radius.circular(1)),
+              ),
+              child: SizedBox(height: i == index ? 3 : 2),
+            ),
+          ),
+        ],
+      ],
+    ),
+  ),
+);
+```
+Three states, replacing today's binary `i <= index`: `i < index` (already
+played) keeps `AppOverMedia.glyph`; `i == index` (currently playing) becomes
+`colors.accent` **and** grows from height 2 to height 3 — the non-colour cue
+the accent-usage table (this doc, "Accent usage" section) already commits
+to for this row: *"also slightly taller than a played segment."* `i >
+index` (not yet reached) is unchanged, `AppOverMedia.segmentOff`. No import
+changes needed — `app_colors.dart` is already imported for `AppOverMedia`
+and declares `AppColors` in the same file.
+
+Update the class doc comment (lines 6-7, currently "one segment per page,
+filled up to the current one") — that description is the binary behaviour
+being replaced; reword to describe the three states (played / current /
+upcoming) so the comment doesn't contradict the code the moment this lands.
+
+---
+
+### Task 0 — Three-state segment mapping
+
+**Files:**
+- Modify: `lib/features/memories/widgets/progress.dart`.
+- Test: `test/features/memories/widgets/progress_test.dart` (create).
+
+**Steps (TDD — failing test first):**
+1. Write the test file. A golden can't distinguish "accent because this is
+   the current segment" from "accent because of a typo'd hex" — same
+   rationale Phase 1/2 already used for every colour-mapping test — so this
+   asserts the resolved `BoxDecoration.color` and `SizedBox.height` directly,
+   scoped to `Progress` so an unrelated `DecoratedBox`/`SizedBox` elsewhere in
+   the tree (e.g. from `MaterialApp`/`Scaffold` chrome) can't be mistaken for
+   a segment:
+
+   ```dart
+   import 'package:flutter/material.dart';
+   import 'package:flutter_test/flutter_test.dart';
+   import 'package:sologallery/core/theme/app_colors.dart';
+   import 'package:sologallery/core/theme/app_theme.dart';
+   import 'package:sologallery/features/memories/widgets/progress.dart';
+
+   void main() {
+     Future<void> pump(
+       WidgetTester tester, {
+       required int pages,
+       required int index,
+       bool paused = false,
+       ThemeData? theme,
+     }) async {
+       await tester.pumpWidget(
+         MaterialApp(
+           theme: theme ?? AppTheme.light,
+           home: Scaffold(
+             body: Stack(
+               children: [
+                 Progress(pages: pages, index: index, paused: paused),
+               ],
+             ),
+           ),
+         ),
+       );
+     }
+
+     /// The `pages` segment boxes, in on-screen left-to-right order.
+     List<DecoratedBox> segments(WidgetTester tester) => tester
+         .widgetList<DecoratedBox>(
+           find.descendant(
+             of: find.byType(Progress),
+             matching: find.byType(DecoratedBox),
+           ),
+         )
+         .toList();
+
+     Color colorOf(DecoratedBox box) => (box.decoration as BoxDecoration).color!;
+     double heightOf(DecoratedBox box) => (box.child! as SizedBox).height!;
+
+     testWidgets('played, current and upcoming segments map to three states',
+         (tester) async {
+       await pump(tester, pages: 4, index: 2);
+
+       final colors = Theme.of(tester.element(find.byType(Progress)))
+           .extension<AppColors>()!;
+       final boxes = segments(tester);
+       expect(boxes, hasLength(4));
+
+       // i = 0, 1: played.
+       expect(colorOf(boxes[0]), AppOverMedia.glyph);
+       expect(heightOf(boxes[0]), 2);
+       expect(colorOf(boxes[1]), AppOverMedia.glyph);
+       expect(heightOf(boxes[1]), 2);
+
+       // i = 2: current — accent colour, taller.
+       expect(colorOf(boxes[2]), colors.accent);
+       expect(heightOf(boxes[2]), 3);
+
+       // i = 3: upcoming.
+       expect(colorOf(boxes[3]), AppOverMedia.segmentOff);
+       expect(heightOf(boxes[3]), 2);
+     });
+
+     testWidgets('the first page is current with no played segments yet',
+         (tester) async {
+       await pump(tester, pages: 3, index: 0);
+
+       final colors = Theme.of(tester.element(find.byType(Progress)))
+           .extension<AppColors>()!;
+       final boxes = segments(tester);
+
+       expect(colorOf(boxes[0]), colors.accent);
+       expect(colorOf(boxes[1]), AppOverMedia.segmentOff);
+       expect(colorOf(boxes[2]), AppOverMedia.segmentOff);
+     });
+
+     testWidgets('the last page is current with no upcoming segments left',
+         (tester) async {
+       await pump(tester, pages: 3, index: 2);
+
+       final colors = Theme.of(tester.element(find.byType(Progress)))
+           .extension<AppColors>()!;
+       final boxes = segments(tester);
+
+       expect(colorOf(boxes[0]), AppOverMedia.glyph);
+       expect(colorOf(boxes[1]), AppOverMedia.glyph);
+       expect(colorOf(boxes[2]), colors.accent);
+     });
+
+     testWidgets('the mapping is unaffected by the paused dim',
+         (tester) async {
+       // paused only changes the whole bar's Opacity — it must not change
+       // which segment is "current" or its colour/height.
+       await pump(tester, pages: 3, index: 1, paused: true);
+
+       final colors = Theme.of(tester.element(find.byType(Progress)))
+           .extension<AppColors>()!;
+
+       expect(colorOf(segments(tester)[1]), colors.accent);
+       expect(tester.widget<Opacity>(find.byType(Opacity)).opacity, 0.35);
+     });
+
+     testWidgets('reads in dark theme too', (tester) async {
+       await pump(tester, pages: 3, index: 1, theme: AppTheme.dark);
+
+       final colors = Theme.of(tester.element(find.byType(Progress)))
+           .extension<AppColors>()!;
+       expect(colorOf(segments(tester)[1]), colors.accent);
+     });
+   }
+   ```
+
+2. Run: `flutter test test/features/memories/widgets/progress_test.dart` —
+   expect FAIL (today's code only has two states, so the `i == index`
+   accent/height-3 assertions fail; the first test's `i < index`/`i >
+   index` assertions may already pass by coincidence against the old binary
+   logic — that's fine, the point is the accent/height assertions catch it).
+3. Make the change in `progress.dart` shown above.
+4. Run the same test file again — expect all 5 tests to PASS.
+5. `flutter analyze` — zero warnings.
+6. Commit: `git add lib/features/memories/widgets/progress.dart test/features/memories/widgets/progress_test.dart && git commit -m "feat: add a third, current-segment state to the memories progress bar"`.
+
+---
+
+### Task 1 — On-device verification
+
+Per `AGENTS.md`'s Definition of Done — this phase has no golden (nothing in
+`test/widgets/design_goldens_test.dart` or a feature-level goldens file
+currently covers `Progress`, and per Phase 0's standing caveat these CI
+goldens render with Ahem + `obscureText: true` anyway, so a static PNG
+wouldn't show a 1px height bump or confirm the segment reads correctly *in
+motion* — this needs eyes on a real memory playing, not a frame).
+
+1. On the connected device (Pixel 9 Pro XL, primary per `AGENTS.md`
+   environment), open Memories and play a memory with at least 3 pages.
+   Confirm: segments before the current page are solid white, the current
+   segment is visibly red and a hair taller than its neighbours, and
+   segments after it are the same dim/translucent off-state as before this
+   change.
+2. Let the memory auto-advance through several pages — confirm the accent
+   segment moves with `index` in real time with no visual glitch (flicker,
+   wrong segment lit, size jump beyond the intended 2→3px bump).
+3. Hold to pause — confirm the whole bar still dims to the existing 0.35
+   opacity with the three-state colouring intact underneath (i.e. the pause
+   dim and the current-segment accent are visually distinguishable, not
+   fighting for the same "state" reading).
+4. If only the iPhone 17 simulator is available this session, expect the
+   same structural Xcode-scheme blocker Phase 2's Task 4 hit (`Runner`
+   scheme lists zero simulator destinations — see that section and
+   `docs/gotchas.md`'s iOS `integration_test` entry). This is a known,
+   already-documented environment gap, not a Phase 3 regression — if hit
+   again, record the outcome here rather than re-diagnosing it, same as
+   Phase 2 did.
+
+**Definition of Done for this phase:**
+- [ ] `tool/check.sh` passes.
+- [ ] Widget test (Task 0) passing, all 5 cases.
+- [ ] On-device manual pass done (Task 1) — confirms the three states read
+      correctly in motion, not just as a static frame.
+- [ ] This plan doc checked off through Phase 3, "Next step" line updated to
+      point at Phase 4.
 
 ---
 
@@ -1297,3 +1530,14 @@ from a `databaseProvider`/in-memory-Drift override to directly overriding
 `isFavoriteProvider` with `Stream.value(bool)`, after the original approach
 hit both a "Timer still pending" hang in widget tests and a
 `MissingPluginException` in goldens.
+
+**Phase 3 — Memories player third state:** planning complete 2026-09-05
+(Task 0 — three-state colour/height mapping + widget test; Task 1 — on-device
+verification, no golden since nothing currently covers `Progress` and CI
+goldens can't show motion or a 1px height bump anyway). Not yet started —
+see the Phase 3 section above for the full task breakdown, including the
+`AppOverMedia`-is-const-vs-`colors.accent`-is-a-`ThemeExtension` wrinkle to
+flag in the eventual diff/PR description. Next action: get this plan
+approved, then execute Task 0 (TDD) followed by Task 1 (on-device, expect
+the same iPhone-simulator Xcode-scheme blocker Phase 2 hit if no physical
+device is available this session).
