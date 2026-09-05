@@ -11,8 +11,9 @@ export 'app_space.dart';
 export 'app_text_styles.dart';
 
 /// Light and dark [ThemeData] for SoloGallery, built from the
-/// docs/design-system.md tokens. The palette is monochromatic warm-grey with no
-/// accent — photos carry the color, chrome stays neutral.
+/// docs/design-system.md tokens. The palette is monochromatic warm-grey —
+/// photos carry the color, chrome stays neutral — with [AppColors.accent] as
+/// the one deliberate exception, reserved for state.
 abstract final class AppTheme {
   static ThemeData get light => _build(
         brightness: Brightness.light,

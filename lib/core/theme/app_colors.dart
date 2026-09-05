@@ -3,10 +3,9 @@ import 'package:flutter/material.dart';
 /// Design-system color tokens that don't map cleanly onto Material's
 /// [ColorScheme]. Read via `Theme.of(context).extension<AppColors>()!`.
 ///
-/// The palette is intentionally monochromatic warm-grey, with [AppColors.accent]
-/// as the one deliberate exception: in a photo app the photographs supply all
-/// the color, so the chrome stays quiet. Values come straight from
-/// docs/design-system.md.
+/// The palette is intentionally monochromatic warm-grey: in a photo app the
+/// photographs supply all the color, so the chrome stays quiet. Values come
+/// straight from docs/design-system.md.
 /// Colors drawn *over photos and video* — scrims, glyphs, progress segments.
 ///
 /// Deliberately theme-invariant (media is the background, not the chrome), so
@@ -47,6 +46,9 @@ abstract final class AppOverMedia {
   static const Color segmentOff = Color(0x40FFFFFF);
 }
 
+/// The palette is intentionally monochromatic warm-grey — in a photo app the
+/// photographs supply all the color, so the chrome stays quiet. [accent] is
+/// the one deliberate exception, reserved for state and never decoration.
 @immutable
 class AppColors extends ThemeExtension<AppColors> {
   const AppColors({
@@ -77,8 +79,8 @@ class AppColors extends ThemeExtension<AppColors> {
   /// Hairline border (7% ink).
   final Color border;
 
-  /// The one spot colour, scoped strictly to state (an active filter, a
-  /// favourited photo, an "on" toggle, the live indexing ring, the memory
+  /// The one spot color, scoped strictly to state (an active filter, a
+  /// favorited photo, an "on" toggle, the live indexing ring, the memory
   /// player's current segment) — never decoration. Identical value in light
   /// and dark: red reads fine on both a white and a near-black ground.
   final Color accent;

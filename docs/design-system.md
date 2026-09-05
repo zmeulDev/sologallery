@@ -5,9 +5,9 @@ Golden tests (`test/widgets/design_goldens_test.dart`,
 `test/features/detail/detail_goldens_test.dart`) are what make this enforceable —
 every new design-system widget gets one, light and dark.
 
-The look is a warm off-white / near-black palette with no accent colour, pill
-filters, and a floating nav capsule. There is no brand hue; emphasis comes from
-ink, weight and space.
+The look is a warm off-white / near-black palette with one accent colour
+reserved for state, never decoration, pill filters, and a floating nav
+capsule. There is no brand hue; emphasis comes from ink, weight and space.
 
 ---
 
@@ -53,11 +53,11 @@ final type = Theme.of(context).extension<AppTextStyles>()!;
 |---|---|---|---|
 | `display` | 34sp | 700 | |
 | `pageTitle` | 22sp | 700 | |
-| `sectionLabel` | 11sp | 600 | uppercase, 0.08em tracking |
-| `filterPill` | 12sp | 500 | |
+| `sectionLabel` | 11sp | 400 | uppercase, 0.08em tracking |
+| `filterPill` | 12sp | 400 | |
 | `body` | 14sp | 400 | body and list rows |
-| `button` | 15sp | 600 | |
-| `exifValue` | 12sp | 600 | |
+| `button` | 15sp | 700 | |
+| `exifValue` | 12sp | 400 | |
 | `exifKey` | 9sp | 400 | uppercase |
 | `caption` | 11sp | 400 | |
 
