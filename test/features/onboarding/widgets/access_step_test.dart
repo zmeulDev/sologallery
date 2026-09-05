@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sologallery/core/theme/app_theme.dart';
+import 'package:sologallery/features/onboarding/widgets/access_ring.dart';
 import 'package:sologallery/features/onboarding/widgets/access_step.dart';
 import 'package:sologallery/services/photo_library_service.dart';
 
@@ -58,6 +59,18 @@ void main() {
 
         expect(tester.takeException(), isNull);
         expect(find.byType(AccessStep), findsOneWidget);
+
+        // The actual wiring under test: the poster ring is mounted, and it's
+        // genuinely an AccessRing (Task 0's painter), not just an
+        // incidentally-matching widget type.
+        expect(find.byType(AccessRing), findsOneWidget);
+        final customPaint = tester.widget<CustomPaint>(
+          find.descendant(
+            of: find.byType(AccessRing),
+            matching: find.byType(CustomPaint),
+          ),
+        );
+        expect(customPaint.painter, isA<AccessRingPainter>());
       });
     }
   }
