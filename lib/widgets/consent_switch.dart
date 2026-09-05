@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../core/theme/app_colors.dart';
 
 /// The one switch style the app uses, in onboarding and Settings alike. Its
-/// active track is [AppColors.pillActiveBg] — the design system's single
-/// high-contrast token — so consent introduces no new accent color.
+/// active track is [AppColors.accent] — the red state color for the on
+/// toggle.
 class ConsentSwitch extends StatelessWidget {
   const ConsentSwitch({
     super.key,
@@ -28,7 +28,7 @@ class ConsentSwitch extends StatelessWidget {
         value: value,
         onChanged: onChanged,
         activeThumbColor: colors.pillActiveText,
-        activeTrackColor: colors.pillActiveBg,
+        activeTrackColor: colors.accent,
         inactiveThumbColor: Theme.of(context).colorScheme.surface,
         inactiveTrackColor: colors.surface2,
         trackOutlineColor: WidgetStatePropertyAll(colors.border),
