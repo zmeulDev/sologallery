@@ -228,20 +228,18 @@ class _SavedCell extends ConsumerWidget {
   }
 }
 
-/// A small translucent heart over a favorited thumbnail. Carries its own
-/// contrast (scrim circle + white glyph) so it reads on any photo in either
-/// theme, matching the over-media idiom used by the duration badge.
+/// A small heart over a favorited thumbnail, filled with [AppColors.accent]
+/// — the state cue this photo is favorited, matching the filled-heart
+/// convention used by `ExifSheet`'s favourite mark.
 class _HeartBadge extends StatelessWidget {
   const _HeartBadge();
 
   @override
   Widget build(BuildContext context) {
-    return const DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppOverMedia.scrim,
-        shape: BoxShape.circle,
-      ),
-      child: Padding(
+    final colors = Theme.of(context).extension<AppColors>()!;
+    return DecoratedBox(
+      decoration: BoxDecoration(color: colors.accent, shape: BoxShape.circle),
+      child: const Padding(
         padding: EdgeInsets.all(6),
         child: Icon(
           Icons.favorite_rounded,

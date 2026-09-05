@@ -83,6 +83,41 @@ void main() {
     await teardownTree(tester);
   });
 
+  testWidgets('the heart badge fills with the accent colour', (tester) async {
+    await db.indexDao.upsertMetadata([
+      (
+        id: 'a1',
+        createdAt: DateTime(2024),
+        isVideo: false,
+        width: 1,
+        height: 1,
+        isDated: true,
+      ),
+    ]);
+    await db.favoritesDao.add('a1', at: DateTime(2024, 1, 2));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          photoLibraryServiceProvider.overrideWithValue(
+            FakePhotoLibraryService(),
+          ),
+        ],
+        child: MaterialApp(theme: AppTheme.light, home: const SavedScreen()),
+      ),
+    );
+    await tester.pump();
+
+    final badge = tester.widget<DecoratedBox>(
+      find.ancestor(
+        of: find.byIcon(Icons.favorite_rounded),
+        matching: find.byType(DecoratedBox),
+      ),
+    );
+    expect((badge.decoration as BoxDecoration).color, AppColors.light.accent);
+    await teardownTree(tester);
+  });
+
   // The floating nav capsule reaches the screen as a bottom inset; without it
   // in the masonry's padding the last row of favorites hides behind the
   // capsule. See lib/widgets/nav_pill_bar.dart.
