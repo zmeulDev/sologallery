@@ -1,7 +1,9 @@
 import 'package:alchemist/alchemist.dart';
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:sologallery/core/database/app_database.dart' show Album;
+import 'package:sologallery/core/database/app_database.dart';
+import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/detail/detail_providers.dart';
 import 'package:sologallery/features/detail/widgets/add_to_album_sheet.dart';
@@ -10,6 +12,11 @@ import 'package:sologallery/features/detail/widgets/exif_sheet.dart';
 import 'package:sologallery/services/photo_library_service.dart';
 
 void main() {
+  // Shared in-memory database — ExifSheet watches isFavoriteProvider, which
+  // reads through favoritesDaoProvider/databaseProvider. None of these
+  // scenarios mutate favorites, so one instance across the file is fine.
+  final db = AppDatabase(NativeDatabase.memory());
+
   /// Themed light+dark scenarios on each theme's own surface.
   GoldenTestGroup themedGroup(Widget Function(ThemeData) build) {
     return GoldenTestGroup(
@@ -62,6 +69,7 @@ void main() {
     builder: () => themedGroup(
       (_) => ProviderScope(
         overrides: [
+          databaseProvider.overrideWithValue(db),
           assetDetailProvider('x').overrideWith((ref) => AssetDetail(
                 id: 'x',
                 width: 6048,

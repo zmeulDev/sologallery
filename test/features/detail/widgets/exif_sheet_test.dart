@@ -1,6 +1,9 @@
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sologallery/core/database/app_database.dart';
+import 'package:sologallery/core/database/database_provider.dart';
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/detail/detail_providers.dart';
 import 'package:sologallery/features/detail/widgets/exif_sheet.dart';
@@ -19,10 +22,16 @@ import 'package:sologallery/services/photo_library_service.dart';
 /// `AssetDetail`. This is that test, driven by the same shapes the fixtures
 /// carry rather than by the fixtures themselves.
 void main() {
+  late AppDatabase db;
+
+  setUp(() => db = AppDatabase(NativeDatabase.memory()));
+  tearDown(() async => db.close());
+
   Future<void> pumpSheet(WidgetTester tester, AssetDetail? detail) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          databaseProvider.overrideWithValue(db),
           assetDetailProvider('x').overrideWith((ref) => detail),
         ],
         child: MaterialApp(
