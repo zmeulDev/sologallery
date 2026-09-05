@@ -888,11 +888,16 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   (`appVersionProvider.overrideWith((ref) async => '1.0.0 (1)')`). Reads only the
   Android `PackageManager` / iOS bundle — adds no network perms (release manifest
   re-verified clean).
-- **Golden tests cannot see icon glyphs.** Alchemist's CI variant obscures
-  fonts, so every `Icon` renders as a solid box regardless of codepoint — the
-  Phase-5 icon-family swap left every golden byte-identical (md5-verified),
-  which is the *expected* outcome, not a missed regen. Goldens verify layout/
-  color only; verify glyph shapes on device (or by eye in the running app).
+- **Golden tests cannot see icon glyphs or font weight.** Alchemist's CI
+  variant obscures fonts (the "Ahem" test font), so every `Icon` renders as a
+  solid box regardless of codepoint, and every `Text` renders regardless of
+  `FontWeight` — the Phase-5 icon-family swap and the Swiss-refactor Phase 1
+  weight cleanup (`FontWeight.w600` → `w700` in `asset_thumbnail.dart`,
+  `empty_state.dart`, `limited_access_banner.dart`, `people_strip.dart`) both
+  left their goldens byte-identical (md5-verified/zero PNG diff), which is
+  the *expected* outcome, not a missed regen. Goldens verify layout/color
+  only; verify glyph shapes and weight on device (or by eye in the running
+  app).
 - **Golden files regenerate via `flutter test --update-goldens`.** The alchemist
   package (used for design-system golden tests) requires the standard Flutter
   flag `--update-goldens`, not an environment variable like `UPDATE_GOLDENS`.
