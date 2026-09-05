@@ -10,6 +10,7 @@ import 'package:sologallery/features/albums/widgets/album_card.dart';
 import 'package:sologallery/core/database/daos/faces_dao.dart'
     show PersonSummary;
 import 'package:sologallery/features/library/domain/year_month.dart';
+import 'package:sologallery/features/onboarding/widgets/access_ring.dart';
 import 'package:sologallery/features/library/widgets/library_skeleton.dart';
 import 'package:sologallery/features/library/widgets/month_header.dart';
 import 'package:sologallery/features/library/widgets/section_count_pill.dart';
@@ -642,6 +643,14 @@ void main() {
           ),
         ],
       ),
+    ),
+  );
+
+  goldenTest(
+    'AccessRing — decorative ring',
+    fileName: 'access_ring',
+    builder: () => themedGroup(
+      const Align(child: AccessRing(diameter: 240)),
     ),
   );
 }
