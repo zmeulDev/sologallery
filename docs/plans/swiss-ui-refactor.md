@@ -170,8 +170,8 @@ conversations/PRs, each starting from this doc.
       `scheme.surface` as Task 0's test assumed) — all fixed in one
       dedicated fix pass; see Phase 1's Definition of Done below for what
       that pass covered.)
-- [ ] **Phase 2 — `ExifSheet` rebuild** (separate session, planning complete
-      — see Phase 2 below, Tasks 0-4, awaiting go-ahead to execute)
+- [ ] **Phase 2 — `ExifSheet` rebuild** (Tasks 0-3 built and clean; Task 4
+      on-device pass outstanding — needs a physical device)
 - [ ] **Phase 3 — Memories player third state** (separate session, has a
       logic component)
 - [ ] **Phase 4 — Onboarding poster treatment** (separate session, highest
@@ -654,20 +654,41 @@ available — `ExifSheet` is already a `ConsumerWidget` and already imports
 (`detail_screen.dart:179-180`). **This phase is not dropping the favourite
 mark.**
 
-**Test-scaffolding gotcha found during planning:** neither
-`exif_sheet_test.dart` nor `detail_goldens_test.dart` currently overrides
-`databaseProvider`. Today that's fine — `ExifSheet` never touches the
-database. The moment it watches `isFavoriteProvider`, it transitively reads
-`favoritesDaoProvider` → `databaseProvider`, whose default
+**Test-scaffolding gotcha found during planning, resolved differently during
+execution:** neither `exif_sheet_test.dart` nor `detail_goldens_test.dart`
+overrode `databaseProvider` before this phase — fine, since `ExifSheet` never
+touched the database. The moment it watches `isFavoriteProvider`, it
+transitively reads `favoritesDaoProvider` → `databaseProvider`, whose default
 (`database_provider.dart:16-20`) opens a **real** `driftDatabase(name:
 'sologallery')` (`app_database.dart:190-192`, `drift_flutter`,
 platform-channel file paths) — not safe to touch unmocked in a host
-`flutter_test`. `test/features/detail/detail_screen_test.dart` already solved
-this exact problem for the same provider chain: it overrides
-`databaseProvider.overrideWithValue(AppDatabase(NativeDatabase.memory()))` in
-`setUp`/`tearDown` (lines 23-26, 41). Task 1 below copies that pattern into
-both test files **before** the favourite mark lands in production code, so
-the scaffolding change and the feature change aren't in the same diff.
+`flutter_test`; confirmed during execution as a `MissingPluginException` on
+`getTemporaryDirectory` when a goldenTest scenario was left unoverridden.
+
+The plan's original draft (below, in Task 1) copied
+`detail_screen_test.dart`'s fix for the same provider chain — override
+`databaseProvider` with `AppDatabase(NativeDatabase.memory())`. That works for
+`PhotoDetailScreen` (whose favorite state is a real, mutable, ongoing concern
+across its tests) but turned out to be the wrong tool here: a real Drift
+`watch()` stream doesn't complete on its own, so every `ExifSheet` test needed
+`detail_screen_test.dart`'s `settleTeardown` dance (unmount the tree, pump a
+extra frame) to avoid `flutter_test`'s end-of-test "Timer is still pending"
+invariant — and that invariant check runs *before* any `tearDown`/
+`addTearDown` hook, so it can't be hoisted into a shared helper; it has to be
+the last line of every test body. Worse, `goldenTest` scenarios don't expose
+a hook to run that cleanup at all, so the golden file hit the
+`MissingPluginException` above.
+
+**What actually shipped instead:** override `isFavoriteProvider('x')`
+directly with `Stream.value(bool)` — a single-emission stream, not a live
+query, so it completes and disposes with nothing left pending. No
+`databaseProvider`, no `AppDatabase`, no Drift import, no `settleTeardown`, in
+either test file. This is simpler than the plan's original approach, not just
+a workaround for the goldenTest limitation — `ExifSheet`'s rendering doesn't
+care *how* favorite state gets resolved, only that it does, so exercising it
+through the narrowest provider in the chain (`isFavoriteProvider`, not
+`databaseProvider`) is the more precise test double regardless. Task 1/2/3
+below are updated to reflect this.
 
 **Layout decisions this plan is making:**
 - **Row shape:** one `Row` per field — `SizedBox(width: _labelColumnWidth)`
@@ -811,43 +832,16 @@ chip cloud.
 
 ---
 
-### Task 1 — Test scaffolding: in-memory `databaseProvider` override
+### Task 1 — Test scaffolding: direct `isFavoriteProvider` overrides
 
-Land the scaffolding fix from the gotcha above **before** Task 2's feature
-change, so a reviewer can see "test setup" and "feature" as separate diffs.
-
-**Files:**
-- Modify: `test/features/detail/widgets/exif_sheet_test.dart` — add the same
-  `setUp`/`tearDown`/override triple `detail_screen_test.dart` already uses
-  (`detail_screen_test.dart:23-26,41`):
-  ```dart
-  import 'package:drift/native.dart';
-  import 'package:sologallery/core/database/app_database.dart';
-  import 'package:sologallery/core/database/database_provider.dart';
-  // ...
-  late AppDatabase db;
-  setUp(() => db = AppDatabase(NativeDatabase.memory()));
-  tearDown(() async => db.close());
-  ```
-  and add `databaseProvider.overrideWithValue(db)` to `pumpSheet`'s
-  `ProviderScope.overrides` (alongside the existing
-  `assetDetailProvider('x').overrideWith(...)`).
-- Modify: `test/features/detail/detail_goldens_test.dart` — same triple, plus
-  `databaseProvider.overrideWithValue(db)` added to the existing `'ExifSheet
-  — populated metadata'` goldenTest's `ProviderScope.overrides` (line 65-76).
-  Note `goldenTest` scenarios aren't per-test `setUp`/`tearDown` scoped the
-  way `testWidgets` are — build `db` once at the top of `main()` (a single
-  in-memory database shared across this file's golden scenarios is fine,
-  since none of them mutate favourites yet).
-
-**Steps:**
-1. Make the changes above with **no production-code change** — `ExifSheet`
-   still doesn't watch `isFavoriteProvider`, so this override is inert today,
-   just present for Task 2 to build on.
-2. Run `flutter test test/features/detail/widgets/exif_sheet_test.dart
-   test/features/detail/detail_goldens_test.dart` — expect PASS, identical
-   output to Task 0's step 3 (the override changes nothing observable yet).
-3. Commit: `git add test/features/detail/widgets/exif_sheet_test.dart test/features/detail/detail_goldens_test.dart && git commit -m "test: scaffold in-memory database for ExifSheet tests"`.
+**As executed** (superseding the original `databaseProvider`/in-memory-Drift
+draft — see the gotcha note above): no scaffolding commit of its own. Task 2
+adds `isFavoriteProvider('x').overrideWith((ref) => Stream.value(bool))`
+inline, alongside the existing `assetDetailProvider('x').overrideWith(...)`,
+in both `exif_sheet_test.dart`'s `pumpSheet` helper and each ExifSheet-related
+`goldenTest` in `detail_goldens_test.dart`. No new imports, no `setUp`/
+`tearDown`, no shared `db` variable — folded directly into Task 2 below since
+it's a one-line addition per call site, not a separable diff.
 
 ---
 
@@ -856,11 +850,36 @@ change, so a reviewer can see "test setup" and "feature" as separate diffs.
 **File:** `lib/features/detail/widgets/exif_sheet.dart`.
 
 **Steps (TDD — failing test first):**
-1. Add to `exif_sheet_test.dart`:
+1. In `exif_sheet_test.dart`, give `pumpSheet` an `isFavorite` parameter and
+   override `isFavoriteProvider` with it:
+   ```dart
+   Future<void> pumpSheet(
+     WidgetTester tester,
+     AssetDetail? detail, {
+     bool isFavorite = false,
+   }) async {
+     await tester.pumpWidget(
+       ProviderScope(
+         overrides: [
+           assetDetailProvider('x').overrideWith((ref) => detail),
+           // A single-emission stream, not a live query — no favoritesDao/
+           // Drift needed to test this widget's rendering, and nothing to
+           // cancel at teardown (unlike a real watchIsFavorite() stream).
+           isFavoriteProvider('x').overrideWith((ref) => Stream.value(isFavorite)),
+         ],
+         child: MaterialApp(
+           theme: AppTheme.light,
+           home: const Scaffold(body: ExifSheet(assetId: 'x')),
+         ),
+       ),
+     );
+     await tester.pumpAndSettle();
+   }
+   ```
+   then add the two new tests:
    ```dart
    testWidgets('favorited asset shows the Favorited mark', (tester) async {
-     await db.favoritesDao.add('x');
-     await pumpSheet(tester, fullRecord());
+     await pumpSheet(tester, fullRecord(), isFavorite: true);
 
      expect(find.text('Favorited'), findsOneWidget);
      expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
@@ -873,8 +892,9 @@ change, so a reviewer can see "test setup" and "feature" as separate diffs.
      expect(find.byIcon(Icons.favorite_rounded), findsNothing);
    });
    ```
-2. Run: `flutter test test/features/detail/widgets/exif_sheet_test.dart -n
-   "Favorited"` — expect FAIL (no such text/icon rendered yet).
+2. Run: `flutter test test/features/detail/widgets/exif_sheet_test.dart` —
+   expect the two new tests to FAIL (no such text/icon rendered yet), the
+   three pre-existing ones to keep passing.
 3. Implement in `exif_sheet.dart`:
    ```dart
    // In ExifSheet.build, alongside the existing `final detail = ...`:
@@ -924,26 +944,29 @@ change, so a reviewer can see "test setup" and "feature" as separate diffs.
      }
    }
    ```
-4. Run the same test again — expect PASS, both cases.
-5. Run the full file: `flutter test test/features/detail/widgets/exif_sheet_test.dart` — expect all pass, including the pre-existing three tests (they never favorite the asset, so they exercise the "no mark" path implicitly).
-6. `flutter analyze` — zero warnings.
-7. Commit: `git add lib/features/detail/widgets/exif_sheet.dart test/features/detail/widgets/exif_sheet_test.dart && git commit -m "feat: show a Favorited mark in ExifSheet when the photo is favorited"`.
+4. Run the same test again — expect PASS, all five.
+5. `flutter analyze` — zero warnings.
+6. Commit: `git add lib/features/detail/widgets/exif_sheet.dart test/features/detail/widgets/exif_sheet_test.dart && git commit -m "feat: show a Favorited mark in ExifSheet when the photo is favorited"`.
 
 ---
 
 ### Task 3 — Golden + overflow-safety test coverage
 
 **Files:**
-- Modify: `test/features/detail/detail_goldens_test.dart` — add two new
-  `goldenTest` blocks (existing `'ExifSheet — populated metadata'` already
-  covers the full-field-set case with GPS, so it stands as-is beyond Task 1's
-  override addition).
+- Modify: `test/features/detail/detail_goldens_test.dart` — the existing
+  `'ExifSheet — populated metadata'` golden also needs
+  `isFavoriteProvider('x').overrideWith((ref) => Stream.value(false))` added
+  to its `overrides` (it now reaches the real, unmocked provider chain the
+  same as any other `ExifSheet` instance — see the gotcha note above), plus
+  two new `goldenTest` blocks with the same override.
 - Modify: `test/features/detail/widgets/exif_sheet_test.dart` — add the
   overflow-safety assertion (a golden PNG alone can't assert "no
   `RenderFlex` overflow exception was thrown").
 
 **Steps:**
-1. Add the no-EXIF golden (mirrors `exif_sheet_test.dart`'s `emptyRecord()`
+1. Add `isFavoriteProvider('x').overrideWith((ref) => Stream.value(false))`
+   to the existing `'ExifSheet — populated metadata'` golden's overrides.
+2. Add the no-EXIF golden (mirrors `exif_sheet_test.dart`'s `emptyRecord()`
    shape — PRD.md §3.3 "assets with no EXIF render correctly"):
    ```dart
    goldenTest(
@@ -952,7 +975,7 @@ change, so a reviewer can see "test setup" and "feature" as separate diffs.
      builder: () => themedGroup(
        (_) => ProviderScope(
          overrides: [
-           databaseProvider.overrideWithValue(db),
+           isFavoriteProvider('x').overrideWith((ref) => Stream.value(false)),
            assetDetailProvider('x').overrideWith((ref) => AssetDetail(
                  id: 'x',
                  width: 800,
@@ -967,7 +990,7 @@ change, so a reviewer can see "test setup" and "feature" as separate diffs.
      ),
    );
    ```
-2. Add the long-location golden. `formatCoordinates` always formats to four
+3. Add the long-location golden. `formatCoordinates` always formats to four
    decimal places (`asset_detail_display.dart:59-61`), so realistic GPS
    values can't produce a long string — feed a deliberately out-of-range
    pair purely to stress the fixed-width value column, same technique the
@@ -980,7 +1003,7 @@ change, so a reviewer can see "test setup" and "feature" as separate diffs.
      builder: () => themedGroup(
        (_) => ProviderScope(
          overrides: [
-           databaseProvider.overrideWithValue(db),
+           isFavoriteProvider('x').overrideWith((ref) => Stream.value(false)),
            assetDetailProvider('x').overrideWith((ref) => AssetDetail(
                  id: 'x',
                  width: 6048,
@@ -999,7 +1022,7 @@ change, so a reviewer can see "test setup" and "feature" as separate diffs.
      ),
    );
    ```
-3. In `exif_sheet_test.dart`, add the overflow-safety test using the same
+4. In `exif_sheet_test.dart`, add the overflow-safety test using the same
    out-of-range values:
    ```dart
    testWidgets('a very long location value wraps without overflowing', (
@@ -1022,21 +1045,33 @@ change, so a reviewer can see "test setup" and "feature" as separate diffs.
      expect(tester.takeException(), isNull);
    });
    ```
-4. Confirm the golden-regen command (Phase 1 Task 0 already locked this in):
+5. Confirm the golden-regen command (Phase 1 Task 0 already locked this in):
    `flutter test test/features/detail/detail_goldens_test.dart
-   --update-goldens`.
-5. `git diff --stat test/features/detail/goldens/ci/` — expect
-   `exif_sheet.png` changed (new table layout) and two new files,
-   `exif_sheet_no_exif.png` and `exif_sheet_long_location.png`. Anything else
-   changing is a regression to investigate.
-6. Open all three PNGs (light + dark each) and review manually — check the
+   --update-goldens`. **Gotcha hit here on the first pass:** forgetting step 1
+   (the override on the *existing* golden) surfaces as a `MissingPluginException`
+   on `getTemporaryDirectory` "after the test had completed" — the real
+   `AppDatabase()`/`driftDatabase` path from the gotcha note above, reachable
+   because nothing overrode `isFavoriteProvider` for that scenario. All three
+   `ExifSheet` goldens need the override, not just the two new ones.
+6. `git diff --stat test/features/detail/goldens/ci/` — expect
+   `exif_sheet.png` changed (new table layout, 402×360 → 736×360) and two new
+   files, `exif_sheet_no_exif.png` and `exif_sheet_long_location.png`.
+   Anything else changing is a regression to investigate.
+7. Open all three PNGs (light + dark each) and review manually — check the
    label column doesn't clip `DIMENSIONS`/`RESOLUTION`, the long-location
-   scenario wraps legibly without a visual overflow indicator, and dividers
-   sit flush between rows.
-7. Run `flutter test test/features/detail/widgets/exif_sheet_test.dart
+   scenario doesn't produce a visible overflow indicator, and dividers sit
+   flush between rows. **Result:** full record shows 6 rows (Taken/
+   Dimensions/Resolution/Size/Type/Location), no-EXIF shows 3 (Taken/
+   Dimensions/Resolution only), long-location shows 4 (adds Location) — all
+   correct against each scenario's field set. These CI goldens render with
+   Ahem + `obscureText: true` (the standing Phase 0 caveat), so they can't
+   visually confirm real-font wrapping behaviour either way — that assurance
+   comes from step 4's widget test instead, which passed on the first try
+   with real fonts.
+8. Run `flutter test test/features/detail/widgets/exif_sheet_test.dart
    test/features/detail/detail_goldens_test.dart` — expect all pass.
-8. `tool/check.sh` — must pass clean.
-9. Commit: `git add test/features/detail/widgets/exif_sheet_test.dart test/features/detail/detail_goldens_test.dart test/features/detail/goldens/ci/ && git commit -m "test: add ExifSheet golden and overflow coverage for the table rebuild"`.
+9. `tool/check.sh` — must pass clean.
+10. Commit: `git add test/features/detail/widgets/exif_sheet_test.dart test/features/detail/detail_goldens_test.dart test/features/detail/goldens/ci/ && git commit -m "test: add ExifSheet golden and overflow coverage for the table rebuild"`.
 
 ---
 
@@ -1230,9 +1265,14 @@ still has not happened — it needs a physical device — so do it before or
 alongside Phase 2's own device pass, not as a Phase 1 blocker held open
 indefinitely.
 
-**Phase 2 — `ExifSheet` rebuild** planning is now complete (Tasks 0-4 above:
-layout rebuild, test-scaffolding fix for the new `databaseProvider`
-dependency, favourite mark, golden/overflow coverage, on-device pass) and
-waiting for go-ahead to execute, per `AGENTS.md`'s "plan first, then wait"
-workflow. Once approved, execute task-by-task and keep this doc's checkboxes
+**Phase 2 — `ExifSheet` rebuild:** Tasks 0-3 are built and clean (`tool/check.sh`
+passing, commits `716600c`..`dba52c8` plus the Task 2/3 work landing next);
+Task 4 (on-device pass) is outstanding, needs the physical device. See the
+Phase 2 section above for the full record, including two corrections found
+during execution (both already folded into the task text, not left as
+separate addenda): the favourite-mark test scaffolding switched from a
+`databaseProvider`/in-memory-Drift override to directly overriding
+`isFavoriteProvider` with `Stream.value(bool)`, after the original approach
+hit both a "Timer still pending" hang in widget tests and a
+`MissingPluginException` in goldens.
 current as each lands.
