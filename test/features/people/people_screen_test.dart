@@ -115,8 +115,8 @@ void main() {
         PersonSummary(id: 2, displayName: null, coverAssetId: 'b', faceCount: 1),
       ]);
 
-      expect(find.bySemanticsLabel('Alice'), findsOneWidget);
-      expect(find.bySemanticsLabel('Unnamed person'), findsOneWidget);
+      expect(find.bySemanticsLabel('Alice, 4 photos'), findsOneWidget);
+      expect(find.bySemanticsLabel('Unnamed person, 1 photo'), findsOneWidget);
 
       handle.dispose();
     },
@@ -389,31 +389,48 @@ void main() {
         final colors = Theme.of(tester.element(find.byType(PeopleScreen)))
             .extension<AppColors>()!;
 
+        // _PersonCard.build always builds an Opacity(opacity: selected ? 1 : 0)
+        // wrapping its selection ring for every card, so exactly one Opacity in
+        // the tree has opacity == 1.0 once a person is selected. Scope every
+        // finder below to that one card's subtree — `_SelectedRing` itself is
+        // private to people_screen.dart's library and not visible from here.
+        final selectedRingOpacity = find.byWidgetPredicate(
+          (w) => w is Opacity && w.opacity == 1.0,
+        );
+        expect(selectedRingOpacity, findsOneWidget,
+            reason: 'exactly one card should show its selection ring');
+
         // Find the ring's DecoratedBox (the one with a border inside the Opacity).
         // It's in a Positioned.fill, so it's a direct child of the Stack within Opacity.
         final ringBorder = tester.widget<DecoratedBox>(
-          find.byWidgetPredicate(
-            (w) =>
-                w is DecoratedBox &&
-                w.decoration is BoxDecoration &&
-                (w.decoration as BoxDecoration).border != null,
-          ).first,
+          find.descendant(
+            of: selectedRingOpacity,
+            matching: find.byWidgetPredicate(
+              (w) =>
+                  w is DecoratedBox &&
+                  w.decoration is BoxDecoration &&
+                  (w.decoration as BoxDecoration).border != null,
+            ),
+          ),
         );
         final ringDecoration = ringBorder.decoration as BoxDecoration;
         expect(ringDecoration.border!.top.color, colors.accent,
             reason: 'Ring border should be accent color');
 
         // Find the check-disc Container by looking for a circular Container with accent fill.
-        final checkDiscFinder = find.byWidgetPredicate(
-          (w) =>
-              w is Container &&
-              w.decoration is BoxDecoration &&
-              (w.decoration as BoxDecoration).shape == BoxShape.circle &&
-              (w.decoration as BoxDecoration).color == colors.accent,
+        final checkDiscFinder = find.descendant(
+          of: selectedRingOpacity,
+          matching: find.byWidgetPredicate(
+            (w) =>
+                w is Container &&
+                w.decoration is BoxDecoration &&
+                (w.decoration as BoxDecoration).shape == BoxShape.circle &&
+                (w.decoration as BoxDecoration).color == colors.accent,
+          ),
         );
-        expect(checkDiscFinder, findsWidgets,
+        expect(checkDiscFinder, findsOneWidget,
             reason: 'Should find check disc Container with accent color');
-        final checkDisc = tester.widget<Container>(checkDiscFinder.first);
+        final checkDisc = tester.widget<Container>(checkDiscFinder);
         final discDecoration = checkDisc.decoration as BoxDecoration;
         expect(discDecoration.color, colors.accent,
             reason: 'Check disc fill should be accent color');
@@ -421,7 +438,7 @@ void main() {
         // Find the check icon within the check disc Container.
         final checkIcon = tester.widget<Icon>(
           find.descendant(
-            of: checkDiscFinder.first,
+            of: checkDiscFinder,
             matching: find.byIcon(Icons.check_rounded),
           ),
         );

@@ -272,11 +272,18 @@ class _PersonCard extends StatelessWidget {
     // name — verified empirically: a blank sibling `Text` contributes no
     // label segment to the default tap-node merge at all (not even an empty
     // one), so nothing here stands in for the old always-populated 'Unnamed'
-    // string once it's blanked. Mirrors `people_strip.dart`'s `_PersonTile`.
+    // string once it's blanked.
+    //
+    // Unlike `people_strip.dart`'s `_PersonTile` (which this pattern is
+    // otherwise mirrored from), this card also carries a photo-count line
+    // below the name — `people_strip` has no second line, by its own doc
+    // comment. `excludeSemantics: true` drops every descendant semantics
+    // node, so the count must be folded into this label explicitly or it
+    // becomes unreachable to screen readers.
     return Semantics(
       container: true,
       button: true,
-      label: name ?? 'Unnamed person',
+      label: '${name ?? 'Unnamed person'}, ${photoCountLabel(person.faceCount)}',
       onTap: onTap,
       excludeSemantics: true,
       child: GestureDetector(
