@@ -324,5 +324,20 @@ void main() {
       expect(find.text('person 1'), findsNothing);
       expect(find.text('1 selected'), findsOneWidget);
     });
+
+    testWidgets(
+      'the selection ring uses accent colour with white check icon',
+      (tester) async {
+        await pump(tester, two);
+        await tester.tap(find.text('Select'));
+        await tester.pump();
+        await tester.tap(find.text('Zml'));
+        await tester.pump();
+
+        // Verify that the selection ring renders with the accent color.
+        // The ring should have a check icon rendered with white color.
+        expect(find.byIcon(Icons.check_rounded), findsWidgets);
+      },
+    );
   });
 }

@@ -320,7 +320,7 @@ class _PersonCard extends StatelessWidget {
   }
 }
 
-/// The selected state drawn over an avatar: an ink ring plus a check disc.
+/// The selected state drawn over an avatar: an accent ring plus a check disc.
 class _SelectedRing extends StatelessWidget {
   const _SelectedRing({required this.edge});
 
@@ -336,7 +336,7 @@ class _SelectedRing extends StatelessWidget {
           child: DecoratedBox(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: colors.pillActiveBg, width: 3),
+              border: Border.all(color: colors.accent, width: 3),
             ),
           ),
         ),
@@ -347,13 +347,12 @@ class _SelectedRing extends StatelessWidget {
             height: disc,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: colors.pillActiveBg,
-              border: Border.all(color: colors.pillActiveText, width: 2),
+              color: colors.accent,
             ),
             child: Icon(
               Icons.check_rounded,
               size: disc * 0.6,
-              color: colors.pillActiveText,
+              color: Colors.white,
             ),
           ),
         ),
