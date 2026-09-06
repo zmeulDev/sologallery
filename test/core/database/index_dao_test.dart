@@ -136,6 +136,17 @@ void main() {
     expect(await search('dog'), isEmpty); // a, b (and their labels) gone
   });
 
+  test('deleteAssets also purges recently-viewed rows for deleted ids', () async {
+    await seed();
+    await db.indexDao.recordView('a');
+    await db.indexDao.recordView('b');
+    await db.indexDao.recordView('c');
+
+    await db.indexDao.deleteAssets(['a', 'b']);
+
+    expect(await db.indexDao.watchRecentlyViewed(limit: 10).first, ['c']);
+  });
+
   group('isVideoInCache', () {
     test('is true for a cached video row', () async {
       await seed(); // b is a video

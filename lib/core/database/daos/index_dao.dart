@@ -94,10 +94,17 @@ class IndexDao extends DatabaseAccessor<AppDatabase> with _$IndexDaoMixin {
   }
 
   /// Deletes cached rows for [ids] (pruned assets). Cascades remove their
-  /// labels/OCR text/faces. No-op on an empty list.
+  /// labels/OCR text/faces, and their [RecentlyViewed] rows are purged
+  /// alongside (no FK, since that table is independent of [PhotoAssets] by
+  /// design). No-op on an empty list.
   Future<int> deleteAssets(List<String> ids) async {
     if (ids.isEmpty) return 0;
-    return (delete(photoAssets)..where((a) => a.assetId.isIn(ids))).go();
+    return transaction(() async {
+      await (delete(
+        recentlyViewed,
+      )..where((r) => r.assetId.isIn(ids))).go();
+      return (delete(photoAssets)..where((a) => a.assetId.isIn(ids))).go();
+    });
   }
 
   /// Wipes the whole `photo_asset` cache — cascades to labels, OCR text, and

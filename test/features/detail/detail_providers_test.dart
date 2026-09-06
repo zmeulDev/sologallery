@@ -64,6 +64,7 @@ void main() {
     await db.favoritesDao.add('a1');
     final album = await db.albumsDao.createAlbum('Trip');
     await db.albumsDao.addEntry(album, 'a1');
+    await db.indexDao.recordView('a1');
 
     final ok = await actions.delete('a1');
 
@@ -73,6 +74,7 @@ void main() {
     ]);
     expect(await db.favoritesDao.isFavorite('a1'), isFalse);
     expect(await db.albumsDao.watchEntries(album).first, isEmpty);
+    expect(await db.indexDao.watchRecentlyViewed(limit: 10).first, isEmpty);
   });
 
   test('delete leaves rows intact when the OS deletion is cancelled', () async {
