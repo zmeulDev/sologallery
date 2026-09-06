@@ -334,9 +334,47 @@ void main() {
         await tester.tap(find.text('Zml'));
         await tester.pump();
 
-        // Verify that the selection ring renders with the accent color.
-        // The ring should have a check icon rendered with white color.
-        expect(find.byIcon(Icons.check_rounded), findsWidgets);
+        final colors = Theme.of(tester.element(find.byType(PeopleScreen)))
+            .extension<AppColors>()!;
+
+        // Find the ring's DecoratedBox (the one with a border inside the Opacity).
+        // It's in a Positioned.fill, so it's a direct child of the Stack within Opacity.
+        final ringBorder = tester.widget<DecoratedBox>(
+          find.byWidgetPredicate(
+            (w) =>
+                w is DecoratedBox &&
+                w.decoration is BoxDecoration &&
+                (w.decoration as BoxDecoration).border != null,
+          ).first,
+        );
+        final ringDecoration = ringBorder.decoration as BoxDecoration;
+        expect(ringDecoration.border!.top.color, colors.accent,
+            reason: 'Ring border should be accent color');
+
+        // Find the check-disc Container by looking for a circular Container with accent fill.
+        final checkDiscFinder = find.byWidgetPredicate(
+          (w) =>
+              w is Container &&
+              w.decoration is BoxDecoration &&
+              (w.decoration as BoxDecoration).shape == BoxShape.circle &&
+              (w.decoration as BoxDecoration).color == colors.accent,
+        );
+        expect(checkDiscFinder, findsWidgets,
+            reason: 'Should find check disc Container with accent color');
+        final checkDisc = tester.widget<Container>(checkDiscFinder.first);
+        final discDecoration = checkDisc.decoration as BoxDecoration;
+        expect(discDecoration.color, colors.accent,
+            reason: 'Check disc fill should be accent color');
+
+        // Find the check icon within the check disc Container.
+        final checkIcon = tester.widget<Icon>(
+          find.descendant(
+            of: checkDiscFinder.first,
+            matching: find.byIcon(Icons.check_rounded),
+          ),
+        );
+        expect(checkIcon.color, Colors.white,
+            reason: 'Check icon should be white on accent background');
       },
     );
   });
