@@ -1,7 +1,7 @@
 # SoloGallery — Product Requirements
 
 **Status:** Live on Google Play and the App Store.
-**Version scheme:** CalVer `YY.M.D+N` — currently `26.8.6+1`.
+**Version scheme:** CalVer `YY.M.D+N` — currently `26.9.6+1`.
 **Platforms:** Android 15+ (API 35) and iOS 26+. No compatibility code for older
 releases.
 
