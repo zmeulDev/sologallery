@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/database/app_database.dart' show Person;
+import '../../core/theme/app_space.dart';
+import '../../widgets/app_button.dart';
 import '../../widgets/app_dialog.dart';
 import '../../widgets/asset_grid.dart';
 import '../../widgets/empty_state.dart';
@@ -28,15 +30,18 @@ class PersonDetailScreen extends ConsumerWidget {
         title: Text(name ?? 'Person'),
         actions: [
           if (merged.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.call_split_rounded),
-              tooltip: 'Separate people',
+            AppButton.quiet(
+              label: 'Separate',
               onPressed: () => _separate(context, ref, merged),
             ),
-          IconButton(
-            icon: const Icon(Icons.edit_rounded),
-            tooltip: 'Rename',
-            onPressed: () => _rename(context, ref, name),
+          if (merged.isNotEmpty)
+            SizedBox(width: AppSpace.s4),
+          Padding(
+            padding: const EdgeInsets.only(right: AppSpace.s8),
+            child: AppButton.quiet(
+              label: 'Rename',
+              onPressed: () => _rename(context, ref, name),
+            ),
           ),
         ],
       ),

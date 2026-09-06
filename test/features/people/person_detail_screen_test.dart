@@ -114,7 +114,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
 
     // Open the rename dialog.
-    await tester.tap(find.byIcon(Icons.edit_rounded));
+    await tester.tap(find.text('Rename'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Name this person'), findsOneWidget);
@@ -136,7 +136,7 @@ void main() {
   testWidgets('offers no separate action for a person nobody was merged into',
       (tester) async {
     await pump(tester, person: named('Alice'), assets: assetsInMonth(2026, 8, 1));
-    expect(find.byTooltip('Separate people'), findsNothing);
+    expect(find.text('Separate'), findsNothing);
   });
 
   testWidgets('separates the people the user merged in', (tester) async {
@@ -154,7 +154,7 @@ void main() {
       ],
     );
 
-    await tester.tap(find.byTooltip('Separate people'));
+    await tester.tap(find.text('Separate'));
     await tester.pump();
     expect(find.text('Separate people?'), findsOneWidget);
     expect(
@@ -184,7 +184,7 @@ void main() {
       ],
     );
 
-    await tester.tap(find.byTooltip('Separate people'));
+    await tester.tap(find.text('Separate'));
     await tester.pump();
     await tester.tap(find.text('Cancel'));
     await tester.pump();
