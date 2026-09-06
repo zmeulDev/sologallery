@@ -9,10 +9,11 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../widgets/app_card.dart';
 import '../../../widgets/asset_thumbnail.dart';
 
-/// One album as a compact horizontal row: a square padded cover on the left and
-/// the album name + photo count stacked on the right. The card and cover both
-/// use the navbar-matched 30 dp radius. Empty albums show a recessed placeholder
-/// so the row still reads as a regular collection item.
+/// One album as a compact horizontal row: a circular cover on the left and
+/// the album name + photo count stacked on the right. The outer card uses the
+/// navbar-matched 30 dp radius; the cover itself is a true circle (`ClipOval`),
+/// matching the People avatars. Empty albums show a recessed placeholder so
+/// the row still reads as a regular collection item.
 class AlbumCard extends StatelessWidget {
   const AlbumCard({
     super.key,
@@ -49,8 +50,7 @@ class AlbumCard extends StatelessWidget {
           ),
           child: Row(
             children: [
-              ClipRRect(
-                borderRadius: AppRadius.br30,
+              ClipOval(
                 child: SizedBox(
                   width: _coverSize,
                   height: _coverSize,

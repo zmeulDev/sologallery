@@ -140,10 +140,10 @@ void main() {
     expectAllBr12(tester, count: 1);
   });
 
-  testWidgets('AlbumCard covers clip to br30', (tester) async {
-    // The album card is the documented exception to the r12 thumbnail rule:
-    // the cover fills the card, so it takes the card's own r30 rather than
-    // sitting inside it as a thumbnail. Same for the People strip's card.
+  testWidgets('AlbumCard cover clips to a circle', (tester) async {
+    // The album card cover is the documented exception to the r12 thumbnail
+    // rule: it's a circular avatar (ClipOval, matching the People avatars),
+    // not a rounded-rect thumbnail sitting inside the card.
     await pump(
       tester,
       const SizedBox(
@@ -159,7 +159,12 @@ void main() {
         ),
       ),
     );
-    expectAllRadius(tester, count: 1, radius: AppRadius.br30);
+    expect(
+      find.ancestor(
+        of: find.byType(AssetThumbnail),
+        matching: find.byType(ClipOval),
+      ),
+      findsOneWidget,
+    );
   });
-
 }
