@@ -1,8 +1,14 @@
 # Swiss UI refactor — implementation plan
 
-**Status:** Phase 0 built and reviewed clean (branch
-`worktree-swiss-ui-refactor-phase0`, commits `e624faa`..`3d6c6c8`). Phases
-1-6 remain planning only.
+**Status (2026-09-06):** Phases 0-5 and 7 built and reviewed clean. Phases 0-5
+landed as direct commits to `main`; Phase 7 landed on
+`worktree-swiss-ui-refactor-phase7` (Tasks 0-2 plus a final whole-branch-review
+fix pass — see Phase 7's own Definition of Done). Phase 6 (Docs) is fully
+planned but not started.
+**Phase 7 (People screen)** closed a gap in the accent-colour migration plus
+two reduction/consistency fixes, found while re-auditing
+`lib/features/people/` against this plan's own rules for a separate "refactor
+the People screen" request.
 **Source:** a research spike (not committed to the repo) comparing the current
 design system against International Typographic Style principles, with
 mockups covering nine screens: Onboarding (access + consent), the nav shell,
@@ -10,11 +16,9 @@ Library, Search, Saved, Albums, Memories player, Detail/EXIF, and Settings.
 The direction landed on **black / white / one spot red**, red scoped strictly
 to *state* (never decoration), with `AppRadius` completely unchanged.
 
-**Next step:** review Phase 0's branch/PR and decide how to land it (see the
-"Rulings" carried into decision #1 and the Phase 0 Definition of Done below —
-in particular the WCAG contrast pre-condition and the time-boxed
-unused-symbol exception). Once merged, start a fresh session for **Phase 1**
-— see "Phasing" below for why phases are separate sessions/PRs.
+**Next step:** Phase 6 — Docs (planned below, not started). Phase 7 landed
+first as required, so Phase 6 can document the final accent-usage list
+(including Phase 7's new ring usage) in one pass.
 
 ---
 
@@ -78,6 +82,7 @@ Every row must ship with its non-colour cue, or don't ship the row.
 | `ExifSheet` favourite mark | this photo is favourited | filled vs. outline heart shape (existing Material convention) |
 | Saved-grid heart badge | this photo is favourited | same filled-heart convention |
 | Memories player current segment | this is the live segment | **also** slightly taller than a played segment (see Phase 3) |
+| People grid merge-selection ring (see Phase 7) | this person is chosen for merging | the check-disc icon only appears when selected; the ring itself only exists in selection mode |
 
 Explicitly **not** accent, corrected from the spike itself:
 `count-pill` text (Library year/older counts — just data), the old
@@ -186,7 +191,19 @@ conversations/PRs, each starting from this doc.
       `FontWeight.w600` collapses, Library/Search/Albums/Settings verified
       clean, no code change needed there)
 - [ ] **Phase 6 — Docs**: fold the grid-bleed rule, the accent token, and the
-      two-weight rule into `docs/design-system.md`.
+      two-weight rule into `docs/design-system.md`. Phase 7 has landed, so
+      this phase can document the final accent-usage list in one pass.
+- [x] **Phase 7 — People screen** (built and reviewed clean 2026-09-06,
+      branch `worktree-swiss-ui-refactor-phase7`): Task 0 recolored the
+      merge-selection ring to `colors.accent`; Task 1 dropped the grid's
+      literal "Unnamed" placeholder text; Task 2 relabeled
+      `person_detail_screen.dart`'s icon-only actions as `AppButton.quiet`
+      text pills. Task 2 needed one fix round for a test-finder regression it
+      introduced (since fixed). A final whole-branch-review fix pass also
+      corrected an accessibility gap in Task 1's semantics label (the
+      photo-count line was silently unreachable under `excludeSemantics`) and
+      made Task 0's ring-colour test deterministic (scoped to the actually
+      selected card instead of tree order).
 
 ---
 
@@ -2153,6 +2170,11 @@ Run once, after Tasks 0-2 land:
 
 ## Phase 6 — Docs
 
+**Depends on Phase 7 landing first** (see that phase, below) — Phase 7 adds a
+new `colors.accent` consumer (the People grid's merge-selection ring) that
+belongs in this phase's Accent-usage doc update. Don't execute this phase
+until Phase 7 is built.
+
 Update `docs/design-system.md`:
 - Add `accent` to the Colors table (`AppColors`), one row, noting it's the
   only colour token with semantic meaning tied to state, not surface.
@@ -2179,6 +2201,197 @@ Update `docs/design-system.md`:
 - Also add an `accentText` row (new in Phase 1) — a companion text-safe
   variant of `accent`, differing by theme; note that consumers must use
   `accentText`, never `accent`, whenever the red becomes the colour of text.
+
+---
+
+## Phase 7 — People screen
+
+**Status:** built and reviewed clean 2026-09-06 (Tasks 0-2 plus a final
+whole-branch-review fix pass — see this phase's Definition of Done below).
+**Origin:** a separate session request ("refactor the People screen using
+Swiss design") re-audited `lib/features/people/` against this plan's own
+rules rather than generic design principles, since this plan *is* what
+"Swiss design" means for this codebase. Two of the three findings below are
+plain reduction/consistency fixes, unrelated to the accent system; one closes
+a real gap the accent migration (Phases 1/5) never covered.
+**Files:** `lib/features/people/people_screen.dart` (364 lines, full file
+read during planning) · `lib/features/people/person_detail_screen.dart` (94
+lines, full file read) · `lib/widgets/people_strip.dart` (read for precedent
+only, not modified) · `test/features/people/people_screen_test.dart` ·
+`test/features/people/person_detail_screen_test.dart` (existence to confirm
+in Task 2). Per `AGENTS.md`, run `tool/check.sh` after every task.
+
+---
+
+### Task 0 — Merge-selection ring → `colors.accent`
+
+**File:** `people_screen.dart`, `_SelectedRing` (currently ~lines 324-363).
+Today it marks "this person is chosen for merging" the pre-Phase-1 way — ink
+inversion (`colors.pillActiveBg`/`colors.pillActiveText`) — the one state
+indicator in the app that was never migrated to the `colors.accent`
+convention every other selection/state cue uses (`FilterPill`,
+`SegmentedControl`, `ConsentSwitch`, `NavPillBar` knob, `IndexingDial`,
+`ExifSheet`/Saved favourite marks).
+
+**Change:**
+- Ring border (`Border.all(color: colors.pillActiveBg, width: 3)`) →
+  `colors.accent`, width unchanged.
+- Check-disc fill (`color: colors.pillActiveBg`) → `colors.accent`.
+- Check-disc icon (`Icons.check_rounded`, currently `colors.pillActiveText`)
+  → `Colors.white`, matching `NavPillBar`'s knob-glyph precedent exactly
+  (Phase 1 Task 4: an icon on `colors.accent` only needs 3:1, not 4.5:1, and
+  `Colors.white` against `#EB0000` is script-verified ≈4.6:1 in both themes —
+  reuse that result rather than re-deriving it).
+- Check-disc border (currently `Border.all(color: colors.pillActiveText,
+  width: 2)`): **resolve during implementation, not here** — check whether
+  `NavPillBar`'s knob has an equivalent border for precedent; if it does,
+  match it, if not, drop this disc's border entirely rather than leave a
+  stray `pillActiveText` reference.
+- **Not a new accessibility concern:** the ring sits over arbitrary user
+  photos with no fixed background to contrast-check against — true of the
+  pre-existing ink version too. Swapping the colour doesn't change that.
+
+**Tests:** check `test/features/people/people_screen_test.dart` for existing
+selection-state coverage first. Add/extend a widget test that enters
+selection mode, taps a card, and asserts the ring's `Border` colour and the
+check-disc's fill both resolve to `colors.accent`, and the check icon's
+colour resolves to `Colors.white` — same "golden can't prove *which* red"
+rationale Phase 1 Tasks 1/2 used.
+
+**Commit:** `git add lib/features/people/people_screen.dart test/features/people/people_screen_test.dart && git commit -m "feat: recolor People merge-selection ring to accent"`.
+
+---
+
+### Task 1 — Drop the grid's literal "Unnamed" text
+
+**File:** `people_screen.dart`, `_PersonCard` (`build`, ~lines 255-320).
+Most clusters are unnamed (per this file's own class doc comment and
+`people_strip.dart`'s), so `person.displayName ?? 'Unnamed'` puts repeated,
+zero-information placeholder text on the majority of cards — a plain
+Reduction-principle failure. `PeopleStrip` already solved this correctly for
+its row (no caption at all when unnamed); the grid never got the same
+treatment.
+
+**The alignment trap:** the grid's cells are fixed-height
+(`SliverGridDelegateWithFixedCrossAxisCount.childAspectRatio`), and the
+avatar sizes itself via `Expanded` + `LayoutBuilder` to whatever space is
+*left over* after the name and count text lines. If the name `Text` widget
+were removed outright for unnamed people (rather than blanked), an unnamed
+card's avatar would render visibly larger than a named card's in the same
+row — the grid loses row-to-row alignment. `PeopleStrip` avoids this with a
+per-row "is anyone in this row named" band toggle, which doesn't translate
+cleanly to a 2D `GridView.builder` (no natural row grouping). The simpler,
+correct fix here: **keep the same widget, blank the content.** An empty
+string in a fixed-style `Text` still reserves the same line height as any
+other string in that style, so the geometry every cell reserves for the name
+line stays universal and identical — only the *visible glyphs* differ.
+
+**Change:**
+- `final name = person.displayName ?? 'Unnamed';` → `final name =
+  person.displayName;` (nullable), and the name `Text`'s `data` becomes `name
+  ?? ''`.
+- The `fontWeight: person.displayName == null ? FontWeight.w400 :
+  FontWeight.w700` conditional becomes moot (nothing renders when null) —
+  leave it in place as the smallest diff rather than restructuring it.
+- Wrap the card's tappable content in an explicit `Semantics` node
+  (`container: true, button: true, label: name ?? 'Unnamed person', onTap:
+  ..., excludeSemantics: true`), mirroring `people_strip.dart`'s
+  `_PersonTile` (~lines 154-161) exactly. **Verify during implementation**
+  whether `_PersonCard` today gets an adequate default semantics node merged
+  from the (previously always-populated) name `Text` — if so, confirm
+  blanking it doesn't silently drop the accessible name before shipping;
+  don't assume the explicit `Semantics` wrapper is optional without checking.
+
+**Tests:** extend `test/features/people/people_screen_test.dart`:
+- An unnamed person's card renders no visible `'Unnamed'` text
+  (`expect(find.text('Unnamed'), findsNothing)`).
+- The same card still exposes an accessible name (`find.bySemanticsLabel
+  ('Unnamed person')` or equivalent).
+- Pump one named + one unnamed person in the same grid and assert both
+  `FaceAvatar` widgets resolve the same `size` — this is the concrete,
+  regression-checkable form of the alignment guarantee above; a mismatch
+  here is the actual failure mode if the blank-vs-remove distinction gets
+  lost during implementation.
+- Confirm whether a `PeopleScreen` grid golden already exists (searched:
+  none found under `test/widgets/goldens/` — `people_strip.png` is the strip,
+  not the grid). If genuinely absent, note it as a pre-existing gap, same
+  category as Phase 1 Task 6's `folder_list.dart` finding — out of scope to
+  add a full `alchemist` golden here, flag as a follow-up.
+
+**Commit:** `git add lib/features/people/people_screen.dart test/features/people/people_screen_test.dart && git commit -m "fix: drop placeholder Unnamed text from the People grid"`.
+
+---
+
+### Task 2 — `person_detail_screen.dart` actions → `AppButton.quiet`
+
+**File:** `person_detail_screen.dart`, `AppBar.actions` (~lines 29-41).
+Today: two bare `IconButton`s (`call_split_rounded`/"Separate people",
+`edit_rounded`/"Rename"), meaning only visible on long-press/hover via
+`tooltip`. One screen up, in the very same feature,
+`people_screen.dart`'s own AppBar action is a labeled `AppButton.quiet`
+(`'Select'`/`'Cancel'`) — this file is the one inconsistency with that
+pattern, and with `docs/design-system.md`'s "`AppButton` is the one button."
+
+**Change:**
+- `IconButton(icon: Icons.call_split_rounded, tooltip: 'Separate people',
+  onPressed: ...)` → `AppButton.quiet(label: 'Separate', onPressed: ...)`.
+- `IconButton(icon: Icons.edit_rounded, tooltip: 'Rename', onPressed: ...)` →
+  `AppButton.quiet(label: 'Rename', onPressed: ...)`.
+- `AppButton.quiet` takes no icon parameter — the icons are dropped, not
+  replaced; the label text alone carries what the tooltip already said,
+  consistent with this whole plan's "type carries structure, not decoration"
+  direction.
+- Spacing: match `people_screen.dart:105`'s `Padding(right: AppSpace.s8)`
+  around the trailing action; no existing precedent in this codebase for two
+  non-icon `AppBar` actions side by side (checked — none found), so default
+  to a plain `SizedBox(width: AppSpace.s4)` between them and confirm nothing
+  looks cramped during the on-device pass.
+
+**Tests:** confirm `test/features/people/person_detail_screen_test.dart`
+exists (expected, alongside `people_screen_test.dart` — verify at task
+start). Update any `find.byIcon(Icons.call_split_rounded)` /
+`find.byIcon(Icons.edit_rounded)` finders to `find.text('Separate')` /
+`find.text('Rename')`; re-run to confirm tap-triggers-callback behaviour is
+otherwise unchanged.
+
+**Commit:** `git add lib/features/people/person_detail_screen.dart test/features/people/person_detail_screen_test.dart && git commit -m "feat: replace icon-only People actions with labeled AppButton.quiet"`.
+
+---
+
+### Task 3 — Full-branch check
+
+1. `tool/check.sh` — must pass clean.
+2. `git diff --stat test/widgets/goldens/ci/` — expect **no** changes (Tasks
+   0/1 found no existing golden for either touched widget; if Task 1's
+   golden-gap check turns up an existing one this planning pass missed,
+   investigate before committing rather than accepting a surprise diff).
+3. On-device pass: enter People-grid selection mode and confirm the ring and
+   check-disc read accent red (not ink); confirm an unnamed person's card
+   shows no placeholder text and its avatar is visibly the same size as a
+   named neighbour's; open a person's detail screen and confirm "Separate"
+   (when applicable) and "Rename" read as text pills, not bare icons. Same
+   device-availability backlog as Phases 1-4 applies if nothing is connected.
+
+**Definition of Done for this phase:**
+- [x] `tool/check.sh` passes (882 tests, clean analyze + build_runner).
+- [x] Merge-selection ring + check-disc verified `colors.accent` /
+      `Colors.white`, with a passing colour assertion, scoped to the
+      actually-selected card (Task 0, plus a final-review fix making the
+      finder deterministic).
+- [x] No literal `'Unnamed'` string renders anywhere in the People grid;
+      accessible name preserved via `Semantics` (a final-review fix folded
+      the photo-count line into the same label, which `excludeSemantics` had
+      made unreachable); avatar sizing verified identical across
+      named/unnamed cells in the same row (Task 1).
+- [x] `person_detail_screen.dart` actions are `AppButton.quiet` text pills,
+      tests updated (Task 2).
+- [ ] On-device pass: still outstanding this session — no physical device
+      available, same backlog as Phases 1-4's on-device items.
+- [x] This plan doc checked off through Phase 7, "Next step" line updated to
+      point at Phase 6 — and Phase 6's own task list (Accent-usage doc
+      section) confirmed to already include this phase's new ring row (added
+      to the plan's Accent-usage table above at planning time; carry it into
+      the actual `docs/design-system.md` edit).
 
 ---
 
@@ -2241,13 +2454,17 @@ Definition-of-Done line (Phases 1-4; Phase 5's heart badge covered by
 expected to matter now that Android covers every `patrolTest` file this plan
 depends on, but not formally closed either.
 
-**What's actually left:** Phase 6 — Docs (fold the grid-bleed rule,
-`accent`/`accentText`, and the two-weight rule into `docs/design-system.md`;
-task list under "Phase 6 — Docs" above, none of it started yet) — and the
-still-open question of how to land Phases 1-5 (they've shipped as direct
-commits to `main` across separate sessions, unlike Phase 0's worktree/PR;
-decide whether that's fine as-is or whether this plan doc should be archived
-now that every phase but docs is built, reviewed, and verified on-device).
+**What's actually left (updated 2026-09-06):** **Phase 7 — People screen** is
+now built and reviewed clean (see its own entry below) — its on-device pass
+is the one item still outstanding, folded into the same backlog as Phases
+1-4's. Next up is **Phase 6 — Docs** (fold the grid-bleed rule,
+`accent`/`accentText`, the two-weight rule, *and* Phase 7's new ring row into
+`docs/design-system.md`; task list under "Phase 6 — Docs" above, not started
+— it was deliberately held until Phase 7 landed, which it now has) — and the
+still-open question of how to land Phases 1-5 and 7 (they've shipped as
+direct commits/worktree branches across separate sessions, unlike Phase 0's
+worktree/PR; decide whether that's fine as-is or whether this plan doc should
+be archived once Phase 6 is also done).
 
 ---
 
@@ -2334,3 +2551,18 @@ the grid-bleed rule, `accent`/`accentText`, and the two-weight rule into
 see the multi-phase branch/PR question this plan hasn't resolved yet (Phase 0
 built on its own worktree branch; Phases 1-5 have all landed as direct
 commits to `main` in their own sessions).
+
+**Phase 7 — People screen:** built and reviewed clean 2026-09-06 on
+`worktree-swiss-ui-refactor-phase7`. Tasks 0-2 landed (merge-selection ring
+recolored to `colors.accent`; grid's placeholder "Unnamed" text dropped;
+`person_detail_screen.dart`'s icon-only actions relabeled as
+`AppButton.quiet`), each individually reviewed, `tool/check.sh` passing (882
+tests). A final whole-branch-review fix pass then corrected two things: an
+accessibility regression in Task 1 (the photo-count line was silently
+unreachable to screen readers under `excludeSemantics: true`, now folded
+into the merged label) and made Task 0's ring-colour test deterministic
+(scoped to the actually-selected card via its `Opacity(opacity: 1.0)`
+wrapper, instead of matching tree order). On-device pass is **outstanding —
+no physical device available this session** — same backlog item as Phases
+1-4's still-pending manual passes. Next step: **Phase 6 — Docs**, now
+unblocked since Phase 7 has landed.
