@@ -106,6 +106,28 @@ void main() {
     expect(find.text('Unnamed'), findsNothing);
   });
 
+  testWidgets('each avatar has its own RepaintBoundary', (tester) async {
+    // Without a per-avatar RepaintBoundary, adjacent circular avatars in the
+    // grid show a faint vertical seam between columns on-device (visually
+    // confirmed, Samsung SM S938B / Android 16) — a compositing artifact at
+    // the shared layer boundary. This locks in the isolation that fixes it.
+    await pump(tester, const [
+      PersonSummary(id: 1, displayName: 'Alice', coverAssetId: 'a', faceCount: 4),
+      PersonSummary(id: 2, displayName: 'Bob', coverAssetId: 'b', faceCount: 1),
+    ]);
+
+    for (final avatar in find.byType(FaceAvatar).evaluate()) {
+      expect(
+        find.ancestor(
+          of: find.byWidget(avatar.widget),
+          matching: find.byType(RepaintBoundary),
+        ),
+        findsWidgets,
+        reason: 'FaceAvatar should be wrapped in its own RepaintBoundary',
+      );
+    }
+  });
+
   testWidgets(
     'an unnamed person still exposes an accessible name via semantics',
     (tester) async {

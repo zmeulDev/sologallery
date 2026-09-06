@@ -304,11 +304,18 @@ class _PersonCard extends StatelessWidget {
                       height: edge,
                       child: Stack(
                         children: [
+                          // RepaintBoundary isolates each avatar into its own
+                          // compositing layer — without it, adjacent circular
+                          // avatars in the grid show a faint vertical seam
+                          // between columns (visually confirmed on-device,
+                          // Samsung SM S938B / Android 16, cleared by this).
                           Positioned.fill(
-                            child: FaceAvatar(
-                              personId: person.id,
-                              size: edge,
-                              cover: cover,
+                            child: RepaintBoundary(
+                              child: FaceAvatar(
+                                personId: person.id,
+                                size: edge,
+                                cover: cover,
+                              ),
                             ),
                           ),
                           // Always built, never conditional, so the tree shape is
