@@ -234,6 +234,34 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   Verified on the 2026-07-27 iOS-asset-id-encoding session with
   `1000005645` (MediaStore id) → 5 of these lines → image still rendered in
   ~951ms.
+- **`android:enableOnBackInvokedCallback="true"` can let Android's own
+  default back callback permanently shadow Flutter's, so `PopScope` never
+  even sees the back event — no exception, no log from the Dart side, it
+  just silently doesn't fire.** Found 2026-09-06 fixing the bottom-nav
+  shell's back-exits-the-app bug (`AppShell`'s `PopScope`, `canPop:
+  navigationShell.currentIndex == 0`). On a Samsung SM-S938B (One UI) with
+  Flutter 3.44.6, logcat showed this on *every* cold launch, before any
+  navigation happened: `D/WindowOnBackDispatcher:
+  setTopOnBackInvokedCallback (unwrapped):
+  io.flutter.embedding.android.FlutterActivity$1@...` immediately followed
+  by `... android.app.Activity$$ExternalSyntheticLambda0@...` — Android's
+  own generic "just finish the Activity" callback re-registering itself as
+  "top" right after Flutter's real one, deterministically, every time.
+  Every subsequent back press invoked `Activity$$ExternalSyntheticLambda0
+  .onBackInvoked`, never Flutter's — confirmed via `adb shell input
+  keyevent 4` + `dumpsys activity activities` showing the launcher take
+  over. **This has nothing to do with `PopScope`'s `canPop` logic** — the
+  callback that would evaluate it is never the one the OS calls. Don't
+  chase this by tweaking the widget tree; check logcat for
+  `setTopOnBackInvokedCallback` first. Fix: explicitly set
+  `android:enableOnBackInvokedCallback="false"` on the `<activity>` (not
+  just omit it) — this forces Flutter onto its legacy `Navigator`/
+  `PopScope`-compatible dispatch path instead of the predictive-back API,
+  which doesn't have this registration race. Verified fixed for all four
+  shell branches. The only cost is losing the animated predictive-back
+  gesture preview. Re-test on-device (not just in a host test — this is
+  invisible to `flutter test`) before ever flipping this back to `true` on
+  a Flutter/AGP upgrade.
 
 ---
 
@@ -629,6 +657,30 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
   the drag reads as dominant once past `kTouchSlop`, deferring to the
   `PageView`'s own horizontal swipe by simply not acting when the movement
   reads as horizontal (see `DismissiblePhoto`).
+- **A different arena conflict from the one above: the detail viewer's own
+  ancestor `PageView` (the horizontal swipe-between-photos scroller) can
+  hijack a two-finger pinch into a page-swipe, or stall it mid-gesture.**
+  Found and fixed 2026-09-06 (user report: "pinch instead triggers swipe to
+  next/prev photo"). `PhotoDetailScreen`'s `PageView.builder` is a real
+  `Scrollable` with its own horizontal-drag recognizer sitting *above* each
+  page's `InteractiveViewer` (`scaleEnabled` is never gated, unlike
+  `panEnabled`). Two fingers landing on a real pinch essentially never touch
+  down in the same frame — the single-finger touch-down before the second
+  finger lands is enough for the `PageView`'s drag recognizer to claim the
+  arena first. This is a different mechanism from the sibling
+  `VerticalDragGestureRecognizer` conflict above (that one is a *sibling* in
+  the same subtree; this one is an *ancestor* Scrollable, and `Listener`
+  alone doesn't help since the `PageView`'s recognizer isn't `DismissiblePhoto`'s
+  to sidestep). Fix: track live pointer count with a `Listener` wrapping the
+  `PageView` (`onPointerDown`/`onPointerUp`/`onPointerCancel`, same
+  non-arena-competing approach) and set the `PageView`'s `physics` to
+  `NeverScrollableScrollPhysics()` the instant a second pointer is down,
+  reverting once back to ≤1 — removes it as an arena competitor before
+  `InteractiveViewer`'s scale recognizer has to fight for the pinch.
+  Single-finger swipe-between-photos is untouched (physics only changes at
+  2+ pointers). Not reproducible via `adb` (no multi-touch pinch
+  simulation) or in a host test (no real gesture arena) — needs a real
+  two-finger pinch on a physical device.
 - **A `late final AnimationController` field only gets created on first
   *access* — if a widget's `build()` conditionally never touches it (e.g.
   reduced motion skips the animated branch entirely), `dispose()` becomes
@@ -963,6 +1015,24 @@ Short form only here; long-form incident writeups go in `docs/plans/`.
 
 ## Release / Play signing
 
+- **`pubspec.yaml`'s `version:` is the single source of truth for both
+  platforms — don't hand-edit build numbers anywhere else.** Marketing
+  version is CalVer `YY.M.D` (e.g. `26.9.6`); the build number after `+`
+  is the Android `versionCode` (`android/app/build.gradle` reads
+  `flutter.versionCode`/`flutter.versionName` directly) and **must only
+  ever increase, for the life of the app** — Play Console rejects any
+  upload whose versionCode isn't strictly higher than every previous
+  upload. Do **not** reset it to `+1` on a new day (an earlier convention
+  here did that and it's wrong — it just happened not to be caught
+  because the low `+1..+N` builds were never actually the ones uploaded).
+  Pick the next build number by taking the highest versionCode Play
+  Console has ever seen for this app and incrementing from there — ask
+  the user if it isn't obvious from context. iOS needs no separate edit:
+  `ios/Runner/Info.plist` reads `$(FLUTTER_BUILD_NAME)` /
+  `$(FLUTTER_BUILD_NUMBER)`, which Flutter's build populates straight
+  from `pubspec.yaml` (`CURRENT_PROJECT_VERSION`/`MARKETING_VERSION` in
+  `project.pbxproj` are hardcoded `1`/`1.0` only for the `RunnerTests`
+  target, which doesn't ship).
 - **Lost upload keystore is fatal without Play App Signing, recoverable
   with it.** A lost upload key normally means the app's identity on Play
   is unrecoverable — Google cannot retrieve it and you cannot push

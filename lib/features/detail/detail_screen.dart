@@ -42,6 +42,25 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
   late final PageController _controller = PageController(initialPage: _index);
   bool _chromeVisible = true;
 
+  // The PageView is a horizontal-drag-competing Scrollable *ancestor* of each
+  // page's InteractiveViewer. Two fingers landing on a real pinch rarely hit
+  // in the same frame — the brief single-finger touch-down before the second
+  // finger lands is enough for the PageView's own drag recognizer to claim
+  // the gesture arena first, hijacking the pinch into a page-swipe (or
+  // stalling it if the arena resolves mid-gesture). Tracked via raw
+  // `Listener` pointer events, same non-arena-competing approach as
+  // DismissiblePhoto, so this can't itself be swallowed: disabling the
+  // PageView's physics the instant a second finger is down removes it as a
+  // competitor before InteractiveViewer's scale recognizer has to fight for
+  // the arena. Single-finger swipe-between-photos is untouched — physics
+  // only changes at 2+ pointers.
+  int _pointerCount = 0;
+
+  void _onPointerDown(PointerDownEvent _) => setState(() => _pointerCount++);
+
+  void _onPointerUp(PointerEvent _) =>
+      setState(() => _pointerCount = (_pointerCount - 1).clamp(0, 999));
+
   String get _currentId => _ids[_index];
 
   void _recordView(String assetId) {
@@ -129,20 +148,31 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
             // resolved inside DismissiblePhoto, where the zoom transform lives
             // and where the raw-pointer path already avoids the gesture arena.
             Positioned.fill(
-              child: PageView.builder(
-                controller: _controller,
-                itemCount: _ids.length,
-                onPageChanged: (i) {
-                  setState(() => _index = i);
-                  _recordView(_currentId);
-                },
-                itemBuilder: (context, i) => _DetailPage(
-                  assetId: _ids[i],
-                  placeholderBytes:
-                      i == widget.args.initialIndex ? widget.args.initialBytes : null,
-                  onDismissed: () => Navigator.of(context).maybePop(),
-                  onSwipeUp: _onExif,
-                  onTap: _toggleChrome,
+              child: Listener(
+                onPointerDown: _onPointerDown,
+                onPointerUp: _onPointerUp,
+                onPointerCancel: _onPointerUp,
+                child: PageView.builder(
+                  controller: _controller,
+                  // See _pointerCount doc: yields the arena to a pinch the
+                  // instant a second finger is down.
+                  physics: _pointerCount >= 2
+                      ? const NeverScrollableScrollPhysics()
+                      : null,
+                  itemCount: _ids.length,
+                  onPageChanged: (i) {
+                    setState(() => _index = i);
+                    _recordView(_currentId);
+                  },
+                  itemBuilder: (context, i) => _DetailPage(
+                    assetId: _ids[i],
+                    placeholderBytes: i == widget.args.initialIndex
+                        ? widget.args.initialBytes
+                        : null,
+                    onDismissed: () => Navigator.of(context).maybePop(),
+                    onSwipeUp: _onExif,
+                    onTap: _toggleChrome,
+                  ),
                 ),
               ),
             ),

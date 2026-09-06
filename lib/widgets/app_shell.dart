@@ -27,23 +27,35 @@ class AppShell extends ConsumerWidget {
       ref.read(searchTabActiveProvider.notifier).set(searchActive);
     });
 
-    return Scaffold(
-      // The nav capsule floats over the page. Scrollers in each branch pad
-      // their bottom by `MediaQuery.paddingOf(context).bottom`, which the
-      // Scaffold sets to the capsule's height for the body.
-      extendBody: true,
-      body: navigationShell,
-      bottomNavigationBar: NavPillBar(
-        // The indexing dial rides beside the capsule, so it is over every
-        // branch — and over anything pushed inside a branch — and no screen
-        // silently looks incomplete while analysis is still running. It shows
-        // nothing when idle.
-        trailing: const IndexingDial(),
-        currentIndex: navigationShell.currentIndex,
-        onTap: (index) => navigationShell.goBranch(
-          index,
-          // Re-tapping the active tab pops it to its initial route.
-          initialLocation: index == navigationShell.currentIndex,
+    return PopScope(
+      // Library (branch 0) is home — back there exits the app as normal.
+      // Every other branch is a single-screen navigator with nothing of its
+      // own to pop, so without this the system back gesture/button falls
+      // through to "nothing left to pop" and exits the app instead of
+      // returning to Library, like every other bottom-nav app does.
+      canPop: navigationShell.currentIndex == 0,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        navigationShell.goBranch(0);
+      },
+      child: Scaffold(
+        // The nav capsule floats over the page. Scrollers in each branch pad
+        // their bottom by `MediaQuery.paddingOf(context).bottom`, which the
+        // Scaffold sets to the capsule's height for the body.
+        extendBody: true,
+        body: navigationShell,
+        bottomNavigationBar: NavPillBar(
+          // The indexing dial rides beside the capsule, so it is over every
+          // branch — and over anything pushed inside a branch — and no screen
+          // silently looks incomplete while analysis is still running. It shows
+          // nothing when idle.
+          trailing: const IndexingDial(),
+          currentIndex: navigationShell.currentIndex,
+          onTap: (index) => navigationShell.goBranch(
+            index,
+            // Re-tapping the active tab pops it to its initial route.
+            initialLocation: index == navigationShell.currentIndex,
+          ),
         ),
       ),
     );

@@ -57,6 +57,23 @@
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules">
+        <!-- enableOnBackInvokedCallback is explicitly false, not just
+             omitted: on a Samsung SM-S938B (One UI) with this Flutter
+             engine (3.44.6), enabling the predictive-back callback let
+             Android's own default OnBackInvokedCallback re-register
+             itself as "top" over FlutterActivity's the instant the
+             window gained input focus (confirmed in logcat:
+             setTopOnBackInvokedCallback alternates FlutterActivity$1 ->
+             Activity$$ExternalSyntheticLambda0 on every cold launch,
+             before any navigation), permanently shadowing it — every back
+             press then invoked Android's callback (which just finishes
+             the Activity), and PopScope in app_shell.dart never saw the
+             event at all. Forcing the legacy dispatch path instead routes
+             back presses through Flutter's Navigator/PopScope correctly
+             (verified: Saved/Search/Albums back now returns to Library;
+             Library itself still exits as normal) — the only cost is
+             losing the animated predictive-back preview. Re-test before
+             flipping this back to true on any Flutter/AGP upgrade. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -65,7 +82,8 @@
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
-            android:windowSoftInputMode="adjustResize">
+            android:windowSoftInputMode="adjustResize"
+            android:enableOnBackInvokedCallback="false">
             <!-- Specifies an Android theme to apply to this Activity as soon as
                  the Android process has started. This theme is visible to the user
                  while the Flutter UI initializes. After that, this theme continues

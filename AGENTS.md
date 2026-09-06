@@ -114,6 +114,9 @@ isolate, indexing) · `lib/widgets` (20 shared design-system components) ·
 - **The plan doc is a living handoff log.** Update it as you go: check off steps,
   record decisions and why, keep a "Next step" line current. A fresh session must
   be able to read AGENTS.md plus the plan and resume immediately.
+- **Store release notes** live in `docs/releases/<version>-android.md` and
+  `docs/releases/<version>-ios.md` — one file per version per platform, store
+  "What's New" copy only, never naming the other platform.
 - **UI work** — read [docs/design-system.md](docs/design-system.md) before
   building or reshaping any screen or widget. Reuse the shared components; do not
   hand-roll an equivalent.

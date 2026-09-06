@@ -36,8 +36,9 @@ privacy policy should not need a content update, only a sanity check.
 
 - Zero network calls — Android release manifest must stay free of
   `INTERNET` / `READ_PHONE_STATE` / `c2dm`.
-- Version scheme: CalVer `YY.M.D+N` (marketing `YY.M.D`, build `+N`; new day
-  resets `+N` to `1`).
+- Version scheme: CalVer `YY.M.D+N` (marketing `YY.M.D`; build `+N` is the
+  Android versionCode and must only ever increase — never reset per day, see
+  `docs/gotchas.md` Release/Play signing).
 - `tool/check.sh` must pass (analyze + codegen + full test suite) before any
   release build.
 - No dead code / no invented APIs / no unused symbols.
