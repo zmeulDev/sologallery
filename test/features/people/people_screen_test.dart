@@ -6,6 +6,7 @@ import 'package:sologallery/core/database/daos/faces_dao.dart' show PersonSummar
 import 'package:sologallery/core/theme/app_theme.dart';
 import 'package:sologallery/features/people/people_providers.dart';
 import 'package:sologallery/features/people/people_screen.dart';
+import 'package:sologallery/features/people/widgets/face_avatar.dart';
 import 'package:sologallery/features/settings/consent_provider.dart';
 
 /// Records what the screen asked the data layer to do, so the merge flow can be
@@ -98,9 +99,28 @@ void main() {
 
     expect(find.text('Alice'), findsOneWidget);
     expect(find.text('4 photos'), findsOneWidget);
-    expect(find.text('Unnamed'), findsOneWidget);
     expect(find.text('1 photo'), findsOneWidget);
+    // Most clusters are unnamed, so a literal 'Unnamed' placeholder would be
+    // the majority of the grid's text — a Reduction-principle failure. No
+    // card ever renders that string.
+    expect(find.text('Unnamed'), findsNothing);
   });
+
+  testWidgets(
+    'an unnamed person still exposes an accessible name via semantics',
+    (tester) async {
+      final handle = tester.ensureSemantics();
+      await pump(tester, const [
+        PersonSummary(id: 1, displayName: 'Alice', coverAssetId: 'a', faceCount: 4),
+        PersonSummary(id: 2, displayName: null, coverAssetId: 'b', faceCount: 1),
+      ]);
+
+      expect(find.bySemanticsLabel('Alice'), findsOneWidget);
+      expect(find.bySemanticsLabel('Unnamed person'), findsOneWidget);
+
+      handle.dispose();
+    },
+  );
 
   testWidgets(
     'a named person is bold, an unnamed one stays regular weight',
@@ -114,10 +134,42 @@ void main() {
         tester.widget<Text>(find.text('Alice')).style?.fontWeight,
         FontWeight.w700,
       );
-      expect(
-        tester.widget<Text>(find.text('Unnamed')).style?.fontWeight,
-        FontWeight.w400,
-      );
+      // The unnamed card's name line renders blank (not omitted) so its
+      // reserved line-height stays identical to a named card's — see
+      // `_PersonCard`'s alignment-trap comment. Found by its empty `data`
+      // rather than by (now-nonexistent) 'Unnamed' text.
+      final blankNameTexts = tester
+          .widgetList<Text>(find.byType(Text))
+          .where((t) => t.data == '')
+          .toList();
+      expect(blankNameTexts, hasLength(1));
+      expect(blankNameTexts.single.style?.fontWeight, FontWeight.w400);
+    },
+  );
+
+  testWidgets(
+    'a named and an unnamed person resolve identical avatar sizes',
+    (tester) async {
+      await pump(tester, const [
+        PersonSummary(id: 1, displayName: 'Alice', coverAssetId: 'a', faceCount: 4),
+        PersonSummary(id: 2, displayName: null, coverAssetId: 'b', faceCount: 1),
+      ]);
+
+      // The grid's cells are fixed-height, and each avatar sizes itself to
+      // whatever space is left over after the name/count text lines. Blanking
+      // (not omitting) the name Text for unnamed people is what keeps that
+      // reserved geometry — and therefore the avatar size — identical across
+      // every cell regardless of whether the card has a name.
+      final avatars = tester
+          .widgetList<FaceAvatar>(find.byType(FaceAvatar))
+          .toList();
+      expect(avatars, hasLength(2));
+      final namedAvatar = avatars.singleWhere((a) => a.personId == 1);
+      final unnamedAvatar = avatars.singleWhere((a) => a.personId == 2);
+      expect(unnamedAvatar.size, namedAvatar.size);
+      // Guard against a vacuously-true comparison if both happened to
+      // collapse to zero.
+      expect(namedAvatar.size, greaterThan(0));
     },
   );
 

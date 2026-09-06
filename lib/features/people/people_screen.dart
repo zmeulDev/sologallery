@@ -257,64 +257,86 @@ class _PersonCard extends StatelessWidget {
     final colors = Theme.of(context).extension<AppColors>()!;
     final styles = Theme.of(context).extension<AppTextStyles>()!;
     final scheme = Theme.of(context).colorScheme;
-    final name = person.displayName ?? 'Unnamed';
-    return GestureDetector(
-      onTap: selecting ? onToggle : onOpen,
-      behavior: HitTestBehavior.opaque,
-      child: Column(
-        children: [
-          // The avatar takes the space left after the two text lines and sizes
-          // to the smaller of that height / the width, so the card never
-          // overflows its aspect-ratio-fixed cell (even at large font scales).
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, c) {
-                final edge = c.maxWidth < c.maxHeight ? c.maxWidth : c.maxHeight;
-                return Center(
-                  child: SizedBox(
-                    width: edge,
-                    height: edge,
-                    child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: FaceAvatar(
-                            personId: person.id,
-                            size: edge,
-                            cover: cover,
+    // Nullable: most clusters are unnamed, so there is no name to show — see
+    // the class doc comment and `people_strip.dart`. The `Text` below still
+    // renders unconditionally with `name ?? ''` rather than being omitted:
+    // this cell sits in a fixed-height grid row where the avatar sizes itself
+    // to whatever space the text lines leave over (below), so every cell must
+    // reserve identical line-height for the name line whether or not it has
+    // content, or an unnamed card's avatar renders visibly larger than its
+    // named neighbours.
+    final name = person.displayName;
+    final onTap = selecting ? onToggle : onOpen;
+    // Without this, an unnamed card's merged semantics node would announce
+    // only the photo count with no indication anyone/anything is there to
+    // name — verified empirically: a blank sibling `Text` contributes no
+    // label segment to the default tap-node merge at all (not even an empty
+    // one), so nothing here stands in for the old always-populated 'Unnamed'
+    // string once it's blanked. Mirrors `people_strip.dart`'s `_PersonTile`.
+    return Semantics(
+      container: true,
+      button: true,
+      label: name ?? 'Unnamed person',
+      onTap: onTap,
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          children: [
+            // The avatar takes the space left after the two text lines and sizes
+            // to the smaller of that height / the width, so the card never
+            // overflows its aspect-ratio-fixed cell (even at large font scales).
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  final edge = c.maxWidth < c.maxHeight ? c.maxWidth : c.maxHeight;
+                  return Center(
+                    child: SizedBox(
+                      width: edge,
+                      height: edge,
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: FaceAvatar(
+                              personId: person.id,
+                              size: edge,
+                              cover: cover,
+                            ),
                           ),
-                        ),
-                        // Always built, never conditional, so the tree shape is
-                        // stable across selection changes.
-                        Positioned.fill(
-                          child: Opacity(
-                            opacity: selected ? 1 : 0,
-                            child: _SelectedRing(edge: edge),
+                          // Always built, never conditional, so the tree shape is
+                          // stable across selection changes.
+                          Positioned.fill(
+                            child: Opacity(
+                              opacity: selected ? 1 : 0,
+                              child: _SelectedRing(edge: edge),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-          ),
-          const SizedBox(height: AppSpace.s8),
-          Text(
-            name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: styles.body.copyWith(
-              color: scheme.onSurface,
-              fontWeight: person.displayName == null
-                  ? FontWeight.w400
-                  : FontWeight.w700,
+            const SizedBox(height: AppSpace.s8),
+            Text(
+              name ?? '',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: styles.body.copyWith(
+                color: scheme.onSurface,
+                fontWeight: person.displayName == null
+                    ? FontWeight.w400
+                    : FontWeight.w700,
+              ),
             ),
-          ),
-          Text(
-            photoCountLabel(person.faceCount),
-            style: styles.caption.copyWith(color: colors.textSecondary),
-          ),
-        ],
+            Text(
+              photoCountLabel(person.faceCount),
+              style: styles.caption.copyWith(color: colors.textSecondary),
+            ),
+          ],
+        ),
       ),
     );
   }
