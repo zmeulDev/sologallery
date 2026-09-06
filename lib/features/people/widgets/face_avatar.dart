@@ -142,7 +142,7 @@ class FaceAvatar extends ConsumerWidget {
 
   /// Over-zoom past just fitting the box so the face fills the circle. Tunable —
   /// raise to crop closer, lower to show more surround.
-  static const _faceFill = 1.3;
+  static const _faceFill = 0.5;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
