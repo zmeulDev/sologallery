@@ -162,7 +162,10 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.tap(find.text('Separate'));
+    await tester.tap(find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.text('Separate'),
+    ));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
